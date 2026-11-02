@@ -31,7 +31,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.hamcrest.Matchers.nullValue;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -72,74 +71,6 @@ class EsbirkaControllerTest {
         search.setDefaultLimit(20);
         search.setMaxLimit(50);
         when(esbirkaConfig.getSearch()).thenReturn(search);
-    }
-
-    // -------- /law/search --------
-
-    @Test
-    void lawSearchHappyPathReturnsEnvelope() throws Exception {
-        LawDto dto = new LawDto(LAW_IRI, "/eli/cz/sb/2006/187",
-                "https://opendata.eselpoint.gov.cz", "187/2006 Sb.",
-                "Zákon č. 187/2006 Sb.", "187", 2006, "sb");
-        when(esbirkaService.searchLaws(eq("187"), eq(5))).thenReturn(List.of(dto));
-
-        mockMvc.perform(get("/api/eli/law/search").param("q", "187").param("limit", "5"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].iri").value(LAW_IRI))
-                .andExpect(jsonPath("$.data[0].eliPath").value("/eli/cz/sb/2006/187"))
-                .andExpect(jsonPath("$.data[0].displayName").value("Zákon č. 187/2006 Sb."))
-                .andExpect(jsonPath("$.message").value("Vyhledávání právních aktů úspěšně provedeno."));
-    }
-
-    @Test
-    void lawSearchDefaultLimitWhenMissing() throws Exception {
-        when(esbirkaService.searchLaws(any(), anyInt())).thenReturn(List.of());
-
-        mockMvc.perform(get("/api/eli/law/search"))
-                .andExpect(status().isOk());
-
-        ArgumentCaptor<Integer> limitCap = ArgumentCaptor.forClass(Integer.class);
-        verify(esbirkaService).searchLaws(any(), limitCap.capture());
-        assertEquals(20, limitCap.getValue());
-    }
-
-    @Test
-    void lawSearchLimitZeroReturns400() throws Exception {
-        mockMvc.perform(get("/api/eli/law/search").param("limit", "0"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("Parametr limit musí být v rozsahu 1 až 50."));
-    }
-
-    @Test
-    void lawSearchLimitAboveMaxReturns400() throws Exception {
-        mockMvc.perform(get("/api/eli/law/search").param("limit", "51"))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void lawSearchMissingQueryForwardedAsNull() throws Exception {
-        when(esbirkaService.searchLaws(any(), anyInt())).thenReturn(List.of());
-
-        mockMvc.perform(get("/api/eli/law/search").param("limit", "10"))
-                .andExpect(status().isOk());
-
-        ArgumentCaptor<String> qCap = ArgumentCaptor.forClass(String.class);
-        verify(esbirkaService).searchLaws(qCap.capture(), anyInt());
-        assertNull(qCap.getValue());
-    }
-
-    @Test
-    void lawSearchService503BubblesUp() throws Exception {
-        when(esbirkaService.searchLaws(any(), anyInt()))
-                .thenThrow(new SparqlEndpointUnavailableException("e-Sbírka", "e-Sbírka law search fetch failed"));
-
-        mockMvc.perform(get("/api/eli/law/search"))
-                .andExpect(status().isServiceUnavailable())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("e-Sbírka data nejsou momentálně dostupná."));
     }
 
     // -------- /law/versions --------
@@ -190,48 +121,6 @@ class EsbirkaControllerTest {
                 .andExpect(status().isServiceUnavailable());
     }
 
-    // -------- /law/fragments --------
-
-    @Test
-    void fragmentsHappyPathReturnsTree() throws Exception {
-        FragmentDto root = new FragmentDto(VERSION_IRI + "/par_1",
-                "/eli/cz/sb/2006/187/2026-04-01/par_1",
-                "par", "§ 1", "0001", null, true, new ArrayList<>());
-        when(esbirkaService.getFragments(VERSION_IRI)).thenReturn(List.of(root));
-
-        mockMvc.perform(get("/api/eli/law/fragments").param("versionIri", VERSION_IRI))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].kind").value("par"))
-                .andExpect(jsonPath("$.data[0].citation").value("§ 1"));
-    }
-
-    @Test
-    void fragmentsInvalidIriReturns400() throws Exception {
-        mockMvc.perform(get("/api/eli/law/fragments").param("versionIri", "javascript:alert(1)"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Neplatný identifikátor znění právního aktu."));
-    }
-
-    @Test
-    void fragmentsLegacyHostIsNotRejectedAtTheBoundary() throws Exception {
-        // Bare legacy host — no /esel-esb/ segment; canonicalization inserts it.
-        String legacy = "https://eselpoint.cz/eli/cz/sb/2006/187/2026-04-01";
-        when(esbirkaService.getFragments(legacy)).thenReturn(List.of());
-
-        mockMvc.perform(get("/api/eli/law/fragments").param("versionIri", legacy))
-                .andExpect(status().isOk());
-    }
-
-    @Test
-    void fragmentsService503BubblesUp() throws Exception {
-        when(esbirkaService.getFragments(VERSION_IRI))
-                .thenThrow(new SparqlEndpointUnavailableException("e-Sbírka", "e-Sbírka fragment tree fetch failed"));
-
-        mockMvc.perform(get("/api/eli/law/fragments").param("versionIri", VERSION_IRI))
-                .andExpect(status().isServiceUnavailable());
-    }
-
     // -------- /law/search/grouped --------
 
     @Test
@@ -276,12 +165,48 @@ class EsbirkaControllerTest {
     }
 
     @Test
+    void groupedSearchLimitZeroReturns400() throws Exception {
+        mockMvc.perform(get("/api/eli/law/search/grouped").param("q", "49").param("limit", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("Parametr limit musí být v rozsahu 1 až 50."));
+    }
+
+    @Test
+    void groupedSearchLimitJustAboveMaxReturns400() throws Exception {
+        mockMvc.perform(get("/api/eli/law/search/grouped").param("q", "49").param("limit", "51"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void groupedSearchAcceptsMaxLimit() throws Exception {
+        when(esbirkaService.searchLawsGrouped("49", 50)).thenReturn(LawSearchResultDto.builder().build());
+
+        mockMvc.perform(get("/api/eli/law/search/grouped").param("q", "49").param("limit", "50"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void groupedSearchMissingQueryForwardedAsNull() throws Exception {
+        when(esbirkaService.searchLawsGrouped(any(), anyInt())).thenReturn(LawSearchResultDto.builder().build());
+
+        mockMvc.perform(get("/api/eli/law/search/grouped").param("limit", "10"))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<String> qCap = ArgumentCaptor.forClass(String.class);
+        verify(esbirkaService).searchLawsGrouped(qCap.capture(), eq(10));
+        assertNull(qCap.getValue());
+    }
+
+    @Test
     void groupedSearchService503BubblesUp() throws Exception {
         when(esbirkaService.searchLawsGrouped("49", 20))
                 .thenThrow(new SparqlEndpointUnavailableException("e-Sbírka", "e-Sbírka law search failed"));
 
         mockMvc.perform(get("/api/eli/law/search/grouped").param("q", "49"))
-                .andExpect(status().isServiceUnavailable());
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("e-Sbírka data nejsou momentálně dostupná."));
     }
 
     // -------- /law/content --------

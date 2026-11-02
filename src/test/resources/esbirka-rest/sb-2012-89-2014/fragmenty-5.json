@@ -1,0 +1,131 @@
+{
+ "pocetStranek": 10,
+ "seznam": [
+  {
+   "id": 7986695,
+   "eli": "/eli/cz/sb/2012/89/2014-01-01/dokument/norma/cast_3/hlava_3/dil_2/oddil_2/pododdil_3",
+   "staleUrl": "/sb/2012/89/2014-01-01#cast_3-hlava_3-dil_2-oddil_2-pododdil_3",
+   "kodTypuFragmentu": "Pododdil",
+   "hloubka": 6,
+   "xhtml": "<var>Pododdíl 3</var>",
+   "zkracenaCitace": " ČÁST TŘETÍ HLAVA III Díl 2 Oddíl 2 Pododdíl 3 zákona č. 89/2012 Sb."
+  },
+  {
+   "id": 7986823,
+   "eli": "/eli/cz/sb/2012/89/2014-01-01/dokument/norma/cast_3/hlava_3/dil_2/oddil_2/pododdil_4",
+   "staleUrl": "/sb/2012/89/2014-01-01#cast_3-hlava_3-dil_2-oddil_2-pododdil_4",
+   "kodTypuFragmentu": "Pododdil",
+   "hloubka": 6,
+   "xhtml": "<var>Pododdíl 4</var>",
+   "zkracenaCitace": " ČÁST TŘETÍ HLAVA III Díl 2 Oddíl 2 Pododdíl 4 zákona č. 89/2012 Sb."
+  },
+  {
+   "id": 7986935,
+   "eli": "/eli/cz/sb/2012/89/2014-01-01/dokument/norma/cast_3/hlava_3/dil_3",
+   "staleUrl": "/sb/2012/89/2014-01-01#cast_3-hlava_3-dil_3",
+   "kodTypuFragmentu": "Dil",
+   "hloubka": 4,
+   "xhtml": "<var>Díl 3</var>",
+   "zkracenaCitace": " ČÁST TŘETÍ HLAVA III Díl 3 zákona č. 89/2012 Sb."
+  },
+  {
+   "id": 7987003,
+   "eli": "/eli/cz/sb/2012/89/2014-01-01/dokument/norma/cast_3/hlava_3/dil_3/oddil_2",
+   "staleUrl": "/sb/2012/89/2014-01-01#cast_3-hlava_3-dil_3-oddil_2",
+   "kodTypuFragmentu": "Oddil",
+   "hloubka": 5,
+   "xhtml": "<var>Oddíl 2</var>",
+   "zkracenaCitace": " ČÁST TŘETÍ HLAVA III Díl 3 Oddíl 2 zákona č. 89/2012 Sb."
+  },
+  {
+   "id": 7987007,
+   "eli": "/eli/cz/sb/2012/89/2014-01-01/dokument/norma/cast_3/hlava_3/dil_3/oddil_2/pododdil_1",
+   "staleUrl": "/sb/2012/89/2014-01-01#cast_3-hlava_3-dil_3-oddil_2-pododdil_1",
+   "kodTypuFragmentu": "Pododdil",
+   "hloubka": 6,
+   "xhtml": "<var>Pododdíl 1</var>",
+   "zkracenaCitace": " ČÁST TŘETÍ HLAVA III Díl 3 Oddíl 2 Pododdíl 1 zákona č. 89/2012 Sb."
+  },
+  {
+   "id": 7987033,
+   "eli": "/eli/cz/sb/2012/89/2014-01-01/dokument/norma/cast_3/hlava_3/dil_3/oddil_2/pododdil_2",
+   "staleUrl": "/sb/2012/89/2014-01-01#cast_3-hlava_3-dil_3-oddil_2-pododdil_2",
+   "kodTypuFragmentu": "Pododdil",
+   "hloubka": 6,
+   "xhtml": "<var>Pododdíl 2</var>",
+   "zkracenaCitace": " ČÁST TŘETÍ HLAVA III Díl 3 Oddíl 2 Pododdíl 2 zákona č. 89/2012 Sb."
+  },
+  {
+   "id": 7987055,
+   "eli": "/eli/cz/sb/2012/89/2014-01-01/dokument/norma/cast_3/hlava_3/dil_3/oddil_2/pododdil_3",
+   "staleUrl": "/sb/2012/89/2014-01-01#cast_3-hlava_3-dil_3-oddil_2-pododdil_3",
+   "kodTypuFragmentu": "Pododdil",
+   "hloubka": 6,
+   "xhtml": "<var>Pododdíl 3</var>",
+   "zkracenaCitace": " ČÁST TŘETÍ HLAVA III Díl 3 Oddíl 2 Pododdíl 3 zákona č. 89/2012 Sb."
+  },
+  {
+   "id": 7987085,
+   "eli": "/eli/cz/sb/2012/89/2014-01-01/dokument/norma/cast_3/hlava_3/dil_3/oddil_2/pododdil_4",
+   "staleUrl": "/sb/2012/89/2014-01-01#cast_3-hlava_3-dil_3-oddil_2-pododdil_4",
+   "kodTypuFragmentu": "Pododdil",
+   "hloubka": 6,
+   "xhtml": "<var>Pododdíl 4</var>",
+   "zkracenaCitace": " ČÁST TŘETÍ HLAVA III Díl 3 Oddíl 2 Pododdíl 4 zákona č. 89/2012 Sb."
+  },
+  {
+   "id": 7987797,
+   "eli": "/eli/cz/sb/2012/89/2014-01-01/dokument/norma/cast_4",
+   "staleUrl": "/sb/2012/89/2014-01-01#cast_4",
+   "kodTypuFragmentu": "Cast",
+   "hloubka": 2,
+   "xhtml": "<var>ČÁST ČTVRTÁ</var>",
+   "zkracenaCitace": " ČÁST ČTVRTÁ zákona č. 89/2012 Sb."
+  },
+  {
+   "id": 7987801,
+   "eli": "/eli/cz/sb/2012/89/2014-01-01/dokument/norma/cast_4/hlava_1",
+   "staleUrl": "/sb/2012/89/2014-01-01#cast_4-hlava_1",
+   "kodTypuFragmentu": "Hlava",
+   "hloubka": 3,
+   "xhtml": "<var>HLAVA I</var>",
+   "zkracenaCitace": " ČÁST ČTVRTÁ HLAVA I zákona č. 89/2012 Sb."
+  },
+  {
+   "id": 7988327,
+   "eli": "/eli/cz/sb/2012/89/2014-01-01/dokument/norma/cast_4/hlava_1/dil_4",
+   "staleUrl": "/sb/2012/89/2014-01-01#cast_4-hlava_1-dil_4",
+   "kodTypuFragmentu": "Dil",
+   "hloubka": 4,
+   "xhtml": "<var>Díl 4</var>",
+   "zkracenaCitace": " ČÁST ČTVRTÁ HLAVA I Díl 4 zákona č. 89/2012 Sb."
+  },
+  {
+   "id": 7988429,
+   "eli": "/eli/cz/sb/2012/89/2014-01-01/dokument/norma/cast_4/hlava_1/dil_4/oddil_2",
+   "staleUrl": "/sb/2012/89/2014-01-01#cast_4-hlava_1-dil_4-oddil_2",
+   "kodTypuFragmentu": "Oddil",
+   "hloubka": 5,
+   "xhtml": "<var>Oddíl 2</var>",
+   "zkracenaCitace": " ČÁST ČTVRTÁ HLAVA I Díl 4 Oddíl 2 zákona č. 89/2012 Sb."
+  },
+  {
+   "id": 7988433,
+   "eli": "/eli/cz/sb/2012/89/2014-01-01/dokument/norma/cast_4/hlava_1/dil_4/oddil_2/pododdil_1",
+   "staleUrl": "/sb/2012/89/2014-01-01#cast_4-hlava_1-dil_4-oddil_2-pododdil_1",
+   "kodTypuFragmentu": "Pododdil",
+   "hloubka": 6,
+   "xhtml": "<var>Pododdíl 1</var>",
+   "zkracenaCitace": " ČÁST ČTVRTÁ HLAVA I Díl 4 Oddíl 2 Pododdíl 1 zákona č. 89/2012 Sb."
+  },
+  {
+   "id": 7988651,
+   "eli": "/eli/cz/sb/2012/89/2014-01-01/dokument/norma/cast_4/hlava_1/dil_4/oddil_2/pododdil_2",
+   "staleUrl": "/sb/2012/89/2014-01-01#cast_4-hlava_1-dil_4-oddil_2-pododdil_2",
+   "kodTypuFragmentu": "Pododdil",
+   "hloubka": 6,
+   "xhtml": "<var>Pododdíl 2</var>",
+   "zkracenaCitace": " ČÁST ČTVRTÁ HLAVA I Díl 4 Oddíl 2 Pododdíl 2 zákona č. 89/2012 Sb."
+  }
+ ]
+}

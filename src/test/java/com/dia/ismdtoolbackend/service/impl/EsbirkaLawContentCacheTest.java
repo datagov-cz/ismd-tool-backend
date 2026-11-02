@@ -1,10 +1,11 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.client.EsbirkaSparqlClient;
+import com.dia.ismdtoolbackend.client.EsbirkaClient;
 import com.dia.ismdtoolbackend.config.CacheConfig;
 import com.dia.ismdtoolbackend.controller.dto.LawContentDto;
 import com.dia.ismdtoolbackend.models.eli.FragmentModel;
 import com.dia.ismdtoolbackend.models.eli.LawModel;
+import com.dia.ismdtoolbackend.models.eli.LawNumberSearchModel;
 import com.dia.ismdtoolbackend.models.eli.LawVersionModel;
 import com.dia.ismdtoolbackend.service.EsbirkaService;
 import org.junit.jupiter.api.BeforeEach;
@@ -62,7 +63,7 @@ class EsbirkaLawContentCacheTest {
     private static final String LEGACY_OLDER_IRI = LEGACY_LAW_IRI + "/2020-01-01";
 
     @MockitoBean
-    private EsbirkaSparqlClient client;
+    private EsbirkaClient client;
 
     // Injected as the interface: @Cacheable wraps the bean in a JDK dynamic proxy,
     // so it is not assignable to the impl type.
@@ -76,7 +77,7 @@ class EsbirkaLawContentCacheTest {
     void setUp() {
         cacheManager.getCache("esbirkaLawContent").clear();
         cacheManager.getCache("esbirkaLawSearch").clear();
-        when(client.findLawByNumberYear("49", 1997)).thenReturn(Optional.of(
+        when(client.findLaw("sb", "49", 1997)).thenReturn(Optional.of(
                 new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
                 new LawVersionModel(LATEST_IRI, LocalDate.of(2025, 11, 1), null, "KONSOL", true),
@@ -94,7 +95,7 @@ class EsbirkaLawContentCacheTest {
 
     @Test
     void contentNavigationTreeIsFullyLabelled() {
-        // The navigation tree is built from /law/content, not /law/fragments. This walks the
+        // The navigation tree is built from /law/content. This walks the
         // real 49/1997 shape through getLawContent to prove the labels reach that response:
         // the document root and its containers used to render blank, taking the top two
         // navigation levels with them.
@@ -154,7 +155,7 @@ class EsbirkaLawContentCacheTest {
             pool.shutdownNow();
         }
 
-        verify(client, times(1)).findLawByNumberYear("49", 1997);
+        verify(client, times(1)).findLaw("sb", "49", 1997);
         verify(client, times(1)).fetchVersions(LAW_IRI);
         verify(client, times(1)).fetchVersionContent(LATEST_IRI);
     }
@@ -264,29 +265,16 @@ class EsbirkaLawContentCacheTest {
     }
 
     @Test
-    void flatSearchIsCachedPerQueryAndLimit() {
-        when(client.searchLaws("zákon", 10)).thenReturn(List.of());
-        when(client.searchLaws("zákon", 20)).thenReturn(List.of());
-
-        service.searchLaws("zákon", 10);
-        service.searchLaws("zákon", 10);
-        service.searchLaws("zákon", 20);
-
-        verify(client, times(1)).searchLaws("zákon", 10);
-        verify(client, times(1)).searchLaws("zákon", 20);
-    }
-
-    @Test
-    void groupedSearchIsCachedAndKeptApartFromTheFlatSearch() {
-        when(client.searchLawNumberGroups("49", null, 10)).thenReturn(List.of());
-        when(client.searchLaws("49", 10)).thenReturn(List.of());
+    void groupedSearchIsCachedPerQueryAndLimit() {
+        when(client.searchLawsByNumber("49", null, 10)).thenReturn(LawNumberSearchModel.empty());
+        when(client.searchLawsByNumber("49", null, 20)).thenReturn(LawNumberSearchModel.empty());
 
         service.searchLawsGrouped("49", 10);
         service.searchLawsGrouped("49", 10);
-        service.searchLaws("49", 10);
+        service.searchLawsGrouped("49", 20);
 
-        verify(client, times(1)).searchLawNumberGroups("49", null, 10);
-        verify(client, times(1)).searchLaws("49", 10);
+        verify(client, times(1)).searchLawsByNumber("49", null, 10);
+        verify(client, times(1)).searchLawsByNumber("49", null, 20);
     }
 
     @Test

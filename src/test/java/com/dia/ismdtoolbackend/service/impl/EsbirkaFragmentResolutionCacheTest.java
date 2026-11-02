@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.client.EsbirkaSparqlClient;
+import com.dia.ismdtoolbackend.client.EsbirkaClient;
 import com.dia.ismdtoolbackend.config.CacheConfig;
 import com.dia.ismdtoolbackend.models.eli.FragmentResolutionModel;
 import org.junit.jupiter.api.Test;
@@ -35,7 +35,7 @@ class EsbirkaFragmentResolutionCacheTest {
             "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2000/361";
 
     @MockitoBean
-    private EsbirkaSparqlClient client;
+    private EsbirkaClient client;
 
     @Autowired
     private EsbirkaFragmentResolutionCache cache;

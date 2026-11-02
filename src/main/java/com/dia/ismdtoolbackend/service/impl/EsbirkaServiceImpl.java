@@ -1,8 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.controller.dto.FragmentDto;
 import com.dia.ismdtoolbackend.controller.dto.LawContentDto;
-import com.dia.ismdtoolbackend.controller.dto.LawDto;
 import com.dia.ismdtoolbackend.controller.dto.LawSearchResultDto;
 import com.dia.ismdtoolbackend.controller.dto.LawVersionDto;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto;
@@ -26,11 +24,6 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     private final EsbirkaLegalSourceResolver legalSourceResolver;
 
     @Override
-    public List<LawDto> searchLaws(String q, int limit) {
-        return lawSearch.searchLaws(q, limit);
-    }
-
-    @Override
     public LawSearchResultDto searchLawsGrouped(String q, int limit) {
         return lawSearch.searchLawsGrouped(q, limit);
     }
@@ -38,11 +31,6 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     @Override
     public List<LawVersionDto> getVersions(String lawIri) {
         return versionsReader.getVersions(lawIri);
-    }
-
-    @Override
-    public List<FragmentDto> getFragments(String versionIri) {
-        return contentReader.getFragments(versionIri);
     }
 
     /**

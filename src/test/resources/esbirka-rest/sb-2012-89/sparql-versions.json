@@ -1,0 +1,149 @@
+[
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2012/89/2027-01-01",
+  "ucinnostOd": "2027-01-01",
+  "ucinnostDo": null,
+  "typ": "https://opendata.eselpoint.gov.cz/esel-esb/cis-esb-typ-znění/položka/KONSOL",
+  "isLatest": "1"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2012/89/2026-01-01",
+  "ucinnostOd": "2026-01-01",
+  "ucinnostDo": "2026-12-31",
+  "typ": "https://opendata.eselpoint.gov.cz/esel-esb/cis-esb-typ-znění/položka/KONSOL",
+  "isLatest": "0"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2012/89/2025-07-01",
+  "ucinnostOd": "2025-07-01",
+  "ucinnostDo": "2025-12-31",
+  "typ": "https://opendata.eselpoint.gov.cz/esel-esb/cis-esb-typ-znění/položka/KONSOL",
+  "isLatest": "0"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2012/89/2025-06-01",
+  "ucinnostOd": "2025-06-01",
+  "ucinnostDo": "2025-06-30",
+  "typ": "https://opendata.eselpoint.gov.cz/esel-esb/cis-esb-typ-znění/položka/KONSOL",
+  "isLatest": "0"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2012/89/2025-02-15",
+  "ucinnostOd": "2025-02-15",
+  "ucinnostDo": "2025-05-31",
+  "typ": "https://opendata.eselpoint.gov.cz/esel-esb/cis-esb-typ-znění/položka/KONSOL",
+  "isLatest": "0"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2012/89/2025-01-01",
+  "ucinnostOd": "2025-01-01",
+  "ucinnostDo": "2025-02-14",
+  "typ": "https://opendata.eselpoint.gov.cz/esel-esb/cis-esb-typ-znění/položka/KONSOL",
+  "isLatest": "0"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2012/89/2024-04-01",
+  "ucinnostOd": "2024-04-01",
+  "ucinnostDo": "2024-12-31",
+  "typ": "https://opendata.eselpoint.gov.cz/esel-esb/cis-esb-typ-znění/položka/KONSOL",
+  "isLatest": "0"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2012/89/2024-01-01",
+  "ucinnostOd": "2024-01-01",
+  "ucinnostDo": "2024-03-31",
+  "typ": "https://opendata.eselpoint.gov.cz/esel-esb/cis-esb-typ-znění/položka/KONSOL",
+  "isLatest": "0"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2012/89/2023-01-06",
+  "ucinnostOd": "2023-01-06",
+  "ucinnostDo": "2023-12-31",
+  "typ": "https://opendata.eselpoint.gov.cz/esel-esb/cis-esb-typ-znění/položka/KONSOL",
+  "isLatest": "0"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2012/89/2023-01-05",
+  "ucinnostOd": "2023-01-05",
+  "ucinnostDo": "2023-01-05",
+  "typ": "https://opendata.eselpoint.gov.cz/esel-esb/cis-esb-typ-znění/položka/KONSOL",
+  "isLatest": "0"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2012/89/2021-07-01",
+  "ucinnostOd": "2021-07-01",
+  "ucinnostDo": "2023-01-04",
+  "typ": "https://opendata.eselpoint.gov.cz/esel-esb/cis-esb-typ-znění/položka/KONSOL",
+  "isLatest": "0"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2012/89/2021-01-01",
+  "ucinnostOd": "2021-01-01",
+  "ucinnostDo": "2021-06-30",
+  "typ": "https://opendata.eselpoint.gov.cz/esel-esb/cis-esb-typ-znění/položka/KONSOL",
+  "isLatest": "0"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2012/89/2020-07-01",
+  "ucinnostOd": "2020-07-01",
+  "ucinnostDo": "2020-12-31",
+  "typ": "https://opendata.eselpoint.gov.cz/esel-esb/cis-esb-typ-znění/položka/KONSOL",
+  "isLatest": "0"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2012/89/2018-12-01",
+  "ucinnostOd": "2018-12-01",
+  "ucinnostDo": "2020-06-30",
+  "typ": "https://opendata.eselpoint.gov.cz/esel-esb/cis-esb-typ-znění/položka/KONSOL",
+  "isLatest": "0"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2012/89/2018-07-01",
+  "ucinnostOd": "2018-07-01",
+  "ucinnostDo": "2018-11-30",
+  "typ": "https://opendata.eselpoint.gov.cz/esel-esb/cis-esb-typ-znění/položka/KONSOL",
+  "isLatest": "0"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2012/89/2018-01-01",
+  "ucinnostOd": "2018-01-01",
+  "ucinnostDo": "2018-06-30",
+  "typ": "https://opendata.eselpoint.gov.cz/esel-esb/cis-esb-typ-znění/položka/KONSOL",
+  "isLatest": "0"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2012/89/2017-02-28",
+  "ucinnostOd": "2017-02-28",
+  "ucinnostDo": "2017-12-31",
+  "typ": "https://opendata.eselpoint.gov.cz/esel-esb/cis-esb-typ-znění/položka/KONSOL",
+  "isLatest": "0"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2012/89/2016-12-30",
+  "ucinnostOd": "2016-12-30",
+  "ucinnostDo": "2017-02-27",
+  "typ": "https://opendata.eselpoint.gov.cz/esel-esb/cis-esb-typ-znění/položka/KONSOL",
+  "isLatest": "0"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2012/89/2014-01-01",
+  "ucinnostOd": "2014-01-01",
+  "ucinnostDo": "2016-12-29",
+  "typ": "https://opendata.eselpoint.gov.cz/esel-esb/cis-esb-typ-znění/položka/KONSOL",
+  "isLatest": "0"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2012/89/2012-03-22",
+  "ucinnostOd": "2012-03-22",
+  "ucinnostDo": "2013-12-31",
+  "typ": "https://opendata.eselpoint.gov.cz/esel-esb/cis-esb-typ-znění/položka/KONSOL",
+  "isLatest": "0"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2012/89/0000-00-00",
+  "ucinnostOd": "2012-03-22",
+  "ucinnostDo": null,
+  "typ": "https://opendata.eselpoint.gov.cz/esel-esb/cis-esb-typ-znění/položka/VYHLZNE",
+  "isLatest": "0"
+ }
+]

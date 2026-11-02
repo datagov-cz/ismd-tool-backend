@@ -2,9 +2,7 @@ package com.dia.ismdtoolbackend.controller;
 
 import com.dia.ismdtoolbackend.config.EsbirkaConfig;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
-import com.dia.ismdtoolbackend.controller.dto.FragmentDto;
 import com.dia.ismdtoolbackend.controller.dto.LawContentDto;
-import com.dia.ismdtoolbackend.controller.dto.LawDto;
 import com.dia.ismdtoolbackend.controller.dto.LawSearchResultDto;
 import com.dia.ismdtoolbackend.controller.dto.LawVersionDto;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto;
@@ -36,31 +34,9 @@ public class EsbirkaController {
     private final EsbirkaConfig esbirkaConfig;
 
     @Operation(
-            summary = "Vyhledávání právních aktů v e-Sbírce",
-            description = "Vrací seznam právních aktů filtrovaný podle citace (např. \"187/2006\"). " +
-                    "Při prázdném dotazu se vrací nejnovější akty (rok desc, číslo asc)."
-    )
-    @GetMapping("/law/search")
-    public ResponseEntity<ApiResponseDto<List<LawDto>>> searchLaws(
-            @RequestParam(required = false) String q,
-            @RequestParam(required = false) Integer limit) {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
-        try {
-            int resolved = resolveLimit(limit);
-            log.info("e-Sbírka law search, q: {}, limit: {}", q, resolved);
-            List<LawDto> results = esbirkaService.searchLaws(q, resolved);
-            return ResponseEntity.ok(ApiResponseDto.success(results,
-                    "Vyhledávání právních aktů úspěšně provedeno."));
-        } finally {
-            MDC.remove(LOG_REQUEST_ID);
-        }
-    }
-
-    @Operation(
             summary = "Vyhledávání právních aktů seskupené podle čísla předpisu",
-            description = "Stejné vyhledávání jako /law/search, ale výsledky jsou seskupené podle " +
-                    "čísla předpisu (dotaz \"49\" odpovídá desítkám nesouvisejících zákonů). " +
+            description = "Vyhledává právní akty podle čísla předpisu (např. \"49\" nebo \"49/1997\") " +
+                    "a seskupuje je podle čísla (dotaz \"49\" odpovídá desítkám nesouvisejících zákonů). " +
                     "Příznak \"ambiguous\" značí, že si uživatel musí ještě vybrat (typicky ročník); " +
                     "\"truncated\" značí, že existují další shody mimo odpověď. " +
                     "Parametr limit omezuje počet skupin, nikoli řádků."
@@ -104,27 +80,6 @@ public class EsbirkaController {
     }
 
     @Operation(
-            summary = "Strom fragmentů daného znění právního aktu",
-            description = "Vrací rekurzivní strom fragmentů zadaného znění (jeden SPARQL dotaz, " +
-                    "stromová struktura sestavena na serveru)."
-    )
-    @GetMapping("/law/fragments")
-    public ResponseEntity<ApiResponseDto<List<FragmentDto>>> getFragments(
-            @RequestParam String versionIri) {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
-        try {
-            requireEsbirkaIri(versionIri, "Neplatný identifikátor znění právního aktu.");
-            log.info("e-Sbírka fragment tree, versionIri: {}", versionIri);
-            List<FragmentDto> results = esbirkaService.getFragments(versionIri);
-            return ResponseEntity.ok(ApiResponseDto.success(results,
-                    "Strom fragmentů úspěšně načten."));
-        } finally {
-            MDC.remove(LOG_REQUEST_ID);
-        }
-    }
-
-    @Operation(
             summary = "Celé znění právního aktu podle reference číslo/rok nebo ELI IRI",
             description = "Parametr \"law\" přijímá referenci ve tvaru \"číslo/rok\" (např. " +
                     "\"49/1997\") nebo ELI IRI aktu, znění či fragmentu. Vrací celé znění daného " +
@@ -134,7 +89,7 @@ public class EsbirkaController {
                     "zároveň znění, takže IRI z /law/versions nebo /resolve stačí předat samotné; " +
                     "explicitní \"versionIri\" má přednost. Bez volby se vrací poslední znění; " +
                     "zvolené znění musí patřit k danému aktu, jinak 400. Pro částečný vstup " +
-                    "(např. \"49\") použijte /law/search. Výsledek je cachován (znění je neměnné)."
+                    "(např. \"49\") použijte /law/search/grouped. Výsledek je cachován (znění je neměnné)."
     )
     @GetMapping("/law/content")
     public ResponseEntity<ApiResponseDto<LawContentDto>> getLawContent(

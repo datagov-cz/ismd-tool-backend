@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.client.EsbirkaSparqlClient;
+import com.dia.ismdtoolbackend.client.EsbirkaClient;
 import com.dia.ismdtoolbackend.controller.dto.LawVersionDto;
 import com.dia.ismdtoolbackend.models.eli.LawVersionModel;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
@@ -20,7 +20,7 @@ import static com.dia.ismdtoolbackend.service.impl.EsbirkaLawReference.requireVa
 @Slf4j
 class EsbirkaLawVersionsReader {
 
-    private final EsbirkaSparqlClient client;
+    private final EsbirkaClient client;
 
     /**
      * Rewrite a legacy e-Sbírka host to the canonical one and strip trailing slashes, leaving

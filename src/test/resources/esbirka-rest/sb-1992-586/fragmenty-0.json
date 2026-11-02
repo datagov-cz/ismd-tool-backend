@@ -1,0 +1,750 @@
+{
+ "pocetStranek": 1,
+ "seznam": [
+  {
+   "id": 2441937,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument",
+   "staleUrl": "/sb/1992/586/2026-08-01",
+   "kodTypuFragmentu": "Virtual_Document",
+   "hloubka": 0,
+   "zkracenaCitace": "Zákon České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2441953,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma",
+   "staleUrl": "/sb/1992/586/2026-08-01",
+   "kodTypuFragmentu": "Virtual_Norma",
+   "hloubka": 1,
+   "zkracenaCitace": "Zákon České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2441957,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/par_1",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_1",
+   "kodTypuFragmentu": "Paragraf",
+   "hloubka": 2,
+   "xhtml": "<var>§ 1</var>",
+   "zkracenaCitace": "§ 1 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2441961,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/par_1/frag_2441961",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_1",
+   "kodTypuFragmentu": "Odstavec_Dc",
+   "hloubka": 3,
+   "xhtml": "Tento zákon zapracovává příslušné předpisy Evropské unie<a data-odkaz-id=\"25470643\" href=\"#\" class=\"int_odkaz\"><sup>137</sup>)</a> a upravuje",
+   "zkracenaCitace": "§ 1 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2441965,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/par_1/pism_a",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_1-pism_a",
+   "kodTypuFragmentu": "Pismeno_Lb",
+   "hloubka": 4,
+   "xhtml": "<var>a)</var> daň z příjmů fyzických osob,",
+   "zkracenaCitace": "§ 1 písm. a) zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2441969,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/par_1/pism_b",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_1-pism_b",
+   "kodTypuFragmentu": "Pismeno_Lb",
+   "hloubka": 4,
+   "xhtml": "<var>b)</var> daň z příjmů právnických osob.",
+   "zkracenaCitace": "§ 1 písm. b) zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2441971,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1",
+   "staleUrl": "/sb/1992/586/2026-08-01#cast_1",
+   "kodTypuFragmentu": "Cast",
+   "hloubka": 2,
+   "xhtml": "<var>ČÁST PRVNÍ</var>",
+   "zkracenaCitace": "Část 1 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2441975,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2",
+   "kodTypuFragmentu": "Paragraf",
+   "hloubka": 3,
+   "xhtml": "<var>§ 2</var>",
+   "zkracenaCitace": "§ 2 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2441977,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2/frag_2441977",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2",
+   "kodTypuFragmentu": "Nadpis_pod",
+   "hloubka": 4,
+   "xhtml": "Poplatníci daně z příjmů fyzických osob",
+   "zkracenaCitace": "§ 2 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2453383,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2/odst_1",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2-odst_1",
+   "kodTypuFragmentu": "Odstavec_Dc",
+   "hloubka": 4,
+   "xhtml": "<var>(1)</var> Poplatníky daně z <czechvoc-termin koncept-id=\"267949\">příjmů</czechvoc-termin> fyzických osob jsou fyzické osoby. Poplatníci jsou daňovými rezidenty České republiky, nebo daňovými nerezidenty.",
+   "zkracenaCitace": "§ 2 odst. 1 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2453385,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2/odst_2",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2-odst_2",
+   "kodTypuFragmentu": "Odstavec_Dc",
+   "hloubka": 4,
+   "xhtml": "<var>(2)</var> Poplatníci jsou daňovými rezidenty České republiky, pokud mají na území České republiky bydliště nebo se zde obvykle zdržují. Daňoví rezidenti České republiky mají daňovou povinnost, která se vztahuje jak na <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> plynoucí ze zdrojů na území České republiky, tak i na <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> plynoucí ze zdrojů v zahraničí.",
+   "zkracenaCitace": "§ 2 odst. 2 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2453387,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2/odst_3",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2-odst_3",
+   "kodTypuFragmentu": "Odstavec_Dc",
+   "hloubka": 4,
+   "xhtml": "<var>(3)</var> Poplatníci jsou daňovými nerezidenty, pokud nejsou uvedeni v <a data-odkaz-id=\"25807191\" href=\"#\" class=\"int_odkaz\">odstavci 2</a> nebo to o nich stanoví mezinárodní smlouvy. Daňoví nerezidenti mají daňovou povinnost, která se vztahuje jen na <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> plynoucí ze zdrojů na území České republiky (<a data-odkaz-id=\"25807273\" href=\"#\" class=\"int_odkaz\">§ 22</a>). Poplatníci, kteří se na území České republiky zdržují pouze za účelem studia nebo léčení, jsou daňovými nerezidenty a mají daňovou povinnost, která se vztahuje pouze na <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> plynoucí ze zdrojů na území České republiky, i v případě, že se na území České republiky obvykle zdržují.",
+   "zkracenaCitace": "§ 2 odst. 3 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2453389,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2/odst_4",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2-odst_4",
+   "kodTypuFragmentu": "Odstavec_Dc",
+   "hloubka": 4,
+   "xhtml": "<var>(4)</var> Poplatníky obvykle se zdržujícími na území České republiky jsou ti, kteří zde pobývají alespoň 183 dnů v příslušném kalendářním roce, a to souvisle nebo v několika obdobích; do doby 183 dnů se započítává každý započatý den pobytu. <czechvoc-termin koncept-id=\"256307\">Bydlištěm na území České republiky</czechvoc-termin> se pro účely tohoto zákona rozumí místo, kde má poplatník stálý byt za okolností, z nichž lze usuzovat na jeho úmysl trvale se v tomto bytě zdržovat.",
+   "zkracenaCitace": "§ 2 odst. 4 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458203,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a",
+   "kodTypuFragmentu": "Paragraf",
+   "hloubka": 3,
+   "xhtml": "<var>§ 2a</var>",
+   "zkracenaCitace": "§ 2a zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458205,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/frag_2458205",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a",
+   "kodTypuFragmentu": "Nadpis_pod",
+   "hloubka": 4,
+   "xhtml": "Poplatník v paušálním režimu",
+   "zkracenaCitace": "§ 2a zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458207,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_1",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_1",
+   "kodTypuFragmentu": "Odstavec_Dc",
+   "hloubka": 4,
+   "xhtml": "<var>(1)</var> Poplatníkem v paušálním režimu je od prvního dne rozhodného zdaňovacího období poplatník daně z <czechvoc-termin koncept-id=\"267949\">příjmů</czechvoc-termin> fyzických osob, který",
+   "zkracenaCitace": "§ 2a odst. 1 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458209,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_1/pism_a",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_1-pism_a",
+   "kodTypuFragmentu": "Pismeno_Lb",
+   "hloubka": 5,
+   "xhtml": "<var>a)</var> k prvnímu dni rozhodného zdaňovacího období",
+   "zkracenaCitace": "§ 2a odst. 1 písm. a) zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458211,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_1/pism_a/bod_1",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_1-pism_a-bod_1",
+   "kodTypuFragmentu": "Bod_Dd",
+   "hloubka": 6,
+   "xhtml": "<var>1.</var> je osobou samostatně výdělečně činnou podle zákona upravujícího důchodové pojištění, na kterou se vztahují právní předpisy upravující důchodové pojištění,",
+   "zkracenaCitace": "§ 2a odst. 1 písm. a) bod 1 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458213,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_1/pism_a/bod_2",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_1-pism_a-bod_2",
+   "kodTypuFragmentu": "Bod_Dd",
+   "hloubka": 6,
+   "xhtml": "<var>2.</var> je osobou samostatně výdělečně činnou podle zákona upravujícího veřejné <a data-odkaz-id=\"26009573\" href=\"#\" class=\"ext_odkaz\">zdravotní pojištění</a>, na kterou se vztahují právní předpisy upravující veřejné zdravotní pojištění a která není vyňata z povinnosti platit pojistné na veřejné zdravotní pojištění z důvodu dlouhodobého pobytu v cizině,",
+   "zkracenaCitace": "§ 2a odst. 1 písm. a) bod 2 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458215,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_1/pism_a/bod_3",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_1-pism_a-bod_3",
+   "kodTypuFragmentu": "Bod_Dd",
+   "hloubka": 6,
+   "xhtml": "<var>3.</var> není <czechvoc-termin koncept-id=\"265465\">plátcem daně</czechvoc-termin> z přidané hodnoty a nemá registrační povinnost k dani z přidané hodnoty, s výjimkou registrační povinnosti identifikované osoby,",
+   "zkracenaCitace": "§ 2a odst. 1 písm. a) bod 3 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458217,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_1/pism_a/bod_4",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_1-pism_a-bod_4",
+   "kodTypuFragmentu": "Bod_Dd",
+   "hloubka": 6,
+   "xhtml": "<var>4.</var> není společníkem veřejné obchodní společnosti ani komplementářem komanditní společnosti a",
+   "zkracenaCitace": "§ 2a odst. 1 písm. a) bod 4 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458219,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_1/pism_a/bod_5",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_1-pism_a-bod_5",
+   "kodTypuFragmentu": "Bod_Dd",
+   "hloubka": 6,
+   "xhtml": "<var>5.</var> není dlužníkem, vůči němuž bylo zahájeno <czechvoc-termin koncept-id=\"259955\">insolvenční řízení</czechvoc-termin>,",
+   "zkracenaCitace": "§ 2a odst. 1 písm. a) bod 5 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458903,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_1/pism_b",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_1-pism_b",
+   "kodTypuFragmentu": "Pismeno_Lb",
+   "hloubka": 5,
+   "xhtml": "<var>b)</var> ve zdaňovacím období bezprostředně předcházejícím rozhodnému zdaňovacímu období nepřesáhl rozhodné <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> pro zvolené pásmo paušálního režimu,",
+   "zkracenaCitace": "§ 2a odst. 1 písm. b) zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458229,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_1/pism_c",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_1-pism_c",
+   "kodTypuFragmentu": "Pismeno_Lb",
+   "hloubka": 5,
+   "xhtml": "<var>c)</var> k prvnímu dni rozhodného zdaňovacího období nevykonává činnost, ze které plynou <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> ze závislé činnosti, s výjimkou <czechvoc-termin koncept-id=\"267949\">příjmů</czechvoc-termin>, z nichž je daň vybírána srážkou podle zvláštní sazby daně, a",
+   "zkracenaCitace": "§ 2a odst. 1 písm. c) zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458905,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_1/pism_d",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_1-pism_d",
+   "kodTypuFragmentu": "Pismeno_Lb",
+   "hloubka": 5,
+   "xhtml": "<var>d)</var> podá správci daně oznámení o vstupu do paušálního režimu, ve kterém si zvolí pásmo paušálního režimu, a nejpozději v poslední den lhůty pro podání oznámení o vstupu do paušálního režimu učinil oznámení o zahájení samostatné výdělečné činnosti podle zákona upravujícího organizaci a provádění sociálního zabezpečení a oznámení o zahájení samostatné výdělečné činnosti podle zákona upravujícího veřejné zdravotní pojištění; tato lhůta je zachována, je-li nejpozději v poslední den této lhůty učiněno podání obsahující údaje požadované v příslušném oznámení správci daně společně s oznámením o vstupu do paušálního režimu nebo živnostenskému úřadu společně s ohlášením <czechvoc-termin koncept-id=\"276313\">živnosti</czechvoc-termin> nebo žádostí o koncesi.",
+   "zkracenaCitace": "§ 2a odst. 1 písm. d) zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458233,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_2",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_2",
+   "kodTypuFragmentu": "Odstavec_Dc",
+   "hloubka": 4,
+   "xhtml": "<var>(2)</var> Poplatník daně z <czechvoc-termin koncept-id=\"267949\">příjmů</czechvoc-termin> fyzických osob, který zahajuje činnost, ze které plynou <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> ze samostatné činnosti, je poplatníkem v paušálním režimu od prvního dne kalendářního měsíce, ve kterém tuto činnost zahajuje, pokud",
+   "zkracenaCitace": "§ 2a odst. 2 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458235,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_2/pism_a",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_2-pism_a",
+   "kodTypuFragmentu": "Pismeno_Lb",
+   "hloubka": 5,
+   "xhtml": "<var>a)</var> splňuje podmínky podle <a data-odkaz-id=\"26009615\" href=\"#\" class=\"int_odkaz\">odstavce 1</a>, přičemž podmínky podle <a data-odkaz-id=\"26009641\" href=\"#\" class=\"int_odkaz\">odstavce 1 písm. a)</a> a <a data-odkaz-id=\"26009667\" href=\"#\" class=\"int_odkaz\">c)</a> musí být splněny namísto k prvnímu dni rozhodného zdaňovacího období ke dni zahájení této činnosti,",
+   "zkracenaCitace": "§ 2a odst. 2 písm. a) zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458907,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_2/pism_b",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_2-pism_b",
+   "kodTypuFragmentu": "Pismeno_Lb",
+   "hloubka": 5,
+   "xhtml": "<var>b)</var> v části rozhodného zdaňovacího období přede dnem zahájení této činnosti nebyl <czechvoc-termin koncept-id=\"265465\">plátcem daně</czechvoc-termin> z přidané hodnoty, společníkem veřejné obchodní společnosti ani komplementářem komanditní společnosti a nevykonával činnost, ze které plynou <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> ze samostatné činnosti,",
+   "zkracenaCitace": "§ 2a odst. 2 písm. b) zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458909,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_2/pism_c",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_2-pism_c",
+   "kodTypuFragmentu": "Pismeno_Lb",
+   "hloubka": 5,
+   "xhtml": "<var>c)</var> v části rozhodného zdaňovacího období přede dnem zahájení této činnosti měl pouze",
+   "zkracenaCitace": "§ 2a odst. 2 písm. c) zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458911,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_2/pism_c/bod_1",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_2-pism_c-bod_1",
+   "kodTypuFragmentu": "Bod_Dd",
+   "hloubka": 6,
+   "xhtml": "<var>1.</var> <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> od daně osvobozené,",
+   "zkracenaCitace": "§ 2a odst. 2 písm. c) bod 1 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458913,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_2/pism_c/bod_2",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_2-pism_c-bod_2",
+   "kodTypuFragmentu": "Bod_Dd",
+   "hloubka": 6,
+   "xhtml": "<var>2.</var> <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin>, které nejsou předmětem daně,",
+   "zkracenaCitace": "§ 2a odst. 2 písm. c) bod 2 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458915,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_2/pism_c/bod_3",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_2-pism_c-bod_3",
+   "kodTypuFragmentu": "Bod_Dd",
+   "hloubka": 6,
+   "xhtml": "<var>3.</var> <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin>, ze kterých je daň vybírána srážkou podle zvláštní sazby daně,",
+   "zkracenaCitace": "§ 2a odst. 2 písm. c) bod 3 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458917,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_2/pism_c/bod_4",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_2-pism_c-bod_4",
+   "kodTypuFragmentu": "Bod_Dd",
+   "hloubka": 6,
+   "xhtml": "<var>4.</var> <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> z kapitálového majetku, <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> z nájmu a ostatní <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin>, pokud se nejedná o <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> podle <a data-odkaz-id=\"25915097\" href=\"#\" class=\"int_odkaz\">bodů 1 až 3</a> a pokud celková výše těchto <czechvoc-termin koncept-id=\"267949\">příjmů</czechvoc-termin> nepřesáhne 50 000 Kč.",
+   "zkracenaCitace": "§ 2a odst. 2 písm. c) bod 4 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458919,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_3",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_3",
+   "kodTypuFragmentu": "Odstavec_Dc",
+   "hloubka": 4,
+   "xhtml": "<var>(3)</var> Poplatník daně z <czechvoc-termin koncept-id=\"267949\">příjmů</czechvoc-termin> fyzických osob, který přestal být poplatníkem v paušálním režimu z důvodu, že přerušil činnost, ze které plynou <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> ze samostatné činnosti, a ve stejném zdaňovacím období tuto činnost znovu zahajuje, je poplatníkem ve stejném pásmu paušálního režimu jako před přerušením této činnosti od prvního dne kalendářního měsíce, ve kterém tuto činnost znovu zahajuje.",
+   "zkracenaCitace": "§ 2a odst. 3 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458921,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_4",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_4",
+   "kodTypuFragmentu": "Odstavec_Dc",
+   "hloubka": 4,
+   "xhtml": "<var>(4)</var> Zvolené pásmo paušálního režimu se změní od prvního dne zdaňovacího období na",
+   "zkracenaCitace": "§ 2a odst. 4 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458923,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_4/pism_a",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_4-pism_a",
+   "kodTypuFragmentu": "Pismeno_Lb",
+   "hloubka": 5,
+   "xhtml": "<var>a)</var> nově zvolené pásmo paušálního režimu, pokud poplatník v paušálním režimu",
+   "zkracenaCitace": "§ 2a odst. 4 písm. a) zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458925,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_4/pism_a/bod_1",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_4-pism_a-bod_1",
+   "kodTypuFragmentu": "Bod_Dd",
+   "hloubka": 6,
+   "xhtml": "<var>1.</var> ve zdaňovacím období bezprostředně předcházejícím tomuto zdaňovacímu období nepřesáhl rozhodné <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> pro nově zvolené pásmo paušálního režimu a",
+   "zkracenaCitace": "§ 2a odst. 4 písm. a) bod 1 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458927,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_4/pism_a/bod_2",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_4-pism_a-bod_2",
+   "kodTypuFragmentu": "Bod_Dd",
+   "hloubka": 6,
+   "xhtml": "<var>2.</var> podá správci daně oznámení o změně zvoleného pásma paušálního režimu, nebo",
+   "zkracenaCitace": "§ 2a odst. 4 písm. a) bod 2 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458929,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_4/pism_b",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_4-pism_b",
+   "kodTypuFragmentu": "Pismeno_Lb",
+   "hloubka": 5,
+   "xhtml": "<var>b)</var> pásmo paušálního režimu určující výši paušální daně za zdaňovací období bezprostředně předcházející tomuto zdaňovacímu období, pokud poplatník v paušálním režimu",
+   "zkracenaCitace": "§ 2a odst. 4 písm. b) zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458931,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_4/pism_b/bod_1",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_4-pism_b-bod_1",
+   "kodTypuFragmentu": "Bod_Dd",
+   "hloubka": 6,
+   "xhtml": "<var>1.</var> ve zdaňovacím období bezprostředně předcházejícím tomuto zdaňovacímu období nepřesáhl rozhodné <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> pro toto pásmo,",
+   "zkracenaCitace": "§ 2a odst. 4 písm. b) bod 1 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458933,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_4/pism_b/bod_2",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_4-pism_b-bod_2",
+   "kodTypuFragmentu": "Bod_Dd",
+   "hloubka": 6,
+   "xhtml": "<var>2.</var> podá správci daně oznámení o jiné výši paušální daně na její vyšší výši z důvodu, že přesáhl rozhodné <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> pro zvolené pásmo ve zdaňovacím období bezprostředně předcházejícím tomuto zdaňovacímu období, a",
+   "zkracenaCitace": "§ 2a odst. 4 písm. b) bod 2 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458935,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_4/pism_b/bod_3",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_4-pism_b-bod_3",
+   "kodTypuFragmentu": "Bod_Dd",
+   "hloubka": 6,
+   "xhtml": "<var>3.</var> pásmo paušálního režimu se nezměnilo podle <a data-odkaz-id=\"25915107\" href=\"#\" class=\"int_odkaz\">písmene a)</a>.",
+   "zkracenaCitace": "§ 2a odst. 4 písm. b) bod 3 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458937,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_5",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_5",
+   "kodTypuFragmentu": "Odstavec_Dc",
+   "hloubka": 4,
+   "xhtml": "<var>(5)</var> Rozhodnými <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> pro",
+   "zkracenaCitace": "§ 2a odst. 5 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458939,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_5/pism_a",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_5-pism_a",
+   "kodTypuFragmentu": "Pismeno_Lb",
+   "hloubka": 5,
+   "xhtml": "<var>a)</var> první pásmo paušálního režimu jsou <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> ze samostatné činnosti do výše",
+   "zkracenaCitace": "§ 2a odst. 5 písm. a) zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458941,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_5/pism_a/bod_1",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_5-pism_a-bod_1",
+   "kodTypuFragmentu": "Bod_Dd",
+   "hloubka": 6,
+   "xhtml": "<var>1.</var> 1 000 000 Kč, a to bez ohledu na to, z jaké samostatné činnosti plynou,",
+   "zkracenaCitace": "§ 2a odst. 5 písm. a) bod 1 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458943,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_5/pism_a/bod_2",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_5-pism_a-bod_2",
+   "kodTypuFragmentu": "Bod_Dd",
+   "hloubka": 6,
+   "xhtml": "<var>2.</var> 1 500 000 Kč, pokud alespoň 75 % <czechvoc-termin koncept-id=\"267949\">příjmů</czechvoc-termin> ze samostatné činnosti poplatníka tvoří <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin>, k nimž lze uplatnit výdaje ve výši 80 % z <czechvoc-termin koncept-id=\"267949\">příjmů</czechvoc-termin> nebo 60 % z <czechvoc-termin koncept-id=\"267949\">příjmů</czechvoc-termin>, a",
+   "zkracenaCitace": "§ 2a odst. 5 písm. a) bod 2 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458945,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_5/pism_a/bod_3",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_5-pism_a-bod_3",
+   "kodTypuFragmentu": "Bod_Dd",
+   "hloubka": 6,
+   "xhtml": "<var>3.</var> 2 000 000 Kč, pokud alespoň 75 % <czechvoc-termin koncept-id=\"267949\">příjmů</czechvoc-termin> ze samostatné činnosti poplatníka tvoří <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin>, k nimž lze uplatnit výdaje ve výši 80 % z <czechvoc-termin koncept-id=\"267949\">příjmů</czechvoc-termin>,",
+   "zkracenaCitace": "§ 2a odst. 5 písm. a) bod 3 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458947,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_5/pism_b",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_5-pism_b",
+   "kodTypuFragmentu": "Pismeno_Lb",
+   "hloubka": 5,
+   "xhtml": "<var>b)</var> druhé pásmo paušálního režimu jsou <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> ze samostatné činnosti do výše",
+   "zkracenaCitace": "§ 2a odst. 5 písm. b) zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458949,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_5/pism_b/bod_1",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_5-pism_b-bod_1",
+   "kodTypuFragmentu": "Bod_Dd",
+   "hloubka": 6,
+   "xhtml": "<var>1.</var> 1 500 000 Kč, a to bez ohledu na to, z jaké samostatné činnosti plynou, a",
+   "zkracenaCitace": "§ 2a odst. 5 písm. b) bod 1 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458951,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_5/pism_b/bod_2",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_5-pism_b-bod_2",
+   "kodTypuFragmentu": "Bod_Dd",
+   "hloubka": 6,
+   "xhtml": "<var>2.</var> 2 000 000 Kč, pokud alespoň 75 % <czechvoc-termin koncept-id=\"267949\">příjmů</czechvoc-termin> ze samostatné činnosti poplatníka tvoří <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin>, k nimž lze uplatnit výdaje ve výši 80 % z <czechvoc-termin koncept-id=\"267949\">příjmů</czechvoc-termin> nebo 60 % z <czechvoc-termin koncept-id=\"267949\">příjmů</czechvoc-termin>, a",
+   "zkracenaCitace": "§ 2a odst. 5 písm. b) bod 2 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458953,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_5/pism_c",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_5-pism_c",
+   "kodTypuFragmentu": "Pismeno_Lb",
+   "hloubka": 5,
+   "xhtml": "<var>c)</var> třetí pásmo paušálního režimu jsou <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> ze samostatné činnosti do výše 2 000 000 Kč, a to bez ohledu na to, z jaké samostatné činnosti plynou.",
+   "zkracenaCitace": "§ 2a odst. 5 písm. c) zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458955,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_6",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_6",
+   "kodTypuFragmentu": "Odstavec_Dc",
+   "hloubka": 4,
+   "xhtml": "<var>(6)</var> Pro účely <a data-odkaz-id=\"25915117\" href=\"#\" class=\"int_odkaz\">odstavce 5</a> se za <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> ze samostatné činnosti nepovažují",
+   "zkracenaCitace": "§ 2a odst. 6 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458957,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_6/pism_a",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_6-pism_a",
+   "kodTypuFragmentu": "Pismeno_Lb",
+   "hloubka": 5,
+   "xhtml": "<var>a)</var> <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> od daně osvobozené,",
+   "zkracenaCitace": "§ 2a odst. 6 písm. a) zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458959,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_6/pism_b",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_6-pism_b",
+   "kodTypuFragmentu": "Pismeno_Lb",
+   "hloubka": 5,
+   "xhtml": "<var>b)</var> <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin>, které nejsou předmětem daně, a",
+   "zkracenaCitace": "§ 2a odst. 6 písm. b) zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458961,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_6/pism_c",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_6-pism_c",
+   "kodTypuFragmentu": "Pismeno_Lb",
+   "hloubka": 5,
+   "xhtml": "<var>c)</var> <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin>, ze kterých je daň vybírána srážkou podle zvláštní sazby daně.",
+   "zkracenaCitace": "§ 2a odst. 6 písm. c) zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458963,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_7",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_7",
+   "kodTypuFragmentu": "Odstavec_Dc",
+   "hloubka": 4,
+   "xhtml": "<var>(7)</var> Pro účely paušálního režimu se",
+   "zkracenaCitace": "§ 2a odst. 7 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458259,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_7/pism_a",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_7-pism_a",
+   "kodTypuFragmentu": "Pismeno_Lb",
+   "hloubka": 5,
+   "xhtml": "<var>a)</var> <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> rozumí <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> podle tohoto zákona, které by poplatník měl, pokud by nebyl účetní jednotkou,",
+   "zkracenaCitace": "§ 2a odst. 7 písm. a) zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458261,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_7/pism_b",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_7-pism_b",
+   "kodTypuFragmentu": "Pismeno_Lb",
+   "hloubka": 5,
+   "xhtml": "<var>b)</var> za <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> ze samostatné činnosti považují také úroky z <czechvoc-termin koncept-id=\"273413\">vkladů</czechvoc-termin> na účtu, který je podle podmínek toho, kdo účet vede, určen k podnikání poplatníka, a nepovažují se za ně <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> z podílu společníka veřejné obchodní společnosti a komplementáře komanditní společnosti na zisku.",
+   "zkracenaCitace": "§ 2a odst. 7 písm. b) zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458965,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_8",
+   "kodTypuFragmentu": "Odstavec_Dc",
+   "hloubka": 4,
+   "xhtml": "<var>(8)</var> Poplatník přestává být poplatníkem v paušálním režimu uplynutím",
+   "zkracenaCitace": "§ 2a odst. 8 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458265,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8/pism_a",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_8-pism_a",
+   "kodTypuFragmentu": "Pismeno_Lb",
+   "hloubka": 5,
+   "xhtml": "<var>a)</var> zdaňovacího období, ve kterém",
+   "zkracenaCitace": "§ 2a odst. 8 písm. a) zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458967,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8/pism_a/bod_1",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_8-pism_a-bod_1",
+   "kodTypuFragmentu": "Bod_Dd",
+   "hloubka": 6,
+   "xhtml": "<var>1.</var> přesáhl rozhodné <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> pro zvolené pásmo paušálního režimu, ledaže je jeho daň rovna paušální dani,",
+   "zkracenaCitace": "§ 2a odst. 8 písm. a) bod 1 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458269,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8/pism_a/bod_2",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_8-pism_a-bod_2",
+   "kodTypuFragmentu": "Bod_Dd",
+   "hloubka": 6,
+   "xhtml": "<var>2.</var> se stane <czechvoc-termin koncept-id=\"265465\">plátcem daně</czechvoc-termin> z přidané hodnoty nebo mu vznikne registrační povinnost k dani z přidané hodnoty, s výjimkou registrační povinnosti identifikované osoby,",
+   "zkracenaCitace": "§ 2a odst. 8 písm. a) bod 2 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458271,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8/pism_a/bod_3",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_8-pism_a-bod_3",
+   "kodTypuFragmentu": "Bod_Dd",
+   "hloubka": 6,
+   "xhtml": "<var>3.</var> se stane společníkem veřejné obchodní společnosti nebo komplementářem komanditní společnosti, nebo",
+   "zkracenaCitace": "§ 2a odst. 8 písm. a) bod 3 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458273,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8/pism_a/bod_4",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_8-pism_a-bod_4",
+   "kodTypuFragmentu": "Bod_Dd",
+   "hloubka": 6,
+   "xhtml": "<var>4.</var> nabylo účinnosti rozhodnutí o úpadku poplatníka a <czechvoc-termin koncept-id=\"259955\">insolvenční řízení</czechvoc-termin> nebylo skončeno,",
+   "zkracenaCitace": "§ 2a odst. 8 písm. a) bod 4 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458275,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8/pism_b",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_8-pism_b",
+   "kodTypuFragmentu": "Pismeno_Lb",
+   "hloubka": 5,
+   "xhtml": "<var>b)</var> zdaňovacího období, které poplatník uvede v oznámení o dobrovolném vystoupení z paušálního režimu,",
+   "zkracenaCitace": "§ 2a odst. 8 písm. b) zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458277,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8/pism_c",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_8-pism_c",
+   "kodTypuFragmentu": "Pismeno_Lb",
+   "hloubka": 5,
+   "xhtml": "<var>c)</var> kalendářního měsíce, ve kterém přestane být",
+   "zkracenaCitace": "§ 2a odst. 8 písm. c) zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458279,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8/pism_c/bod_1",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_8-pism_c-bod_1",
+   "kodTypuFragmentu": "Bod_Dd",
+   "hloubka": 6,
+   "xhtml": "<var>1.</var> osobou samostatně výdělečně činnou podle zákona upravujícího důchodové pojištění, na kterou se vztahují právní předpisy upravující důchodové pojištění, nebo",
+   "zkracenaCitace": "§ 2a odst. 8 písm. c) bod 1 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458281,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8/pism_c/bod_2",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_8-pism_c-bod_2",
+   "kodTypuFragmentu": "Bod_Dd",
+   "hloubka": 6,
+   "xhtml": "<var>2.</var> osobou samostatně výdělečně činnou podle zákona upravujícího veřejné <a data-odkaz-id=\"26009725\" href=\"#\" class=\"ext_odkaz\">zdravotní pojištění</a>, na kterou se vztahují právní předpisy upravující veřejné zdravotní pojištění,",
+   "zkracenaCitace": "§ 2a odst. 8 písm. c) bod 2 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458283,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8/pism_d",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_8-pism_d",
+   "kodTypuFragmentu": "Pismeno_Lb",
+   "hloubka": 5,
+   "xhtml": "<var>d)</var> kalendářního měsíce bezprostředně předcházejícího kalendářnímu měsíci, od kterého poplatník není povinen platit pojistné na veřejné <a data-odkaz-id=\"26009751\" href=\"#\" class=\"ext_odkaz\">zdravotní pojištění</a> z důvodu dlouhodobého pobytu v cizině, nebo",
+   "zkracenaCitace": "§ 2a odst. 8 písm. d) zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2458285,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8/pism_e",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_2a-odst_8-pism_e",
+   "kodTypuFragmentu": "Pismeno_Lb",
+   "hloubka": 5,
+   "xhtml": "<var>e)</var> kalendářního měsíce, ve kterém se poplatník stane daňovým nerezidentem a přestane na území České republiky vykonávat činnost, ze které plynou <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> ze samostatné činnosti.",
+   "zkracenaCitace": "§ 2a odst. 8 písm. e) zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2442001,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_3",
+   "kodTypuFragmentu": "Paragraf",
+   "hloubka": 3,
+   "xhtml": "<var>§ 3</var>",
+   "zkracenaCitace": "§ 3 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2442003,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/frag_2442003",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_3",
+   "kodTypuFragmentu": "Nadpis_pod",
+   "hloubka": 4,
+   "xhtml": "Předmět daně z příjmů fyzických osob",
+   "zkracenaCitace": "§ 3 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2453391,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/odst_1",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_3-odst_1",
+   "kodTypuFragmentu": "Odstavec_Dc",
+   "hloubka": 4,
+   "xhtml": "<var>(1)</var> Předmětem daně z <czechvoc-termin koncept-id=\"267949\">příjmů</czechvoc-termin> fyzických osob jsou",
+   "zkracenaCitace": "§ 3 odst. 1 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2453393,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/odst_1/pism_a",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_3-odst_1-pism_a",
+   "kodTypuFragmentu": "Pismeno_Lb",
+   "hloubka": 5,
+   "xhtml": "<var>a)</var> <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> ze závislé činnosti (<a data-odkaz-id=\"25807355\" href=\"#\" class=\"int_odkaz\">§ 6</a>),",
+   "zkracenaCitace": "§ 3 odst. 1 písm. a) zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2453395,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/odst_1/pism_b",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_3-odst_1-pism_b",
+   "kodTypuFragmentu": "Pismeno_Lb",
+   "hloubka": 5,
+   "xhtml": "<var>b)</var> <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> ze samostatné činnosti (<a data-odkaz-id=\"25807437\" href=\"#\" class=\"int_odkaz\">§ 7</a>),",
+   "zkracenaCitace": "§ 3 odst. 1 písm. b) zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2442011,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/odst_1/pism_c",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_3-odst_1-pism_c",
+   "kodTypuFragmentu": "Pismeno_Lb",
+   "hloubka": 5,
+   "xhtml": "<var>c)</var> <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> z kapitálového majetku (<a data-odkaz-id=\"25471549\" href=\"#\" class=\"int_odkaz\">§ 8</a>),",
+   "zkracenaCitace": "§ 3 odst. 1 písm. c) zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2453397,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/odst_1/pism_d",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_3-odst_1-pism_d",
+   "kodTypuFragmentu": "Pismeno_Lb",
+   "hloubka": 5,
+   "xhtml": "<var>d)</var> <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> z nájmu (<a data-odkaz-id=\"25807519\" href=\"#\" class=\"int_odkaz\">§ 9</a>),",
+   "zkracenaCitace": "§ 3 odst. 1 písm. d) zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2442015,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/odst_1/pism_e",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_3-odst_1-pism_e",
+   "kodTypuFragmentu": "Pismeno_Lb",
+   "hloubka": 5,
+   "xhtml": "<var>e)</var> ostatní <czechvoc-termin koncept-id=\"267949\">příjmy</czechvoc-termin> (<a data-odkaz-id=\"25472015\" href=\"#\" class=\"int_odkaz\">§ 10</a>).",
+   "zkracenaCitace": "§ 3 odst. 1 písm. e) zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2442017,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/odst_2",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_3-odst_2",
+   "kodTypuFragmentu": "Odstavec_Dc",
+   "hloubka": 4,
+   "xhtml": "<var>(2)</var> Příjmem ve smyslu <a data-odkaz-id=\"25472289\" href=\"#\" class=\"int_odkaz\">odstavce 1</a> se rozumí příjem peněžní i nepeněžní dosažený i směnou.",
+   "zkracenaCitace": "§ 3 odst. 2 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2453399,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/odst_3",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_3-odst_3",
+   "kodTypuFragmentu": "Odstavec_Dc",
+   "hloubka": 4,
+   "xhtml": "<var>(3)</var> Nepeněžní <czechvoc-termin koncept-id=\"267949\">příjem</czechvoc-termin> se pro účely daně z <czechvoc-termin koncept-id=\"267949\">příjmů</czechvoc-termin> fyzických osob oceňuje",
+   "zkracenaCitace": "§ 3 odst. 3 zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2453401,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/odst_3/pism_a",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_3-odst_3-pism_a",
+   "kodTypuFragmentu": "Pismeno_Lb",
+   "hloubka": 5,
+   "xhtml": "<var>a)</var> podle právního předpisu upravujícího oceňování majetku,",
+   "zkracenaCitace": "§ 3 odst. 3 písm. a) zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2456887,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/odst_3/pism_b",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_3-odst_3-pism_b",
+   "kodTypuFragmentu": "Pismeno_Lb",
+   "hloubka": 5,
+   "xhtml": "<var>b)</var> jako pětinásobek hodnoty ročního plnění, pokud <czechvoc-termin koncept-id=\"267949\">příjem</czechvoc-termin> spočívá v jiném majetkovém prospěchu, jehož obsahem je opakující se nebo trvající plnění na dobu",
+   "zkracenaCitace": "§ 3 odst. 3 písm. b) zákona České národní rady č. 586/1992 Sb."
+  },
+  {
+   "id": 2453405,
+   "eli": "/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/odst_3/pism_b/bod_1",
+   "staleUrl": "/sb/1992/586/2026-08-01#par_3-odst_3-pism_b-bod_1",
+   "kodTypuFragmentu": "Bod_Dd",
+   "hloubka": 6,
+   "xhtml": "<var>1.</var> neurčitou,",
+   "zkracenaCitace": "§ 3 odst. 3 písm. b) bod 1 zákona České národní rady č. 586/1992 Sb."
+  }
+ ]
+}

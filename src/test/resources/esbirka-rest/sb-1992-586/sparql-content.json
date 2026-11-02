@@ -1,0 +1,583 @@
+[
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument",
+  "parent": null,
+  "citace": null,
+  "order": "00",
+  "obsah": null
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument",
+  "citace": null,
+  "order": "68",
+  "obsah": null
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/par_1",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma",
+  "citace": "§ 1",
+  "order": "6AC0",
+  "obsah": "<var>§ 1</var>"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/par_1/frag_2441961",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/par_1",
+  "citace": null,
+  "order": "6AD6",
+  "obsah": "Tento zákon zapracovává příslušné předpisy Evropské unie<a data-odkaz-id=\"25470643\" href=\"#\" class=\"int_odkaz\"><sup>137</sup>)</a> a upravuje"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/par_1/pism_a",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/par_1/frag_2441961",
+  "citace": "§ 1 písm. a)",
+  "order": "6AD6B0",
+  "obsah": "<var>a)</var> daň z příjmů fyzických osob,"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/par_1/pism_b",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/par_1/frag_2441961",
+  "citace": "§ 1 písm. b)",
+  "order": "6AD6D0",
+  "obsah": "<var>b)</var> daň z příjmů právnických osob."
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma",
+  "citace": "Část 1",
+  "order": "6B40",
+  "obsah": "<var>ČÁST PRVNÍ</var>"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1",
+  "citace": "§ 2",
+  "order": "6B5A",
+  "obsah": "<var>§ 2</var>"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2/frag_2441977",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2",
+  "citace": null,
+  "order": "6B5AB0",
+  "obsah": "Poplatníci daně z příjmů fyzických osob"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2/odst_1",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2",
+  "citace": "§ 2 odst. 1",
+  "order": "6B5AD0",
+  "obsah": "<var>(1)</var> Poplatníky daně z příjmů fyzických osob jsou fyzické osoby. Poplatníci jsou daňovými rezidenty České republiky, nebo daňovými nerezidenty."
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2/odst_2",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2",
+  "citace": "§ 2 odst. 2",
+  "order": "6B5AF0",
+  "obsah": "<var>(2)</var> Poplatníci jsou daňovými rezidenty České republiky, pokud mají na území České republiky bydliště nebo se zde obvykle zdržují. Daňoví rezidenti České republiky mají daňovou povinnost, která se vztahuje jak na příjmy plynoucí ze zdrojů na území České republiky, tak i na příjmy plynoucí ze zdrojů v zahraničí."
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2/odst_3",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2",
+  "citace": "§ 2 odst. 3",
+  "order": "6B5B08",
+  "obsah": "<var>(3)</var> Poplatníci jsou daňovými nerezidenty, pokud nejsou uvedeni v <a data-odkaz-id=\"25807191\" href=\"#\" class=\"int_odkaz\">odstavci 2</a> nebo to o nich stanoví mezinárodní smlouvy. Daňoví nerezidenti mají daňovou povinnost, která se vztahuje jen na příjmy plynoucí ze zdrojů na území České republiky (<a data-odkaz-id=\"25807273\" href=\"#\" class=\"int_odkaz\">§ 22</a>). Poplatníci, kteří se na území České republiky zdržují pouze za účelem studia nebo léčení, jsou daňovými nerezidenty a mají daňovou povinnost, která se vztahuje pouze na příjmy plynoucí ze zdrojů na území České republiky, i v případě, že se na území České republiky obvykle zdržují."
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2/odst_4",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2",
+  "citace": "§ 2 odst. 4",
+  "order": "6B5B18",
+  "obsah": "<var>(4)</var> Poplatníky obvykle se zdržujícími na území České republiky jsou ti, kteří zde pobývají alespoň 183 dnů v příslušném kalendářním roce, a to souvisle nebo v několika obdobích; do doby 183 dnů se započítává každý započatý den pobytu. Bydlištěm na území České republiky se pro účely tohoto zákona rozumí místo, kde má poplatník stálý byt za okolností, z nichž lze usuzovat na jeho úmysl trvale se v tomto bytě zdržovat."
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1",
+  "citace": "§ 2a",
+  "order": "6B5E",
+  "obsah": "<var>§ 2a</var>"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/frag_2458205",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a",
+  "citace": null,
+  "order": "6B5EB0",
+  "obsah": "Poplatník v paušálním režimu"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_1",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a",
+  "citace": "§ 2a odst. 1",
+  "order": "6B5ED0",
+  "obsah": "<var>(1)</var> Poplatníkem v paušálním režimu je od prvního dne rozhodného zdaňovacího období poplatník daně z příjmů fyzických osob, který"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_1/pism_a",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_1",
+  "citace": "§ 2a odst. 1 písm. a)",
+  "order": "6B5ED580",
+  "obsah": "<var>a)</var> k prvnímu dni rozhodného zdaňovacího období"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_1/pism_a/bod_1",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_1/pism_a",
+  "citace": "§ 2a odst. 1 písm. a) bod 1",
+  "order": "6B5ED5AC",
+  "obsah": "<var>1.</var> je osobou samostatně výdělečně činnou podle zákona upravujícího důchodové pojištění, na kterou se vztahují právní předpisy upravující důchodové pojištění,"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_1/pism_a/bod_2",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_1/pism_a",
+  "citace": "§ 2a odst. 1 písm. a) bod 2",
+  "order": "6B5ED5B4",
+  "obsah": "<var>2.</var> je osobou samostatně výdělečně činnou podle zákona upravujícího veřejné <a data-odkaz-id=\"26009573\" href=\"#\" class=\"ext_odkaz\">zdravotní pojištění</a>, na kterou se vztahují právní předpisy upravující veřejné zdravotní pojištění a která není vyňata z povinnosti platit pojistné na veřejné zdravotní pojištění z důvodu dlouhodobého pobytu v cizině,"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_1/pism_a/bod_3",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_1/pism_a",
+  "citace": "§ 2a odst. 1 písm. a) bod 3",
+  "order": "6B5ED5BC",
+  "obsah": "<var>3.</var> není plátcem daně z přidané hodnoty a nemá registrační povinnost k dani z přidané hodnoty, s výjimkou registrační povinnosti identifikované osoby,"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_1/pism_a/bod_4",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_1/pism_a",
+  "citace": "§ 2a odst. 1 písm. a) bod 4",
+  "order": "6B5ED5C2",
+  "obsah": "<var>4.</var> není společníkem veřejné obchodní společnosti ani komplementářem komanditní společnosti a"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_1/pism_a/bod_5",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_1/pism_a",
+  "citace": "§ 2a odst. 1 písm. a) bod 5",
+  "order": "6B5ED5C6",
+  "obsah": "<var>5.</var> není dlužníkem, vůči němuž bylo zahájeno insolvenční řízení,"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_1/pism_b",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_1",
+  "citace": "§ 2a odst. 1 písm. b)",
+  "order": "6B5ED680",
+  "obsah": "<var>b)</var> ve zdaňovacím období bezprostředně předcházejícím rozhodnému zdaňovacímu období nepřesáhl rozhodné příjmy pro zvolené pásmo paušálního režimu,"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_1/pism_c",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_1",
+  "citace": "§ 2a odst. 1 písm. c)",
+  "order": "6B5ED780",
+  "obsah": "<var>c)</var> k prvnímu dni rozhodného zdaňovacího období nevykonává činnost, ze které plynou příjmy ze závislé činnosti, s výjimkou příjmů, z nichž je daň vybírána srážkou podle zvláštní sazby daně, a"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_1/pism_d",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_1",
+  "citace": "§ 2a odst. 1 písm. d)",
+  "order": "6B5ED840",
+  "obsah": "<var>d)</var> podá správci daně oznámení o vstupu do paušálního režimu, ve kterém si zvolí pásmo paušálního režimu, a nejpozději v poslední den lhůty pro podání oznámení o vstupu do paušálního režimu učinil oznámení o zahájení samostatné výdělečné činnosti podle zákona upravujícího organizaci a provádění sociálního zabezpečení a oznámení o zahájení samostatné výdělečné činnosti podle zákona upravujícího veřejné zdravotní pojištění; tato lhůta je zachována, je-li nejpozději v poslední den této lhůty učiněno podání obsahující údaje požadované v příslušném oznámení správci daně společně s oznámením o vstupu do paušálního režimu nebo živnostenskému úřadu společně s ohlášením živnosti nebo žádostí o koncesi."
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_2",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a",
+  "citace": "§ 2a odst. 2",
+  "order": "6B5EF0",
+  "obsah": "<var>(2)</var> Poplatník daně z příjmů fyzických osob, který zahajuje činnost, ze které plynou příjmy ze samostatné činnosti, je poplatníkem v paušálním režimu od prvního dne kalendářního měsíce, ve kterém tuto činnost zahajuje, pokud"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_2/pism_a",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_2",
+  "citace": "§ 2a odst. 2 písm. a)",
+  "order": "6B5EF580",
+  "obsah": "<var>a)</var> splňuje podmínky podle <a data-odkaz-id=\"26009615\" href=\"#\" class=\"int_odkaz\">odstavce 1</a>, přičemž podmínky podle <a data-odkaz-id=\"26009641\" href=\"#\" class=\"int_odkaz\">odstavce 1 písm. a)</a> a <a data-odkaz-id=\"26009667\" href=\"#\" class=\"int_odkaz\">c)</a> musí být splněny namísto k prvnímu dni rozhodného zdaňovacího období ke dni zahájení této činnosti,"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_2/pism_b",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_2",
+  "citace": "§ 2a odst. 2 písm. b)",
+  "order": "6B5EF680",
+  "obsah": "<var>b)</var> v části rozhodného zdaňovacího období přede dnem zahájení této činnosti nebyl plátcem daně z přidané hodnoty, společníkem veřejné obchodní společnosti ani komplementářem komanditní společnosti a nevykonával činnost, ze které plynou příjmy ze samostatné činnosti,"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_2/pism_c",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_2",
+  "citace": "§ 2a odst. 2 písm. c)",
+  "order": "6B5EF780",
+  "obsah": "<var>c)</var> v části rozhodného zdaňovacího období přede dnem zahájení této činnosti měl pouze"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_2/pism_c/bod_1",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_2/pism_c",
+  "citace": "§ 2a odst. 2 písm. c) bod 1",
+  "order": "6B5EF7AC",
+  "obsah": "<var>1.</var> příjmy od daně osvobozené,"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_2/pism_c/bod_2",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_2/pism_c",
+  "citace": "§ 2a odst. 2 písm. c) bod 2",
+  "order": "6B5EF7B4",
+  "obsah": "<var>2.</var> příjmy, které nejsou předmětem daně,"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_2/pism_c/bod_3",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_2/pism_c",
+  "citace": "§ 2a odst. 2 písm. c) bod 3",
+  "order": "6B5EF7BC",
+  "obsah": "<var>3.</var> příjmy, ze kterých je daň vybírána srážkou podle zvláštní sazby daně,"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_2/pism_c/bod_4",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_2/pism_c",
+  "citace": "§ 2a odst. 2 písm. c) bod 4",
+  "order": "6B5EF7C2",
+  "obsah": "<var>4.</var> příjmy z kapitálového majetku, příjmy z nájmu a ostatní příjmy, pokud se nejedná o příjmy podle <a data-odkaz-id=\"25915097\" href=\"#\" class=\"int_odkaz\">bodů 1 až 3</a> a pokud celková výše těchto příjmů nepřesáhne 50 000 Kč."
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_3",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a",
+  "citace": "§ 2a odst. 3",
+  "order": "6B5F08",
+  "obsah": "<var>(3)</var> Poplatník daně z příjmů fyzických osob, který přestal být poplatníkem v paušálním režimu z důvodu, že přerušil činnost, ze které plynou příjmy ze samostatné činnosti, a ve stejném zdaňovacím období tuto činnost znovu zahajuje, je poplatníkem ve stejném pásmu paušálního režimu jako před přerušením této činnosti od prvního dne kalendářního měsíce, ve kterém tuto činnost znovu zahajuje."
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_4",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a",
+  "citace": "§ 2a odst. 4",
+  "order": "6B5F18",
+  "obsah": "<var>(4)</var> Zvolené pásmo paušálního režimu se změní od prvního dne zdaňovacího období na"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_4/pism_a",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_4",
+  "citace": "§ 2a odst. 4 písm. a)",
+  "order": "6B5F1AC0",
+  "obsah": "<var>a)</var> nově zvolené pásmo paušálního režimu, pokud poplatník v paušálním režimu"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_4/pism_a/bod_1",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_4/pism_a",
+  "citace": "§ 2a odst. 4 písm. a) bod 1",
+  "order": "6B5F1AD6",
+  "obsah": "<var>1.</var> ve zdaňovacím období bezprostředně předcházejícím tomuto zdaňovacímu období nepřesáhl rozhodné příjmy pro nově zvolené pásmo paušálního režimu a"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_4/pism_a/bod_2",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_4/pism_a",
+  "citace": "§ 2a odst. 4 písm. a) bod 2",
+  "order": "6B5F1ADA",
+  "obsah": "<var>2.</var> podá správci daně oznámení o změně zvoleného pásma paušálního režimu, nebo"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_4/pism_b",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_4",
+  "citace": "§ 2a odst. 4 písm. b)",
+  "order": "6B5F1B40",
+  "obsah": "<var>b)</var> pásmo paušálního režimu určující výši paušální daně za zdaňovací období bezprostředně předcházející tomuto zdaňovacímu období, pokud poplatník v paušálním režimu"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_4/pism_b/bod_1",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_4/pism_b",
+  "citace": "§ 2a odst. 4 písm. b) bod 1",
+  "order": "6B5F1B56",
+  "obsah": "<var>1.</var> ve zdaňovacím období bezprostředně předcházejícím tomuto zdaňovacímu období nepřesáhl rozhodné příjmy pro toto pásmo,"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_4/pism_b/bod_2",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_4/pism_b",
+  "citace": "§ 2a odst. 4 písm. b) bod 2",
+  "order": "6B5F1B5A",
+  "obsah": "<var>2.</var> podá správci daně oznámení o jiné výši paušální daně na její vyšší výši z důvodu, že přesáhl rozhodné příjmy pro zvolené pásmo ve zdaňovacím období bezprostředně předcházejícím tomuto zdaňovacímu období, a"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_4/pism_b/bod_3",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_4/pism_b",
+  "citace": "§ 2a odst. 4 písm. b) bod 3",
+  "order": "6B5F1B5E",
+  "obsah": "<var>3.</var> pásmo paušálního režimu se nezměnilo podle <a data-odkaz-id=\"25915107\" href=\"#\" class=\"int_odkaz\">písmene a)</a>."
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_5",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a",
+  "citace": "§ 2a odst. 5",
+  "order": "6B5F28",
+  "obsah": "<var>(5)</var> Rozhodnými příjmy pro"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_5/pism_a",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_5",
+  "citace": "§ 2a odst. 5 písm. a)",
+  "order": "6B5F2AC0",
+  "obsah": "<var>a)</var> první pásmo paušálního režimu jsou příjmy ze samostatné činnosti do výše"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_5/pism_a/bod_1",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_5/pism_a",
+  "citace": "§ 2a odst. 5 písm. a) bod 1",
+  "order": "6B5F2AD6",
+  "obsah": "<var>1.</var> 1 000 000 Kč, a to bez ohledu na to, z jaké samostatné činnosti plynou,"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_5/pism_a/bod_2",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_5/pism_a",
+  "citace": "§ 2a odst. 5 písm. a) bod 2",
+  "order": "6B5F2ADA",
+  "obsah": "<var>2.</var> 1 500 000 Kč, pokud alespoň 75 % příjmů ze samostatné činnosti poplatníka tvoří příjmy, k nimž lze uplatnit výdaje ve výši 80 % z příjmů nebo 60 % z příjmů, a"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_5/pism_a/bod_3",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_5/pism_a",
+  "citace": "§ 2a odst. 5 písm. a) bod 3",
+  "order": "6B5F2ADE",
+  "obsah": "<var>3.</var> 2 000 000 Kč, pokud alespoň 75 % příjmů ze samostatné činnosti poplatníka tvoří příjmy, k nimž lze uplatnit výdaje ve výši 80 % z příjmů,"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_5/pism_b",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_5",
+  "citace": "§ 2a odst. 5 písm. b)",
+  "order": "6B5F2B40",
+  "obsah": "<var>b)</var> druhé pásmo paušálního režimu jsou příjmy ze samostatné činnosti do výše"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_5/pism_b/bod_1",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_5/pism_b",
+  "citace": "§ 2a odst. 5 písm. b) bod 1",
+  "order": "6B5F2B56",
+  "obsah": "<var>1.</var> 1 500 000 Kč, a to bez ohledu na to, z jaké samostatné činnosti plynou, a"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_5/pism_b/bod_2",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_5/pism_b",
+  "citace": "§ 2a odst. 5 písm. b) bod 2",
+  "order": "6B5F2B5A",
+  "obsah": "<var>2.</var> 2 000 000 Kč, pokud alespoň 75 % příjmů ze samostatné činnosti poplatníka tvoří příjmy, k nimž lze uplatnit výdaje ve výši 80 % z příjmů nebo 60 % z příjmů, a"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_5/pism_c",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_5",
+  "citace": "§ 2a odst. 5 písm. c)",
+  "order": "6B5F2BC0",
+  "obsah": "<var>c)</var> třetí pásmo paušálního režimu jsou příjmy ze samostatné činnosti do výše 2 000 000 Kč, a to bez ohledu na to, z jaké samostatné činnosti plynou."
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_6",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a",
+  "citace": "§ 2a odst. 6",
+  "order": "6B5F38",
+  "obsah": "<var>(6)</var> Pro účely <a data-odkaz-id=\"25915117\" href=\"#\" class=\"int_odkaz\">odstavce 5</a> se za příjmy ze samostatné činnosti nepovažují"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_6/pism_a",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_6",
+  "citace": "§ 2a odst. 6 písm. a)",
+  "order": "6B5F3AC0",
+  "obsah": "<var>a)</var> příjmy od daně osvobozené,"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_6/pism_b",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_6",
+  "citace": "§ 2a odst. 6 písm. b)",
+  "order": "6B5F3B40",
+  "obsah": "<var>b)</var> příjmy, které nejsou předmětem daně, a"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_6/pism_c",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_6",
+  "citace": "§ 2a odst. 6 písm. c)",
+  "order": "6B5F3BC0",
+  "obsah": "<var>c)</var> příjmy, ze kterých je daň vybírána srážkou podle zvláštní sazby daně."
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_7",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a",
+  "citace": "§ 2a odst. 7",
+  "order": "6B5F44",
+  "obsah": "<var>(7)</var> Pro účely paušálního režimu se"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_7/pism_a",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_7",
+  "citace": "§ 2a odst. 7 písm. a)",
+  "order": "6B5F4560",
+  "obsah": "<var>a)</var> příjmy rozumí příjmy podle tohoto zákona, které by poplatník měl, pokud by nebyl účetní jednotkou,"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_7/pism_b",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_7",
+  "citace": "§ 2a odst. 7 písm. b)",
+  "order": "6B5F45A0",
+  "obsah": "<var>b)</var> za příjmy ze samostatné činnosti považují také úroky z vkladů na účtu, který je podle podmínek toho, kdo účet vede, určen k podnikání poplatníka, a nepovažují se za ně příjmy z podílu společníka veřejné obchodní společnosti a komplementáře komanditní společnosti na zisku."
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a",
+  "citace": "§ 2a odst. 8",
+  "order": "6B5F4C",
+  "obsah": "<var>(8)</var> Poplatník přestává být poplatníkem v paušálním režimu uplynutím"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8/pism_a",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8",
+  "citace": "§ 2a odst. 8 písm. a)",
+  "order": "6B5F4D60",
+  "obsah": "<var>a)</var> zdaňovacího období, ve kterém"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8/pism_a/bod_1",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8/pism_a",
+  "citace": "§ 2a odst. 8 písm. a) bod 1",
+  "order": "6B5F4D6B",
+  "obsah": "<var>1.</var> přesáhl rozhodné příjmy pro zvolené pásmo paušálního režimu, ledaže je jeho daň rovna paušální dani,"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8/pism_a/bod_2",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8/pism_a",
+  "citace": "§ 2a odst. 8 písm. a) bod 2",
+  "order": "6B5F4D6D",
+  "obsah": "<var>2.</var> se stane plátcem daně z přidané hodnoty nebo mu vznikne registrační povinnost k dani z přidané hodnoty, s výjimkou registrační povinnosti identifikované osoby,"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8/pism_a/bod_3",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8/pism_a",
+  "citace": "§ 2a odst. 8 písm. a) bod 3",
+  "order": "6B5F4D6F",
+  "obsah": "<var>3.</var> se stane společníkem veřejné obchodní společnosti nebo komplementářem komanditní společnosti, nebo"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8/pism_a/bod_4",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8/pism_a",
+  "citace": "§ 2a odst. 8 písm. a) bod 4",
+  "order": "6B5F4D7080",
+  "obsah": "<var>4.</var> nabylo účinnosti rozhodnutí o úpadku poplatníka a insolvenční řízení nebylo skončeno,"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8/pism_b",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8",
+  "citace": "§ 2a odst. 8 písm. b)",
+  "order": "6B5F4DA0",
+  "obsah": "<var>b)</var> zdaňovacího období, které poplatník uvede v oznámení o dobrovolném vystoupení z paušálního režimu,"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8/pism_c",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8",
+  "citace": "§ 2a odst. 8 písm. c)",
+  "order": "6B5F4DE0",
+  "obsah": "<var>c)</var> kalendářního měsíce, ve kterém přestane být"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8/pism_c/bod_1",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8/pism_c",
+  "citace": "§ 2a odst. 8 písm. c) bod 1",
+  "order": "6B5F4DEB",
+  "obsah": "<var>1.</var> osobou samostatně výdělečně činnou podle zákona upravujícího důchodové pojištění, na kterou se vztahují právní předpisy upravující důchodové pojištění, nebo"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8/pism_c/bod_2",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8/pism_c",
+  "citace": "§ 2a odst. 8 písm. c) bod 2",
+  "order": "6B5F4DED",
+  "obsah": "<var>2.</var> osobou samostatně výdělečně činnou podle zákona upravujícího veřejné <a data-odkaz-id=\"26009725\" href=\"#\" class=\"ext_odkaz\">zdravotní pojištění</a>, na kterou se vztahují právní předpisy upravující veřejné zdravotní pojištění,"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8/pism_d",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8",
+  "citace": "§ 2a odst. 8 písm. d)",
+  "order": "6B5F4E10",
+  "obsah": "<var>d)</var> kalendářního měsíce bezprostředně předcházejícího kalendářnímu měsíci, od kterého poplatník není povinen platit pojistné na veřejné <a data-odkaz-id=\"26009751\" href=\"#\" class=\"ext_odkaz\">zdravotní pojištění</a> z důvodu dlouhodobého pobytu v cizině, nebo"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8/pism_e",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_2a/odst_8",
+  "citace": "§ 2a odst. 8 písm. e)",
+  "order": "6B5F4E30",
+  "obsah": "<var>e)</var> kalendářního měsíce, ve kterém se poplatník stane daňovým nerezidentem a přestane na území České republiky vykonávat činnost, ze které plynou příjmy ze samostatné činnosti."
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1",
+  "citace": "§ 3",
+  "order": "6B61",
+  "obsah": "<var>§ 3</var>"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/frag_2442003",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3",
+  "citace": null,
+  "order": "6B6158",
+  "obsah": "Předmět daně z příjmů fyzických osob"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/odst_1",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3",
+  "citace": "§ 3 odst. 1",
+  "order": "6B6168",
+  "obsah": "<var>(1)</var> Předmětem daně z příjmů fyzických osob jsou"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/odst_1/pism_a",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/odst_1",
+  "citace": "§ 3 odst. 1 písm. a)",
+  "order": "6B616AC0",
+  "obsah": "<var>a)</var> příjmy ze závislé činnosti (<a data-odkaz-id=\"25807355\" href=\"#\" class=\"int_odkaz\">§ 6</a>),"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/odst_1/pism_b",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/odst_1",
+  "citace": "§ 3 odst. 1 písm. b)",
+  "order": "6B616B40",
+  "obsah": "<var>b)</var> příjmy ze samostatné činnosti (<a data-odkaz-id=\"25807437\" href=\"#\" class=\"int_odkaz\">§ 7</a>),"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/odst_1/pism_c",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/odst_1",
+  "citace": "§ 3 odst. 1 písm. c)",
+  "order": "6B616BC0",
+  "obsah": "<var>c)</var> příjmy z kapitálového majetku (<a data-odkaz-id=\"25471549\" href=\"#\" class=\"int_odkaz\">§ 8</a>),"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/odst_1/pism_d",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/odst_1",
+  "citace": "§ 3 odst. 1 písm. d)",
+  "order": "6B616C20",
+  "obsah": "<var>d)</var> příjmy z nájmu (<a data-odkaz-id=\"25807519\" href=\"#\" class=\"int_odkaz\">§ 9</a>),"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/odst_1/pism_e",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/odst_1",
+  "citace": "§ 3 odst. 1 písm. e)",
+  "order": "6B616C60",
+  "obsah": "<var>e)</var> ostatní příjmy (<a data-odkaz-id=\"25472015\" href=\"#\" class=\"int_odkaz\">§ 10</a>)."
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/odst_2",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3",
+  "citace": "§ 3 odst. 2",
+  "order": "6B6178",
+  "obsah": "<var>(2)</var> Příjmem ve smyslu <a data-odkaz-id=\"25472289\" href=\"#\" class=\"int_odkaz\">odstavce 1</a> se rozumí příjem peněžní i nepeněžní dosažený i směnou."
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/odst_3",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3",
+  "citace": "§ 3 odst. 3",
+  "order": "6B6184",
+  "obsah": "<var>(3)</var> Nepeněžní příjem se pro účely daně z příjmů fyzických osob oceňuje"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/odst_3/pism_a",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/odst_3",
+  "citace": "§ 3 odst. 3 písm. a)",
+  "order": "6B618560",
+  "obsah": "<var>a)</var> podle právního předpisu upravujícího oceňování majetku,"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/odst_3/pism_b",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/odst_3",
+  "citace": "§ 3 odst. 3 písm. b)",
+  "order": "6B6185A0",
+  "obsah": "<var>b)</var> jako pětinásobek hodnoty ročního plnění, pokud příjem spočívá v jiném majetkovém prospěchu, jehož obsahem je opakující se nebo trvající plnění na dobu"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/odst_3/pism_b/bod_1",
+  "parent": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1992/586/2026-08-01/dokument/norma/cast_1/par_3/odst_3/pism_b",
+  "citace": "§ 3 odst. 3 písm. b) bod 1",
+  "order": "6B6185AB",
+  "obsah": "<var>1.</var> neurčitou,"
+ }
+]

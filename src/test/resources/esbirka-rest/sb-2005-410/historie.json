@@ -1,0 +1,79 @@
+{
+ "historie": [
+  {
+   "datumUcinnostiZneniOd": "2022-10-11",
+   "datumUcinnostiZneniDo": "2024-06-30",
+   "datumCasVyhlaseni": "2005-10-17T00:00:00.000+02:00",
+   "staleUrl": "/sb/2005/410/2022-10-11",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2022/306",
+     "kodDokumentuSbirky": "306/2022 Sb."
+    }
+   ],
+   "cisloZneni": 5,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2017-01-14",
+   "datumUcinnostiZneniDo": "2022-10-10",
+   "datumCasVyhlaseni": "2005-10-17T00:00:00.000+02:00",
+   "staleUrl": "/sb/2005/410/2017-01-14",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2016/465",
+     "kodDokumentuSbirky": "465/2016 Sb."
+    }
+   ],
+   "cisloZneni": 4,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2009-10-23",
+   "datumUcinnostiZneniDo": "2017-01-13",
+   "datumCasVyhlaseni": "2005-10-17T00:00:00.000+02:00",
+   "staleUrl": "/sb/2005/410/2009-10-23",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2009/343",
+     "kodDokumentuSbirky": "343/2009 Sb."
+    }
+   ],
+   "cisloZneni": 3,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2005-11-16",
+   "datumUcinnostiZneniDo": "2009-10-22",
+   "datumCasVyhlaseni": "2005-10-17T00:00:00.000+02:00",
+   "staleUrl": "/sb/2005/410/2005-11-16",
+   "typZneni": "MINULE",
+   "novely": [],
+   "cisloZneni": 2,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2005-10-17",
+   "datumUcinnostiZneniDo": "2005-11-15",
+   "datumCasVyhlaseni": "2005-10-17T00:00:00.000+02:00",
+   "staleUrl": "/sb/2005/410/2005-10-17",
+   "typZneni": "MINULE_NEUCINNE",
+   "novely": [],
+   "cisloZneni": 1,
+   "poznamky": [
+    "Minulé neúčinné znění právního aktu."
+   ]
+  },
+  {
+   "datumUcinnostiZneniOd": "2005-10-17",
+   "datumCasVyhlaseni": "2005-10-17T00:00:00.000+02:00",
+   "staleUrl": "/sb/2005/410/0000-00-00",
+   "typZneni": "VYHLASENE",
+   "novely": [],
+   "poznamky": []
+  }
+ ]
+}

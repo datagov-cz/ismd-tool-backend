@@ -557,6 +557,12 @@ mvn test jacoco:report
 
 Coverage report: `target/site/jacoco/index.html`
 
+### Tests That Pass Locally but Fail in CI
+
+CI runs on JDK 17 with 4 vCPUs and a different test-class order. See
+[TESTING_CI_PITFALLS.md](TESTING_CI_PITFALLS.md) for the known traps (common-pool starvation
+around HTTP clients, the shared Postgres container) and how to reproduce CI locally.
+
 ### Test Categories
 
 **Unit Tests:**

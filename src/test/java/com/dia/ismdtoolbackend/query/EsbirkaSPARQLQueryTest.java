@@ -17,58 +17,6 @@ class EsbirkaSPARQLQueryTest {
             "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2006/187/2026-04-01";
 
     @Test
-    void lawSearch_emptyQ_parsesAndUsesRokDescOrder() {
-        String q = EsbirkaSPARQLQuery.buildLawSearchQuery(null, 20);
-        assertDoesNotThrow(() -> QueryFactory.create(q));
-        assertTrue(q.contains("https://slovník.gov.cz/datový/sbírka/pojem/právní-akt"));
-        assertTrue(q.contains("citace-právního-aktu"));
-        assertTrue(q.contains("ORDER BY DESC(?rok) ?cislo"), "empty-q must order by rok desc, cislo asc");
-        assertTrue(q.contains("LIMIT 20"));
-        assertFalse(q.contains("FILTER"), "empty-q must NOT include FILTER block");
-        assertFalse(q.contains("CONTAINS"));
-    }
-
-    @Test
-    void lawSearch_blankQ_treatedAsEmpty() {
-        String q = EsbirkaSPARQLQuery.buildLawSearchQuery("   ", 20);
-        assertFalse(q.contains("FILTER"));
-    }
-
-    @Test
-    void lawSearch_withQ_parsesAndAddsFilterAndRankedOrder() {
-        String q = EsbirkaSPARQLQuery.buildLawSearchQuery("187/2006", 50);
-        assertDoesNotThrow(() -> QueryFactory.create(q));
-        assertTrue(q.contains("FILTER(CONTAINS(LCASE(STR(?citace)), LCASE("));
-        // Jena escapes the literal — verify the value is present (not as a raw substring exposed to injection).
-        assertTrue(q.contains("\"187/2006\""));
-        assertTrue(q.contains("ORDER BY ?rank DESC(?rok) ?citace"),
-                "q-search must rank číslo matches ahead of year-only matches");
-        assertTrue(q.contains("LIMIT 50"));
-    }
-
-    @Test
-    void lawSearch_withQ_ranksCisloMatchesAheadOfYearMatches() {
-        // A bare CONTAINS matches "49" in 49/1997, 490/2001 and 1/2049 alike.
-        String q = EsbirkaSPARQLQuery.buildLawSearchQuery("49", 20);
-        assertDoesNotThrow(() -> QueryFactory.create(q));
-        assertTrue(q.contains("BIND(IF(LCASE(STR(?cislo)) = LCASE("), "tier 0: exact číslo match");
-        assertTrue(q.contains("IF(STRSTARTS(LCASE(STR(?citace)), LCASE("), "tier 1: citation prefix");
-        // citace is "<číslo>/<rok> Sb.", so a číslo-prefix tier would be unreachable.
-        assertFalse(q.contains("STRSTARTS(LCASE(STR(?cislo))"), "dead tier must not be emitted");
-        assertTrue(q.contains("AS ?rank)"));
-        // LIMIT applies after ORDER BY, so ranking client-side would truncate first.
-        assertTrue(q.indexOf("AS ?rank)") < q.indexOf("LIMIT"),
-                "rank must be bound inside the WHERE clause, before LIMIT");
-    }
-
-    @Test
-    void lawSearch_emptyQ_hasNoRankBinding() {
-        String q = EsbirkaSPARQLQuery.buildLawSearchQuery(null, 20);
-        assertFalse(q.contains("?rank"), "empty-q must not bind a relevance rank");
-    }
-
-
-    @Test
     void lawsByNumbers_matchesOnStrNotValues_forVirtuosoDatatypeQuirk() {
         // číslo-předpisu is a typed "49"^^xsd:string that Virtuoso will not equate with the
         // plain literal "49", so a VALUES block matches zero rows.
@@ -156,7 +104,6 @@ class EsbirkaSPARQLQueryTest {
         // Whole versions exist with no citace at all, so requiring it returns zero rows and
         // renders the law blank; obsah is likewise absent on structural fragments.
         for (String q : new String[]{
-                EsbirkaSPARQLQuery.buildFragmentTreeQuery(VERSION_IRI),
                 EsbirkaSPARQLQuery.buildVersionContentQuery(VERSION_IRI)}) {
             assertDoesNotThrow(() -> QueryFactory.create(q));
             assertTrue(q.contains("OPTIONAL { ?fragment <https://slovn\u00EDk.gov.cz/datov\u00FD/sb\u00EDrka/pojem/citace-ozna\u010Den\u00ED-fragmentu-zn\u011Bn\u00ED-pr\u00E1vn\u00EDho-aktu> ?citace }"),
@@ -167,18 +114,6 @@ class EsbirkaSPARQLQueryTest {
             assertTrue(q.contains("?fragment <https://slovn\u00EDk.gov.cz/datov\u00FD/sb\u00EDrka/pojem/po\u0159ad\u00ED-fragmentu-zn\u011Bn\u00ED-pr\u00E1vn\u00EDho-aktu> ?order ."),
                     "pořadí stays required");
         }
-    }
-
-    @Test
-    void lawSearch_quoteInjectionAttempt_isEscaped() {
-        // Attempt to break out of the FILTER literal. Jena must escape this.
-        String malicious = "foo\"; DROP";
-        String q = EsbirkaSPARQLQuery.buildLawSearchQuery(malicious, 20);
-        assertDoesNotThrow(() -> QueryFactory.create(q),
-                "Injection attempt must still produce a parseable SPARQL query");
-        // Raw bare quote must NOT appear unescaped in the rendered query.
-        assertFalse(q.contains("foo\"; DROP"),
-                "Bare unescaped malicious string must not appear verbatim in query");
     }
 
     @Test
@@ -219,23 +154,10 @@ class EsbirkaSPARQLQueryTest {
     }
 
     @Test
-    void fragmentTree_parsesAndContainsKeyPredicates() {
-        String q = EsbirkaSPARQLQuery.buildFragmentTreeQuery(VERSION_IRI);
-        assertDoesNotThrow(() -> QueryFactory.create(q));
-        assertTrue(q.contains("má-fragment-znění"));
-        assertTrue(q.contains("má-předka"));
-        assertTrue(q.contains("citace-označení-fragmentu-znění-právního-aktu"));
-        assertTrue(q.contains("pořadí-fragmentu-znění-právního-aktu"));
-        assertTrue(q.contains("ORDER BY ?order"));
-        assertTrue(q.contains("<" + VERSION_IRI + ">"),
-                "versionIri must be inlined as <iri> via ParameterizedSparqlString.setIri");
-    }
-
-    @Test
     void versionContent_parsesAndContainsTreePredicatesPlusObsah() {
         String q = EsbirkaSPARQLQuery.buildVersionContentQuery(VERSION_IRI);
         assertDoesNotThrow(() -> QueryFactory.create(q));
-        // Same structural backbone as the lean fragment-tree query...
+        // Tree backbone...
         assertTrue(q.contains("má-fragment-znění"));
         assertTrue(q.contains("má-předka"));
         assertTrue(q.contains("citace-označení-fragmentu-znění-právního-aktu"));
@@ -270,15 +192,14 @@ class EsbirkaSPARQLQueryTest {
     @Test
     void fragmentQueries_requireOnlyPoradi() {
         for (String q : List.of(
-                EsbirkaSPARQLQuery.buildVersionContentQuery(VERSION_IRI),
-                EsbirkaSPARQLQuery.buildFragmentTreeQuery(VERSION_IRI))) {
+                EsbirkaSPARQLQuery.buildVersionContentQuery(VERSION_IRI))) {
             assertDoesNotThrow(() -> QueryFactory.create(q));
             for (String fragile : List.of(
                     "citace-označení-fragmentu-znění-právního-aktu",
                     "má-předka",
                     "obsahuje-fragment")) {
                 if (!q.contains(fragile)) {
-                    continue; // not projected by this query (the lean tree query has no obsah)
+                    continue; // not projected by this query
                 }
                 assertTrue(inOptionalBlock(q, fragile),
                         fragile + " MUST sit inside an OPTIONAL block: a required join that "

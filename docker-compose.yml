@@ -129,6 +129,8 @@ services:
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://ismd-keycloak-dev:8080/realms/ismd/protocol/openid-connect/certs
       KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
       CORS_ALLOWED_ORIGINS: http://localhost:3001
+      ESBIRKA_PROVIDER: ${ESBIRKA_PROVIDER:-sparql}
+      ESBIRKA_API_KEY: ${ESBIRKA_API_KEY:-}
     extra_hosts:
       - "localhost:host-gateway"
     networks:

@@ -14,6 +14,9 @@ final class EsbirkaLawReference {
     /** Cheap tell that a law reference is an IRI rather than a číslo/rok, before full parsing. */
     static final String ELI_MARKER = "/eli/";
 
+    /** Collection of a bare číslo/rok reference. */
+    static final String DEFAULT_SBIRKA = "sb";
+
     static String canonicalize(String iri) {
         return iri == null ? null
                 : UtilityMethods.removeTrailingSlash(EsbirkaEliParser.canonicalizeHost(iri.trim()));
@@ -31,8 +34,8 @@ final class EsbirkaLawReference {
     /**
      * Parse a law reference into its parts, accepting either a "number/year" reference
      * (tolerating surrounding whitespace and a trailing " Sb.") or an e-Sbírka ELI IRI at law,
-     * version or fragment level. Partial input (e.g. "49") is rejected; callers use /law/search
-     * for that.
+     * version or fragment level. Partial input (e.g. "49") is rejected; callers use
+     * /law/search/grouped for that.
      *
      * <p>An IRI is delegated to {@link EsbirkaEliParser}, not split here: its path is
      * {@code .../{rok}/{číslo}/...} — year before number, the reverse of the human reference —
@@ -70,7 +73,7 @@ final class EsbirkaLawReference {
             throw new IllegalArgumentException(
                     "Číslo předpisu v referenci musí být číselné (např. 49/1997).");
         }
-        return new NumberYear(number, year);
+        return new NumberYear(DEFAULT_SBIRKA, number, year);
     }
 
     /**
@@ -87,8 +90,10 @@ final class EsbirkaLawReference {
         if (parsed.level() == null || parsed.lawNumber() == null || parsed.lawYear() == null) {
             return null;
         }
-        return new NumberYear(parsed.lawNumber(), parsed.lawYear());
+        String sbirka = parsed.sbirkaCode() == null ? DEFAULT_SBIRKA : parsed.sbirkaCode();
+        return new NumberYear(sbirka, parsed.lawNumber(), parsed.lawYear());
     }
 
-    record NumberYear(String number, int year) {}
+    /** @param sbirka collection code: from the IRI, {@code sb} for a bare číslo/rok */
+    record NumberYear(String sbirka, String number, int year) {}
 }

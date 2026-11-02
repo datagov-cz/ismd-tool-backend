@@ -37,6 +37,10 @@ class EsbirkaGroupedSearchTest {
 
     @org.junit.jupiter.api.BeforeEach
     void buildService() {
+        // The two stubbed SPARQL queries below run behind the client's real single entry point.
+        org.mockito.Mockito.lenient().when(client.searchLawsByNumber(
+                        org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), anyInt()))
+                .thenCallRealMethod();
         // Built without Spring, so the search runs without the caching layer.
         service = EsbirkaServiceWiring.build(client, null, null);
     }
@@ -180,7 +184,7 @@ class EsbirkaGroupedSearchTest {
         org.mockito.Mockito.verify(client).searchLawNumberGroups("49", "1997", 20);
         org.mockito.Mockito.verify(client).fetchLawsByNumbers(
                 org.mockito.ArgumentMatchers.anyList(), eq("1997"),
-                eq(EsbirkaLawSearch.GROUPED_ROW_LIMIT));
+                eq(EsbirkaSparqlClient.GROUPED_ROW_LIMIT));
     }
 
     @Test
@@ -236,8 +240,8 @@ class EsbirkaGroupedSearchTest {
     @Test
     void noMatchesIsNotAmbiguous() {
         // Nothing to choose between — the FE should say "not found", not "pick a year".
-        when(client.searchLawNumberGroups(eq("zzz"), org.mockito.ArgumentMatchers.any(), anyInt())).thenReturn(List.of());
-        LawSearchResultDto out = service.searchLawsGrouped("zzz", 20);
+        when(client.searchLawNumberGroups(eq("999999"), org.mockito.ArgumentMatchers.any(), anyInt())).thenReturn(List.of());
+        LawSearchResultDto out = service.searchLawsGrouped("999999", 20);
         // No numbers matched, so the act fetch must not even be attempted.
         org.mockito.Mockito.verify(client, org.mockito.Mockito.never())
                 .fetchLawsByNumbers(org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.any(), anyInt());
@@ -422,7 +426,7 @@ class EsbirkaGroupedSearchTest {
         org.mockito.Mockito.verify(client).fetchLawsByNumbers(cisla.capture(), org.mockito.ArgumentMatchers.any(), rowLimit.capture());
         assertEquals(List.of("49", "490"), cisla.getValue().stream().sorted().toList(),
                 "exactly the čísla step 1 returned");
-        assertEquals(EsbirkaLawSearch.GROUPED_ROW_LIMIT, rowLimit.getValue(),
+        assertEquals(EsbirkaSparqlClient.GROUPED_ROW_LIMIT, rowLimit.getValue(),
                 "act fetch must be row-capped — group size is unbounded");
     }
 }

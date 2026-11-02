@@ -95,7 +95,7 @@ public final class EsbirkaCzechCitationFormatter {
      * SPARQL is unavailable, the fragment isn't in the dataset, or the
      * extractor is rendering a PENDING DTO.
      *
-     * <p>If a {@code par_} segment is present, structural ancestors are
+     * <p>If a {@code par_} segment is present, structural ancestors (Část … Pododdíl) are
      * omitted — that matches e-Sbírka's own citation format (e.g. e-Sbírka
      * cites {@code "§ 119 odst. 2 písm. a)"}, not
      * {@code "Část 1 Hlava 4 § 119 odst. 2 písm. a)"}).
@@ -117,7 +117,8 @@ public final class EsbirkaCzechCitationFormatter {
     }
 
     private static boolean isStructuralAncestor(String kind) {
-        return "cast".equals(kind) || "hlava".equals(kind) || "dil".equals(kind) || "oddil".equals(kind);
+        return "cast".equals(kind) || "hlava".equals(kind) || "dil".equals(kind) || "oddil".equals(kind)
+                || "pododdil".equals(kind);
     }
 
     private static String formatSegment(ParsedEli.FragmentSegment s) {
@@ -126,6 +127,7 @@ public final class EsbirkaCzechCitationFormatter {
             case "hlava" -> "Hlava " + s.number();
             case "dil" -> "Díl " + s.number();
             case "oddil" -> "Oddíl " + s.number();
+            case "pododdil" -> "Pododdíl " + s.number();
             case "par" -> "§ " + s.number();
             case "odst" -> "odst. " + s.number();
             case "pism" -> "písm. " + s.number() + ")";
