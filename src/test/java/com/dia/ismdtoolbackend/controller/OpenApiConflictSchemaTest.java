@@ -1,11 +1,11 @@
 package com.dia.ismdtoolbackend.controller;
 
+import com.dia.ismdtoolbackend.testsupport.context.FullContextTest;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
@@ -28,30 +28,15 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
  * <p>Asserting on the schema is therefore the only thing that can catch it. See
  * {@code .planning/codebase/TECH_DEBT.md} — every other non-200 response in the API has this gap.
  */
-@SpringBootTest
+@FullContextTest
 @AutoConfigureMockMvc(addFilters = false)
 @ActiveProfiles("junit")
 @TestPropertySource(properties = {
+        "full-context.db-name=openapi-conflict",
         "springdoc.api-docs.enabled=true",
-        // Own H2 instance, per the convention in CorsConfig*Test: the junit profile's shared
-        // `testdb` is migrated by whichever context boots first, and a second Liquibase run
-        // against it fails on the existing DATABASECHANGELOG table.
-        "spring.datasource.url=jdbc:h2:mem:testdb-openapi-conflict;MODE=PostgreSQL;"
-                + "DATABASE_TO_LOWER=TRUE;INIT=CREATE SCHEMA IF NOT EXISTS ismd_schema",
-        "spring.datasource.username=sa",
-        "spring.datasource.password=password",
-        "spring.datasource.driver-class-name=org.h2.Driver",
-        "spring.jpa.database=h2",
-        "spring.liquibase.liquibase-schema=PUBLIC",
-        "spring.security.oauth2.client.registration.keycloak.client-id=test-client-id",
-        "spring.security.oauth2.client.registration.keycloak.client-secret=test-client-secret",
-        "spring.security.oauth2.client.registration.keycloak.provider=keycloak-test",
-        "spring.security.oauth2.client.provider.keycloak-test.authorization-uri=http://localhost/auth",
-        "spring.security.oauth2.client.provider.keycloak-test.token-uri=http://localhost/token",
-        "spring.security.oauth2.client.provider.keycloak-test.user-info-uri=http://localhost/userinfo",
-        "spring.security.oauth2.client.provider.keycloak-test.jwk-set-uri=http://localhost/jwks",
-        "spring.security.oauth2.client.provider.keycloak-test.user-name-attribute=preferred_username",
-        "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost/jwks"
+        // The e-Sbírka provider production runs, so one full context boots the REST client wiring.
+        "esbirka.provider=rest",
+        "esbirka.rest.api-key=test-key"
 })
 class OpenApiConflictSchemaTest {
 

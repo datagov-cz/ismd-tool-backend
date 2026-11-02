@@ -1,65 +1,33 @@
 package com.dia.ismdtoolbackend.service;
 
-import com.dia.ismdtoolbackend.entity.CommentEntity;
-import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.exception.CommentException;
-import com.dia.ismdtoolbackend.mapper.CommentMapperImpl;
 import com.dia.ismdtoolbackend.models.CommentCreateModel;
 import com.dia.ismdtoolbackend.models.CommentModel;
-import com.dia.ismdtoolbackend.outbox.PostgresIntegrationTestBase;
-import com.dia.ismdtoolbackend.outbox.TransactionTemplateConfig;
 import com.dia.ismdtoolbackend.repository.CommentRepository;
-import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.impl.CommentServiceImpl;
+import com.dia.ismdtoolbackend.testsupport.pg.PgTestData;
+import com.dia.ismdtoolbackend.testsupport.pg.PlainJpaIT;
+import com.dia.ismdtoolbackend.testsupport.pg.PostgresIntegrationTestBase;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.boot.persistence.autoconfigure.EntityScan;
-import org.springframework.context.annotation.Import;
-import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionTemplate;
-
-import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Guards the comment length limit against the real {@code comments.comment} column on Postgres. */
-@DataJpaTest
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@ActiveProfiles("junit")
-@Import({CommentServiceImpl.class, CommentMapperImpl.class, TransactionTemplateConfig.class})
-@EntityScan(basePackageClasses = CommentEntity.class)
-@EnableJpaRepositories(basePackageClasses = CommentRepository.class)
-@Transactional(propagation = Propagation.NOT_SUPPORTED)
+@PlainJpaIT
 class CommentLengthIntegrationTest extends PostgresIntegrationTestBase {
 
     private static final String GRAPH = "https://slovnik.gov.cz/comment-length";
 
     @Autowired private CommentServiceImpl service;
     @Autowired private CommentRepository commentRepository;
-    @Autowired private OntologyMetadataRepository ontologyMetadataRepository;
-    @Autowired private TransactionTemplate txTemplate;
+    @Autowired private PgTestData data;
 
     @BeforeEach
     void setUp() {
-        txTemplate.executeWithoutResult(tx -> {
-            commentRepository.deleteAll();
-            ontologyMetadataRepository.findByGraphName(GRAPH).ifPresent(ontologyMetadataRepository::delete);
-            ontologyMetadataRepository.flush();
-            OntologyMetadataEntity ontology = new OntologyMetadataEntity();
-            ontology.setSlug("comment-length");
-            ontology.setGraphName(GRAPH);
-            ontology.setUserId("user123");
-            ontology.setIsPublished(false);
-            ontology.setCreatedAt(LocalDateTime.now());
-            ontologyMetadataRepository.save(ontology);
-        });
+        data.createOntology("comment-length", GRAPH);
     }
 
     @Test

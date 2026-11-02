@@ -7,9 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Phase D: one deviation model serves both cases, so it must say which case it is holding and what it was
@@ -38,11 +36,12 @@ class DeviationSourceTagTest {
         PublishedConceptDeviationModel deviation = comparator.compareConceptDetails(
                 concept("Můj název"), concept("Publikovaný název"), SnapshotOrigin.WORKING_COPY, NKD_IRI);
 
-        assertEquals(SnapshotOrigin.WORKING_COPY, deviation.getOrigin());
-        assertNotNull(deviation.getSource());
-        assertEquals(NKD_IRI, deviation.getSource().getIri());
-        assertEquals("Publikovaný název", deviation.getSource().getLabel(),
-                "label comes from the NKD side, not the local one");
+        assertThat(deviation.getOrigin()).isEqualTo(SnapshotOrigin.WORKING_COPY);
+        assertThat(deviation.getSource()).isNotNull();
+        assertThat(deviation.getSource().getIri()).isEqualTo(NKD_IRI);
+        assertThat(deviation.getSource().getLabel())
+                .as("label comes from the NKD side, not the local one")
+                .isEqualTo("Publikovaný název");
     }
 
     @Test
@@ -50,9 +49,9 @@ class DeviationSourceTagTest {
         PublishedConceptDeviationModel deviation = comparator.compareConceptDetails(
                 concept("Uložená kopie"), concept("Živé NKD"), SnapshotOrigin.LINK_TARGET, NKD_IRI);
 
-        assertEquals(SnapshotOrigin.LINK_TARGET, deviation.getOrigin());
-        assertEquals(NKD_IRI, deviation.getSource().getIri());
-        assertEquals("Živé NKD", deviation.getSource().getLabel());
+        assertThat(deviation.getOrigin()).isEqualTo(SnapshotOrigin.LINK_TARGET);
+        assertThat(deviation.getSource().getIri()).isEqualTo(NKD_IRI);
+        assertThat(deviation.getSource().getLabel()).isEqualTo("Živé NKD");
     }
 
     @Test
@@ -67,9 +66,9 @@ class DeviationSourceTagTest {
         PublishedConceptDeviationModel tagged = comparator.compareConceptDetails(
                 local, published, SnapshotOrigin.WORKING_COPY, NKD_IRI);
 
-        assertEquals(untagged.getStatus(), tagged.getStatus());
-        assertEquals(untagged.getDefinition().getLocalValue(), tagged.getDefinition().getLocalValue());
-        assertEquals(untagged.getDefinition().getPublishedValue(), tagged.getDefinition().getPublishedValue());
+        assertThat(tagged.getStatus()).isEqualTo(untagged.getStatus());
+        assertThat(tagged.getDefinition().getLocalValue()).isEqualTo(untagged.getDefinition().getLocalValue());
+        assertThat(tagged.getDefinition().getPublishedValue()).isEqualTo(untagged.getDefinition().getPublishedValue());
     }
 
     @Test
@@ -80,7 +79,7 @@ class DeviationSourceTagTest {
         PublishedConceptDeviationModel deviation = comparator.compareConceptDetails(
                 concept("Můj název"), unnamed, SnapshotOrigin.WORKING_COPY, NKD_IRI);
 
-        assertNull(deviation.getSource().getLabel());
-        assertEquals(NKD_IRI, deviation.getSource().getIri());
+        assertThat(deviation.getSource().getLabel()).isNull();
+        assertThat(deviation.getSource().getIri()).isEqualTo(NKD_IRI);
     }
 }

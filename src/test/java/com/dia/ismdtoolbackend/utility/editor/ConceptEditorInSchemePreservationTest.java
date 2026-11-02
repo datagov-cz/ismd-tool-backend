@@ -1,6 +1,5 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
-import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.models.NameModel;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
@@ -8,8 +7,7 @@ import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.SKOS;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.when;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Editing a concept must never silently drop {@code skos:inScheme} — without
@@ -36,22 +34,20 @@ class ConceptEditorInSchemePreservationTest extends ConceptEditorTestBase {
         existing.addProperty(inScheme, scheme);
 
         NameModel newName = createNameModel("cs", "New name");
-        when(classConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
-        when(classConceptEditModel.getNameModel()).thenReturn(newName);
-        when(classConceptEditModel.getIdentifier()).thenReturn(null);
-        when(classConceptEditModel.getIsPublic()).thenReturn(null);
-        when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
+        classConceptEditModel.setNameModel(newName);
 
         ConceptEditor.EditResult result = conceptEditor.editConcept(oldIri, classConceptEditModel, model, ONTOLOGY);
 
-        assertTrue(result.iriChanged, "Rename precondition: IRI should have changed");
+        assertThat(result.newConceptIRI).isEqualTo(ONTOLOGY + "/pojem/new-name");
 
         Resource renamed = model.getResource(result.newConceptIRI);
-        assertTrue(renamed.hasProperty(inScheme, scheme),
-                "skos:inScheme must survive a concept rename — the resolver depends on it");
+        assertThat(renamed.hasProperty(inScheme, scheme))
+                .as("skos:inScheme must survive a concept rename — the resolver depends on it")
+                .isTrue();
 
         Resource oldResource = model.getResource(oldIri);
-        assertFalse(oldResource.hasProperty(inScheme),
-                "Old IRI must no longer carry skos:inScheme after rename");
+        assertThat(oldResource.hasProperty(inScheme))
+                .as("Old IRI must no longer carry skos:inScheme after rename")
+                .isFalse();
     }
 }

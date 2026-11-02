@@ -11,7 +11,7 @@ import java.util.Map;
 
 import static com.dia.constants.VocabularyConstants.*;
 import static com.dia.ismdtoolbackend.utility.exporter.RdfTestModelFactory.*;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 @DisplayName("ConceptJsonMapper - Metadata Properties (A104/L111)")
 class ConceptMetadataPropertyTest {
@@ -33,8 +33,8 @@ class ConceptMetadataPropertyTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertTrue(result.containsKey(JE_PPDF));
-        assertEquals(true, result.get(JE_PPDF));
+        assertThat(result).containsKey(JE_PPDF);
+        assertThat(result.get(JE_PPDF)).isEqualTo(true);
     }
 
     @Test
@@ -47,8 +47,8 @@ class ConceptMetadataPropertyTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertTrue(result.containsKey(JE_PPDF));
-        assertEquals(false, result.get(JE_PPDF));
+        assertThat(result).containsKey(JE_PPDF);
+        assertThat(result.get(JE_PPDF)).isEqualTo(false);
     }
 
     @Test
@@ -61,8 +61,8 @@ class ConceptMetadataPropertyTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertTrue(result.containsKey(AGENDA));
-        assertEquals("A123 - Evidence obyvatel", result.get(AGENDA));
+        assertThat(result).containsKey(AGENDA);
+        assertThat(result.get(AGENDA)).isEqualTo("A123 - Evidence obyvatel");
     }
 
     @Test
@@ -75,8 +75,8 @@ class ConceptMetadataPropertyTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertTrue(result.containsKey(AIS));
-        assertEquals("ISEO", result.get(AIS));
+        assertThat(result).containsKey(AIS);
+        assertThat(result.get(AIS)).isEqualTo("ISEO");
     }
 
     @Test
@@ -90,8 +90,8 @@ class ConceptMetadataPropertyTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertTrue(result.containsKey(AIS));
-        assertEquals("https://rpp-opendata.egon.gov.cz/ais/123", result.get(AIS));
+        assertThat(result).containsKey(AIS);
+        assertThat(result.get(AIS)).isEqualTo("https://rpp-opendata.egon.gov.cz/ais/123");
     }
 
     @Test
@@ -104,10 +104,10 @@ class ConceptMetadataPropertyTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertTrue(result.containsKey(USTANOVENI_NEVEREJNOST));
+        assertThat(result).containsKey(USTANOVENI_NEVEREJNOST);
         @SuppressWarnings("unchecked")
         List<String> values = (List<String>) result.get(USTANOVENI_NEVEREJNOST);
-        assertTrue(values.contains("https://zakon.example.org/sb/111-2009/par/5"));
+        assertThat(values).contains("https://zakon.example.org/sb/111-2009/par/5");
     }
 
     @Test
@@ -126,7 +126,7 @@ class ConceptMetadataPropertyTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertEquals(List.of(shared, canonicalOnly), result.get(USTANOVENI_NEVEREJNOST));
+        assertThat(result.get(USTANOVENI_NEVEREJNOST)).isEqualTo(List.of(shared, canonicalOnly));
     }
 
     @Test
@@ -138,10 +138,10 @@ class ConceptMetadataPropertyTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertFalse(result.containsKey(JE_PPDF));
-        assertFalse(result.containsKey(AGENDA));
-        assertFalse(result.containsKey(AIS));
-        assertFalse(result.containsKey(USTANOVENI_NEVEREJNOST));
+        assertThat(result).doesNotContainKey(JE_PPDF);
+        assertThat(result).doesNotContainKey(AGENDA);
+        assertThat(result).doesNotContainKey(AIS);
+        assertThat(result).doesNotContainKey(USTANOVENI_NEVEREJNOST);
     }
 
     @Test
@@ -155,9 +155,9 @@ class ConceptMetadataPropertyTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertEquals(true, result.get(JE_PPDF));
-        assertEquals("A123", result.get(AGENDA));
-        assertEquals("ISEO", result.get(AIS));
-        assertTrue(result.containsKey(USTANOVENI_NEVEREJNOST));
+        assertThat(result.get(JE_PPDF)).isEqualTo(true);
+        assertThat(result.get(AGENDA)).isEqualTo("A123");
+        assertThat(result.get(AIS)).isEqualTo("ISEO");
+        assertThat(result).containsKey(USTANOVENI_NEVEREJNOST);
     }
 }

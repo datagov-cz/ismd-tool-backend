@@ -6,18 +6,21 @@ import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.service.NkdSnapshotService;
+import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
+import org.apache.jena.rdf.model.Statement;
+import org.apache.jena.vocabulary.RDFS;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.mockito.junit.jupiter.MockitoSettings;
-import org.mockito.quality.Strictness;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -38,7 +41,6 @@ import static org.mockito.Mockito.when;
  * {@code warmOwner}'s body.
  */
 @ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT)
 class NkdSnapshotOwnerWarmerTest {
 
     private static final String GRAPH = "https://example.org/slovnik/mestys";
@@ -71,19 +73,25 @@ class NkdSnapshotOwnerWarmerTest {
     void warmOwner_stampsOwnerUpdatedAt_whenRdfActuallyChanged() {
         LocalDateTime before = LocalDateTime.now().minusDays(1);
         owner.setUpdatedAt(before);
+        Model m = ModelFactory.createDefaultModel();
+        Statement link = m.createStatement(m.createResource(OWNER_IRI), RDFS.subClassOf, m.createResource(NKD_IRI));
+        Statement staleLabel = m.createStatement(m.createResource(NKD_IRI), RDFS.label, "stará kopie");
         doAnswer(inv -> {
             OwnerChangeSet cs = inv.getArgument(3);
-            cs.toAdd.add(ModelFactory.createDefaultModel().createStatement(
-                    ModelFactory.createDefaultModel().createResource(OWNER_IRI),
-                    org.apache.jena.vocabulary.RDFS.subClassOf,
-                    ModelFactory.createDefaultModel().createResource(NKD_IRI)));
+            cs.toAdd.add(link);
+            cs.toRemove.add(staleLabel);
             return null;
-        }).when(nkdSnapshotService).refreshOrSeedForWarming(eq(owner), eq(NKD_IRI), anyString(), any());
+        }).when(nkdSnapshotService).refreshOrSeedForWarming(
+                eq(owner), eq(NKD_IRI), eq(SnapshotLinkType.BROADER_CLASS.value()), any());
 
         boolean delta = warmer.warmOwner(GRAPH, owner, oneTarget());
 
         assertThat(delta).isTrue();
-        verify(outboxWriter).enqueueUpsert(eq(GRAPH), eq(OWNER_IRI), any(), any());
+        ArgumentCaptor<Set<Statement>> removed = ArgumentCaptor.captor();
+        ArgumentCaptor<Set<Statement>> added = ArgumentCaptor.captor();
+        verify(outboxWriter).enqueueUpsert(eq(GRAPH), eq(OWNER_IRI), removed.capture(), added.capture());
+        assertThat(removed.getValue()).containsExactly(staleLabel);
+        assertThat(added.getValue()).containsExactly(link);
         verify(conceptMetadataRepository).save(owner);
         assertThat(owner.getUpdatedAt())
                 .as("stale-base fingerprint moves with the RDF the warm just wrote").isAfter(before);

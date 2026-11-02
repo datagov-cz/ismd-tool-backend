@@ -237,8 +237,7 @@ class OntologyDetailExtractorRangeResolutionTest {
 
     /**
      * The {@code bydlí-na} relationship has domain=osoba, range=adresa. The RANGE class
-     * (adresa) must list that relationship — regression for the bug where a class only
-     * surfaced relationships where it was the domain. Exercises the ConceptData (JSON) path.
+     * (adresa) lists that relationship, as the domain class does. Exercises the ConceptData (JSON) path.
      */
     @Test
     void conceptDataPath_rangeClass_listsRelationshipWhereItIsRange() {

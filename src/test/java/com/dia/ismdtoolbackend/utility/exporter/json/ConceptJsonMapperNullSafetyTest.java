@@ -8,7 +8,8 @@ import org.junit.jupiter.api.Test;
 import com.dia.ismdtoolbackend.exception.ModelProcessingException;
 
 import static com.dia.ismdtoolbackend.utility.exporter.RdfTestModelFactory.*;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DisplayName("ConceptJsonMapper - Null/Empty Input Safety")
 class ConceptJsonMapperNullSafetyTest {
@@ -25,16 +26,16 @@ class ConceptJsonMapperNullSafetyTest {
     void processAllConcepts_nullModel_throws() {
         OntModel model = createDefaultModel();
         ModelStructure structure = createModelStructure(model);
-        assertThrows(ModelProcessingException.class,
-                () -> processor.processAllConcepts(null, structure));
+        assertThatThrownBy(() -> processor.processAllConcepts(null, structure))
+                .isInstanceOf(ModelProcessingException.class);
     }
 
     @Test
     @DisplayName("processAllConcepts throws on null ModelStructure")
     void processAllConcepts_nullStructure_throws() {
         OntModel model = createDefaultModel();
-        assertThrows(ModelProcessingException.class,
-                () -> processor.processAllConcepts(model, null));
+        assertThatThrownBy(() -> processor.processAllConcepts(model, null))
+                .isInstanceOf(ModelProcessingException.class);
     }
 
     @Test
@@ -42,16 +43,16 @@ class ConceptJsonMapperNullSafetyTest {
     void processConceptByIri_nullModel_throws() {
         OntModel model = createDefaultModel();
         ModelStructure structure = createModelStructure(model);
-        assertThrows(ModelProcessingException.class,
-                () -> processor.processConceptByIri(null, structure, "http://example.org/x"));
+        assertThatThrownBy(() -> processor.processConceptByIri(null, structure, "http://example.org/x"))
+                .isInstanceOf(ModelProcessingException.class);
     }
 
     @Test
     @DisplayName("processConceptByIri throws on null ModelStructure")
     void processConceptByIri_nullStructure_throws() {
         OntModel model = createDefaultModel();
-        assertThrows(ModelProcessingException.class,
-                () -> processor.processConceptByIri(model, null, "http://example.org/x"));
+        assertThatThrownBy(() -> processor.processConceptByIri(model, null, "http://example.org/x"))
+                .isInstanceOf(ModelProcessingException.class);
     }
 
     @Test
@@ -59,8 +60,8 @@ class ConceptJsonMapperNullSafetyTest {
     void processConceptByIri_nullIri_throws() {
         OntModel model = createDefaultModel();
         ModelStructure structure = createModelStructure(model);
-        assertThrows(ModelProcessingException.class,
-                () -> processor.processConceptByIri(model, structure, null));
+        assertThatThrownBy(() -> processor.processConceptByIri(model, structure, null))
+                .isInstanceOf(ModelProcessingException.class);
     }
 
     @Test
@@ -68,8 +69,8 @@ class ConceptJsonMapperNullSafetyTest {
     void processConceptByIri_emptyIri_throws() {
         OntModel model = createDefaultModel();
         ModelStructure structure = createModelStructure(model);
-        assertThrows(ModelProcessingException.class,
-                () -> processor.processConceptByIri(model, structure, ""));
+        assertThatThrownBy(() -> processor.processConceptByIri(model, structure, ""))
+                .isInstanceOf(ModelProcessingException.class);
     }
 
     @Test
@@ -77,8 +78,8 @@ class ConceptJsonMapperNullSafetyTest {
     void processConceptByIri_nonConceptIri_throws() {
         OntModel model = createDefaultModel();
         ModelStructure structure = createModelStructure(model);
-        assertThrows(ModelProcessingException.class,
-                () -> processor.processConceptByIri(model, structure, "http://example.org/not-a-concept"));
+        assertThatThrownBy(() -> processor.processConceptByIri(model, structure, "http://example.org/not-a-concept"))
+                .isInstanceOf(ModelProcessingException.class);
     }
 
     @Test
@@ -87,8 +88,8 @@ class ConceptJsonMapperNullSafetyTest {
         OntModel model = createDefaultModel();
         ModelStructure structure = createModelStructure(model);
         ConceptData data = processor.processAllConcepts(model, structure);
-        assertNotNull(data);
-        assertEquals(0, data.getTotalConceptCount());
-        assertTrue(data.getConcepts().isEmpty());
+        assertThat(data).isNotNull();
+        assertThat(data.getTotalConceptCount()).isEqualTo(0);
+        assertThat(data.getConcepts()).isEmpty();
     }
 }

@@ -5,8 +5,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 @DisplayName("ConceptValidationUtil - code list (číselník)")
 class ConceptValidationUtilCodeListTest {
@@ -22,38 +22,44 @@ class ConceptValidationUtilCodeListTest {
 
         @Test
         void acceptsBothPresent() {
-            assertDoesNotThrow(() ->
-                    ConceptValidationUtil.validateCodeListCompleteness(CODE_LIST_IRI, NKOD_DATASET));
+            assertThatCode(() ->
+                    ConceptValidationUtil.validateCodeListCompleteness(CODE_LIST_IRI, NKOD_DATASET))
+                    .doesNotThrowAnyException();
         }
 
         @Test
         void acceptsBothAbsent() {
-            assertDoesNotThrow(() ->
-                    ConceptValidationUtil.validateCodeListCompleteness(null, null));
+            assertThatCode(() ->
+                    ConceptValidationUtil.validateCodeListCompleteness(null, null))
+                    .doesNotThrowAnyException();
         }
 
         @Test
         void acceptsBothBlank() {
-            assertDoesNotThrow(() ->
-                    ConceptValidationUtil.validateCodeListCompleteness("   ", ""));
+            assertThatCode(() ->
+                    ConceptValidationUtil.validateCodeListCompleteness("   ", ""))
+                    .doesNotThrowAnyException();
         }
 
         @Test
         void rejectsIriWithoutDataset() {
-            assertThrows(OntologyException.class, () ->
-                    ConceptValidationUtil.validateCodeListCompleteness(CODE_LIST_IRI, null));
+            assertThatThrownBy(() ->
+                    ConceptValidationUtil.validateCodeListCompleteness(CODE_LIST_IRI, null))
+                    .isInstanceOf(OntologyException.class);
         }
 
         @Test
         void rejectsDatasetWithoutIri() {
-            assertThrows(OntologyException.class, () ->
-                    ConceptValidationUtil.validateCodeListCompleteness(null, NKOD_DATASET));
+            assertThatThrownBy(() ->
+                    ConceptValidationUtil.validateCodeListCompleteness(null, NKOD_DATASET))
+                    .isInstanceOf(OntologyException.class);
         }
 
         @Test
         void treatsBlankDatasetAsAbsent() {
-            assertThrows(OntologyException.class, () ->
-                    ConceptValidationUtil.validateCodeListCompleteness(CODE_LIST_IRI, "   "));
+            assertThatThrownBy(() ->
+                    ConceptValidationUtil.validateCodeListCompleteness(CODE_LIST_IRI, "   "))
+                    .isInstanceOf(OntologyException.class);
         }
     }
 
@@ -63,38 +69,43 @@ class ConceptValidationUtilCodeListTest {
 
         @Test
         void acceptsRawUtf8DatasetIri() {
-            assertDoesNotThrow(() -> ConceptValidationUtil.validateCodeListDataset(NKOD_DATASET));
+            assertThatCode(() -> ConceptValidationUtil.validateCodeListDataset(NKOD_DATASET))
+                    .doesNotThrowAnyException();
         }
 
         @Test
         void acceptsPercentEncodedDatasetIri() {
-            assertDoesNotThrow(() -> ConceptValidationUtil.validateCodeListDataset(
-                    NKOD_DATASET.replace("datové-sady", "datov%C3%A9-sady")));
+            assertThatCode(() -> ConceptValidationUtil.validateCodeListDataset(
+                    NKOD_DATASET.replace("datové-sady", "datov%C3%A9-sady")))
+                    .doesNotThrowAnyException();
         }
 
         @Test
         void toleratesNullAndBlank() {
-            assertDoesNotThrow(() -> ConceptValidationUtil.validateCodeListDataset(null));
-            assertDoesNotThrow(() -> ConceptValidationUtil.validateCodeListDataset("  "));
+            assertThatCode(() -> ConceptValidationUtil.validateCodeListDataset(null)).doesNotThrowAnyException();
+            assertThatCode(() -> ConceptValidationUtil.validateCodeListDataset("  ")).doesNotThrowAnyException();
         }
 
         @Test
         void rejectsADatasetOutsideNkod() {
-            assertThrows(OntologyException.class, () ->
-                    ConceptValidationUtil.validateCodeListDataset("https://not-nkod.example/dataset/x"));
+            assertThatThrownBy(() ->
+                    ConceptValidationUtil.validateCodeListDataset("https://not-nkod.example/dataset/x"))
+                    .isInstanceOf(OntologyException.class);
         }
 
         @Test
         void rejectsAnEncodedIriThatIsNotAnNkodDataset() {
-            assertThrows(OntologyException.class, () ->
+            assertThatThrownBy(() ->
                     ConceptValidationUtil.validateCodeListDataset(
-                            "https://data.gov.cz/zdroj/datov%C3%A9-s%C3%A1dy/x"));
+                            "https://data.gov.cz/zdroj/datov%C3%A9-s%C3%A1dy/x"))
+                    .isInstanceOf(OntologyException.class);
         }
 
         @Test
         void rejectsAMalformedEscape() {
-            assertThrows(OntologyException.class, () ->
-                    ConceptValidationUtil.validateCodeListDataset("https://data.gov.cz/zdroj/datov%zz-sady/x"));
+            assertThatThrownBy(() ->
+                    ConceptValidationUtil.validateCodeListDataset("https://data.gov.cz/zdroj/datov%zz-sady/x"))
+                    .isInstanceOf(OntologyException.class);
         }
     }
 
@@ -104,31 +115,34 @@ class ConceptValidationUtilCodeListTest {
 
         @Test
         void acceptsRawUtf8CzechIri() {
-            assertDoesNotThrow(() -> ConceptValidationUtil.validateCodeListIri(CODE_LIST_IRI));
+            assertThatCode(() -> ConceptValidationUtil.validateCodeListIri(CODE_LIST_IRI)).doesNotThrowAnyException();
         }
 
         @Test
         void toleratesNullAndBlank() {
-            assertDoesNotThrow(() -> ConceptValidationUtil.validateCodeListIri(null));
-            assertDoesNotThrow(() -> ConceptValidationUtil.validateCodeListIri("  "));
+            assertThatCode(() -> ConceptValidationUtil.validateCodeListIri(null)).doesNotThrowAnyException();
+            assertThatCode(() -> ConceptValidationUtil.validateCodeListIri("  ")).doesNotThrowAnyException();
         }
 
         @Test
         void rejectsNonAbsoluteIri() {
-            assertThrows(OntologyException.class, () ->
-                    ConceptValidationUtil.validateCodeListIri("typy-turistických-cílů"));
+            assertThatThrownBy(() ->
+                    ConceptValidationUtil.validateCodeListIri("typy-turistických-cílů"))
+                    .isInstanceOf(OntologyException.class);
         }
 
         @Test
         void rejectsIriContainingWhitespace() {
-            assertThrows(OntologyException.class, () ->
-                    ConceptValidationUtil.validateCodeListIri("https://data.mvcr.gov.cz/a b"));
+            assertThatThrownBy(() ->
+                    ConceptValidationUtil.validateCodeListIri("https://data.mvcr.gov.cz/a b"))
+                    .isInstanceOf(OntologyException.class);
         }
 
         @Test
         void rejectsNonHttpScheme() {
-            assertThrows(OntologyException.class, () ->
-                    ConceptValidationUtil.validateCodeListIri("ftp://data.mvcr.gov.cz/x"));
+            assertThatThrownBy(() ->
+                    ConceptValidationUtil.validateCodeListIri("ftp://data.mvcr.gov.cz/x"))
+                    .isInstanceOf(OntologyException.class);
         }
     }
 }

@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.IsmdToolBackendApplication;
 import com.dia.ismdtoolbackend.client.ValidationClient;
+import com.dia.ismdtoolbackend.config.AsyncConfig;
 import com.dia.ismdtoolbackend.config.JpaAuditingConfig;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
@@ -11,13 +12,12 @@ import com.dia.ismdtoolbackend.exception.OntologyUploadInProgressException;
 import com.dia.ismdtoolbackend.exception.OntologyUploadMetadataException;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapperImpl;
-import com.dia.ismdtoolbackend.outbox.PostgresIntegrationTestBase;
-import com.dia.ismdtoolbackend.outbox.TransactionTemplateConfig;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
-import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector;
+import com.dia.ismdtoolbackend.testsupport.pg.PostgresIntegrationTestBase;
+import com.dia.ismdtoolbackend.testsupport.pg.TransactionTemplateConfig;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
 import org.apache.jena.ontology.OntModel;
@@ -34,6 +34,8 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -56,10 +58,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.reset;
-import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -75,7 +74,7 @@ import static org.mockito.Mockito.when;
 @ActiveProfiles("junit")
 @EntityScan(basePackageClasses = ConceptMetadataEntity.class)
 @EnableJpaRepositories(basePackageClasses = ConceptMetadataRepository.class)
-@Import({JpaAuditingConfig.class, TransactionTemplateConfig.class,
+@Import({JpaAuditingConfig.class, TransactionTemplateConfig.class, AsyncConfig.class,
         OntologyUploadServiceImpl.class, UploadFileReader.class, UploadModelNormalizer.class, UploadVocabularyLock.class,
         UploadConceptRoleResolver.class, UploadConceptGate.class, UploadMetadataWriter.class,
         UploadValidationRunner.class, OntologyUploadTransactions.class,
@@ -95,23 +94,17 @@ class OntologyUploadTransactionIntegrationTest extends PostgresIntegrationTestBa
     @Autowired private OntologyUploadServiceImpl uploadService;
     @Autowired private OntologyMetadataRepository ontologyRepository;
     @Autowired private ConceptMetadataRepository conceptRepository;
-    @Autowired private ValidationReportRepository validationReportRepository;
     @Autowired private TransactionTemplate txTemplate;
-    @Autowired private JenaTDB2Repository jenaTDB2Repository;
-    @Autowired private ValidationClient validationClient;
-    @Autowired private PublishedResourceUtil publishedResourceUtil;
-    @Autowired private OntologyMetadataMapper ontologyMetadataMapper;
+    @MockitoBean private JenaTDB2Repository jenaTDB2Repository;
+    @MockitoBean private ValidationClient validationClient;
+    @MockitoBean private PublishedResourceUtil publishedResourceUtil;
+    /** A spy on the real mapper, so a test can make one {@code toDto} call fail. */
+    @MockitoSpyBean private OntologyMetadataMapper ontologyMetadataMapper;
 
     @BeforeEach
     void setUp() {
-        reset(jenaTDB2Repository, validationClient, publishedResourceUtil, ontologyMetadataMapper);
         when(publishedResourceUtil.checkPublishedResourcesInNKD(any(), any())).thenReturn(List.of());
         when(validationClient.requestValidationLenient(anyString(), anyString())).thenReturn(Optional.empty());
-        txTemplate.executeWithoutResult(tx -> {
-            validationReportRepository.deleteAllInBatch();
-            conceptRepository.deleteAllInBatch();
-            ontologyRepository.deleteAllInBatch();
-        });
     }
 
     @Test
@@ -270,20 +263,8 @@ class OntologyUploadTransactionIntegrationTest extends PostgresIntegrationTestBa
     @TestConfiguration
     static class Beans {
 
-        @Bean JenaTDB2Repository jenaTDB2Repository() {
-            return mock(JenaTDB2Repository.class);
-        }
-
-        @Bean ValidationClient validationClient() {
-            return mock(ValidationClient.class);
-        }
-
-        @Bean PublishedResourceUtil publishedResourceUtil() {
-            return mock(PublishedResourceUtil.class);
-        }
-
         @Bean OntologyMetadataMapper ontologyMetadataMapper() {
-            return spy(new OntologyMetadataMapperImpl());
+            return new OntologyMetadataMapperImpl();
         }
 
         @Bean OntologyDetailExtractor ontologyDetailExtractor(ConceptMetadataRepository conceptRepository) {

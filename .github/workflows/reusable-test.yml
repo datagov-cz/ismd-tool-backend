@@ -9,20 +9,30 @@ on:
         type: boolean
         default: true
       coverage_line:
-        description: "JaCoCo line coverage minimum ratio (0.00-1.00)"
+        description: "Override the JaCoCo line minimum (0.00-1.00); empty uses pom.xml"
         required: false
         type: string
-        default: "0.55"
+        default: ""
+      coverage_instruction:
+        description: "Override the JaCoCo instruction minimum (0.00-1.00); empty uses pom.xml"
+        required: false
+        type: string
+        default: ""
       coverage_branch:
-        description: "JaCoCo branch coverage minimum ratio (0.00-1.00)"
+        description: "Override the JaCoCo branch minimum (0.00-1.00); empty uses pom.xml"
         required: false
         type: string
-        default: "0.45"
+        default: ""
       coverage_complexity:
-        description: "JaCoCo complexity coverage minimum ratio (0.00-1.00)"
+        description: "Override the JaCoCo complexity minimum (0.00-1.00); empty uses pom.xml"
         required: false
         type: string
-        default: "0.45"
+        default: ""
+      coverage_method:
+        description: "Override the JaCoCo method minimum (0.00-1.00); empty uses pom.xml"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -56,17 +66,24 @@ jobs:
             ${{ runner.os }}-maven-
 
       - name: Run tests with coverage
+        # Thresholds live in pom.xml; an input only overrides one when it is set.
+        env:
+          COVERAGE_LINE: ${{ inputs.coverage_line }}
+          COVERAGE_INSTRUCTION: ${{ inputs.coverage_instruction }}
+          COVERAGE_BRANCH: ${{ inputs.coverage_branch }}
+          COVERAGE_COMPLEXITY: ${{ inputs.coverage_complexity }}
+          COVERAGE_METHOD: ${{ inputs.coverage_method }}
         run: |
+          overrides=()
+          [ -n "$COVERAGE_LINE" ] && overrides+=("-Djacoco.line.minimum=$COVERAGE_LINE")
+          [ -n "$COVERAGE_INSTRUCTION" ] && overrides+=("-Djacoco.instruction.minimum=$COVERAGE_INSTRUCTION")
+          [ -n "$COVERAGE_BRANCH" ] && overrides+=("-Djacoco.branch.minimum=$COVERAGE_BRANCH")
+          [ -n "$COVERAGE_COMPLEXITY" ] && overrides+=("-Djacoco.complexity.minimum=$COVERAGE_COMPLEXITY")
+          [ -n "$COVERAGE_METHOD" ] && overrides+=("-Djacoco.method.minimum=$COVERAGE_METHOD")
           if [ "${{ inputs.enforce_coverage }}" = "true" ]; then
-            ./mvnw clean verify \
-              -Djacoco.line.minimum=${{ inputs.coverage_line }} \
-              -Djacoco.branch.minimum=${{ inputs.coverage_branch }} \
-              -Djacoco.complexity.minimum=${{ inputs.coverage_complexity }}
+            ./mvnw clean verify "${overrides[@]}"
           else
-            ./mvnw clean test jacoco:report \
-              -Djacoco.line.minimum=${{ inputs.coverage_line }} \
-              -Djacoco.branch.minimum=${{ inputs.coverage_branch }} \
-              -Djacoco.complexity.minimum=${{ inputs.coverage_complexity }}
+            ./mvnw clean test jacoco:report
           fi
 
       - name: Upload JaCoCo coverage report

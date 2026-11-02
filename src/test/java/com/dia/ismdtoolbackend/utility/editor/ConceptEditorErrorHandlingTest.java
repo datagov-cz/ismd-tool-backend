@@ -1,99 +1,82 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
-import com.dia.ismdtoolbackend.models.NameModel;
-import com.dia.ismdtoolbackend.enums.ConceptType;
-import com.dia.utility.URIGenerator;
-import org.apache.jena.rdf.model.Property;
-import org.apache.jena.rdf.model.Resource;
-import org.apache.jena.vocabulary.RDF;
-import org.apache.jena.vocabulary.SKOS;
+import com.dia.ismdtoolbackend.testsupport.fixtures.Texts;
+import com.dia.ismdtoolbackend.testsupport.rdf.Ttl;
+import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.ModelFactory;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.when;
 import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.testsupport.rdf.Ttl.literals;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * Z — Generic / error handling tests
- *   Z1 – Error when concept is not found in the model
- *   Z2 – Error when renamed IRI already exists
- *   Z3 – Custom namespace from valid graphName IRI
- */
+/** Rejections and namespace resolution of {@link ConceptEditor#editConcept}. */
 class ConceptEditorErrorHandlingTest extends ConceptEditorTestBase {
 
-    // Z1 – Error when concept is not found in the model
+    private static final String OLD_IRI = "https://slovnik.gov.cz/pojem/old-class";
+    private static final String RENAMED_IRI = DEFAULT_NS + "pojem/id-1";
+
+    private void seedOldClass() {
+        Ttl.add(model, "<" + OLD_IRI + "> a ofn:třída ; skos:prefLabel \"Old name\"@cs .");
+        classConceptEditModel.setNameModel(Texts.name("cs", "New name"));
+        classConceptEditModel.setIdentifier("ID-1");
+    }
+
     @Test
-    void editConcept_ShouldThrowWhenConceptNotFound() {
+    void conceptMissingFromTheModelIsRejected() {
         String missingIri = DEFAULT_NS + "missing-concept";
 
-        assertThrows(IllegalArgumentException.class,
-                () -> conceptEditor.editConcept(missingIri, classConceptEditModel, model, null));
+        assertThatThrownBy(() -> conceptEditor.editConcept(missingIri, classConceptEditModel, model, null))
+                .isExactlyInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Concept with IRI " + missingIri + " not found in the model");
     }
 
-    // Z2 – Error when the renamed IRI is already claimed by another owned concept
     @Test
-    void editConcept_ShouldThrowWhenRenamedIRIAlreadyExists() {
-        String oldIri = "https://slovnik.gov.cz/pojem/old-class";
-        Resource existing = model.createResource(oldIri);
-        existing.addProperty(SKOS.prefLabel, model.createLiteral("Old name", "cs"));
-        existing.addProperty(RDF.type, SKOS.Concept);
+    void renameOntoAnIriClaimedByAnotherOwnedConceptIsRejectedWithoutAWrite() {
+        seedOldClass();
+        Model before = ModelFactory.createDefaultModel().add(model);
 
-        URIGenerator uriGen = new URIGenerator();
-        String conflictingIri = uriGen.generateConceptURI("New name", "ID-1");
-
-        NameModel newName = createNameModel("cs", "New name");
-
-        when(classConceptEditModel.getNameModel()).thenReturn(newName);
-        when(classConceptEditModel.getIdentifier()).thenReturn("ID-1");
-
-        assertThrows(ConceptValidationException.class,
-                () -> conceptEditor.editConcept(oldIri, classConceptEditModel, model, null,
-                        conflictingIri::equals));
+        assertThatThrownBy(() -> conceptEditor.editConcept(OLD_IRI, classConceptEditModel, model, null,
+                RENAMED_IRI::equals))
+                .isExactlyInstanceOf(ConceptValidationException.class)
+                .hasMessage("Pojem se stejným názvem již v ontologii existuje: " + RENAMED_IRI);
+        assertThat(model.isIsomorphicWith(before)).isTrue();
     }
 
-    // Z2b – A rename onto an IRI that merely appears in the graph (a referenced concept or an
-    // NKD snapshot copy, neither of which is an owned concept) is allowed.
     @Test
-    void editConcept_ShouldAllowRenameWhenIriOnlyPresentInModel() {
-        String oldIri = "https://slovnik.gov.cz/pojem/old-class";
-        Resource existing = model.createResource(oldIri);
-        existing.addProperty(SKOS.prefLabel, model.createLiteral("Old name", "cs"));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
-
-        URIGenerator uriGen = new URIGenerator();
-        String referencedIri = uriGen.generateConceptURI("New name", "ID-1");
-        model.createResource(referencedIri).addProperty(RDF.type, SKOS.Concept);
-
-        stubAllClassFieldsNull(classConceptEditModel);
-        when(classConceptEditModel.getNameModel()).thenReturn(createNameModel("cs", "New name"));
-        when(classConceptEditModel.getIdentifier()).thenReturn("ID-1");
+    void renameOntoAnIriThatIsOnlyReferencedInTheGraphIsAllowed() {
+        seedOldClass();
+        Ttl.add(model, "<" + RENAMED_IRI + "> a skos:Concept .");
 
         ConceptEditor.EditResult result = conceptEditor.editConcept(
-                oldIri, classConceptEditModel, model, null, iri -> false);
+                OLD_IRI, classConceptEditModel, model, null, iri -> false);
 
-        assertEquals(referencedIri, result.newConceptIRI);
+        assertThat(result.newConceptIRI).isEqualTo(RENAMED_IRI);
     }
 
-    // Z3 – Custom namespace from valid graphName IRI
     @Test
-    void editConcept_ShouldUseCustomNamespace_WhenGraphNameIsValidIRI() {
-        String conceptIri = DEFAULT_NS + "class-z3";
-        Resource existing = model.createResource(conceptIri);
-        existing.addProperty(SKOS.prefLabel, model.createLiteral("Class z3", "cs"));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
-
-        stubAllClassFieldsNull(classConceptEditModel);
-        when(classConceptEditModel.getInTezaurus()).thenReturn(Boolean.TRUE);
+    void validGraphNameIsTheNamespaceOfVocabularyPredicates() {
+        String conceptIri = DEFAULT_NS + "pojem/třída";
+        Ttl.add(model, "<" + conceptIri + "> a ofn:třída ; skos:prefLabel \"Třída\"@cs .");
+        classConceptEditModel.setInTezaurus(Boolean.TRUE);
 
         conceptEditor.editConcept(conceptIri, classConceptEditModel, model, "https://custom.cz/vocab/");
 
-        Resource updated = model.getResource(conceptIri);
-        Property customInTezaurus = model.createProperty("https://custom.cz/vocab/inTezaurus");
-        assertTrue(updated.hasProperty(customInTezaurus));
-        assertEquals("true", updated.getProperty(customInTezaurus).getObject().asLiteral().getString());
+        assertThat(literals(model, conceptIri, Ttl.property("https://custom.cz/vocab/inTezaurus")))
+                .containsExactly("true");
+        assertThat(model.getResource(conceptIri).hasProperty(Ttl.property(DEFAULT_NS + "inTezaurus"))).isFalse();
+    }
 
-        Property defaultInTezaurus = model.createProperty(DEFAULT_NS + "inTezaurus");
-        assertFalse(updated.hasProperty(defaultInTezaurus));
+    @Test
+    void invalidGraphNameFallsBackToTheDefaultNamespace() {
+        String conceptIri = DEFAULT_NS + "pojem/třída";
+        Ttl.add(model, "<" + conceptIri + "> a ofn:třída ; skos:prefLabel \"Třída\"@cs .");
+        classConceptEditModel.setInTezaurus(Boolean.FALSE);
+
+        conceptEditor.editConcept(conceptIri, classConceptEditModel, model, "not an iri");
+
+        assertThat(literals(model, conceptIri, Ttl.property(DEFAULT_NS + "inTezaurus"))).containsExactly("false");
     }
 }

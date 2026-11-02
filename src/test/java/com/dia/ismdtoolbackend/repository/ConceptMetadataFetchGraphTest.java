@@ -7,8 +7,7 @@ import org.springframework.data.jpa.repository.EntityGraph;
 import java.lang.reflect.Method;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Guards the {@code ontologyMetadata} fetch graph on every finder whose results get mapped through
@@ -35,11 +34,14 @@ class ConceptMetadataFetchGraphTest {
         for (String name : FINDERS_REQUIRING_GRAPH) {
             Method method = findMethod(name);
             EntityGraph graph = method.getAnnotation(EntityGraph.class);
-            assertNotNull(graph, () -> name + " must declare @EntityGraph(attributePaths = \"ontologyMetadata\") — "
+            assertThat(graph)
+                    .as(() -> name + " must declare @EntityGraph(attributePaths = \"ontologyMetadata\") — "
                     + "its rows are mapped through ConceptMetadataMapper, which walks the LAZY "
-                    + "ontologyMetadata proxy and would otherwise issue one SELECT per row");
-            assertEquals(List.of("ontologyMetadata"), List.of(graph.attributePaths()),
-                    () -> name + " must fetch exactly ontologyMetadata");
+                    + "ontologyMetadata proxy and would otherwise issue one SELECT per row")
+                    .isNotNull();
+            assertThat(List.of(graph.attributePaths()))
+                    .as(() -> name + " must fetch exactly ontologyMetadata")
+                    .isEqualTo(List.of("ontologyMetadata"));
         }
     }
 

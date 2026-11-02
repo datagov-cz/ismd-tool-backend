@@ -1,30 +1,19 @@
 package com.dia.ismdtoolbackend.outbox;
 
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
+import com.dia.ismdtoolbackend.testsupport.pg.OutboxEntries;
+import com.dia.ismdtoolbackend.testsupport.pg.OutboxFlowIT;
+import com.dia.ismdtoolbackend.testsupport.pg.OutboxFlowTestBase;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.Statement;
-import org.apache.jena.sys.JenaSystem;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.persistence.autoconfigure.EntityScan;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Import;
-import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 
@@ -37,14 +26,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * strict per-aggregate ordering, idempotent re-apply, FAILED-blocks-its-aggregate, the DELETE_GRAPH
  * barrier, and blank-node rejection.
  */
-@DataJpaTest
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@ActiveProfiles("junit")
-@Import({TransactionTemplateConfig.class, OutboxRelayTest.RelayTestConfig.class})
-@EntityScan(basePackageClasses = OutboxEntry.class)
-@EnableJpaRepositories(basePackageClasses = OutboxEntryRepository.class)
-@Transactional(propagation = Propagation.NOT_SUPPORTED)
-class OutboxRelayTest extends PostgresIntegrationTestBase {
+@OutboxFlowIT
+class OutboxRelayTest extends OutboxFlowTestBase {
 
     private static final String GRAPH = "https://slovnik.gov.cz/g";
     private static final String A = GRAPH + "/pojem/a";
@@ -56,53 +39,7 @@ class OutboxRelayTest extends PostgresIntegrationTestBase {
     @Autowired
     private OutboxEntryRepository repository;
     @Autowired
-    private OutboxConfig config;
-    @Autowired
     private TransactionTemplate txTemplate;
-    @Autowired
-    private InMemoryTdb2 tdb2;
-
-    @BeforeAll
-    static void initJena() {
-        JenaSystem.init();
-    }
-
-    @BeforeEach
-    void resetState() {
-        // The Postgres container is shared by every subclass; start from an empty table.
-        txTemplate.executeWithoutResult(tx -> repository.deleteAll());
-        tdb2.reset();
-        // The OutboxConfig bean is a shared singleton; tests mutate maxAttempts/batchSize. Reset to
-        // defaults each test so mutations can't leak across an undefined JUnit method order.
-        config.setMaxAttempts(10);
-        config.setBatchSize(100);
-    }
-
-    @AfterEach
-    void cleanUp() {
-        txTemplate.executeWithoutResult(tx -> repository.deleteAll());
-    }
-
-    @Test
-    void failedInitialGraphBlocksDifferentAggregatesUntilAdminRetry() {
-        var initial = upsert(GRAPH, Set.of(), Set.of(triple(GRAPH, "Vocabulary")));
-        initial.setOperation(OutboxOperation.CREATE_GRAPH);
-        initial.setStatus(OutboxStatus.FAILED);
-        var saved = save(initial);
-        save(upsert(A, Set.of(), Set.of(triple(A, "A"))));
-        save(upsert(B, Set.of(), Set.of(triple(B, "B"))));
-        assertThat(drain()).isZero();
-        assertThat(tdb2.graphHasData(GRAPH)).isFalse();
-        txTemplate.executeWithoutResult(tx -> {
-            var retry = repository.findById(saved.getId()).orElseThrow();
-            retry.setStatus(OutboxStatus.PENDING);
-            repository.save(retry);
-        });
-        assertThat(drain()).isEqualTo(3);
-        assertThat(graphHas(A, "A")).isTrue();
-        assertThat(graphHas(B, "B")).isTrue();
-        assertThat(drain()).isZero();
-    }
 
     // ---- helpers ----
 
@@ -114,15 +51,9 @@ class OutboxRelayTest extends PostgresIntegrationTestBase {
     }
 
     private OutboxEntry upsert(String aggregate, Set<Statement> remove, Set<Statement> add) {
-        OutboxEntry e = new OutboxEntry();
-        e.setGraphName(GRAPH);
-        e.setAggregateIri(aggregate);
-        e.setOperation(OutboxOperation.UPSERT_CONCEPT);
+        OutboxEntry e = OutboxEntries.pending(GRAPH, aggregate, OutboxOperation.UPSERT_CONCEPT, repository.nextSeq());
         e.setDeleteTriples(OutboxTriples.toNTriples(remove));
         e.setInsertTriples(OutboxTriples.toNTriples(add));
-        e.setStatus(OutboxStatus.PENDING);
-        e.setCreatedAt(Instant.now());
-        e.setSeq(repository.nextSeq());
         return e;
     }
 
@@ -179,6 +110,27 @@ class OutboxRelayTest extends PostgresIntegrationTestBase {
     // ---- tests ----
 
     @Test
+    void failedInitialGraphBlocksDifferentAggregatesUntilAdminRetry() {
+        var initial = upsert(GRAPH, Set.of(), Set.of(triple(GRAPH, "Vocabulary")));
+        initial.setOperation(OutboxOperation.CREATE_GRAPH);
+        initial.setStatus(OutboxStatus.FAILED);
+        var saved = save(initial);
+        save(upsert(A, Set.of(), Set.of(triple(A, "A"))));
+        save(upsert(B, Set.of(), Set.of(triple(B, "B"))));
+        assertThat(drain()).isZero();
+        assertThat(tdb2.graphHasData(GRAPH)).isFalse();
+        txTemplate.executeWithoutResult(tx -> {
+            var retry = repository.findById(saved.getId()).orElseThrow();
+            retry.setStatus(OutboxStatus.PENDING);
+            repository.save(retry);
+        });
+        assertThat(drain()).isEqualTo(3);
+        assertThat(graphHas(A, "A")).isTrue();
+        assertThat(graphHas(B, "B")).isTrue();
+        assertThat(drain()).isZero();
+    }
+
+    @Test
     void lostUpdate_twoConceptsSameGraph_bothSurvive() {
         save(upsert(A, Set.of(), Set.of(triple(A, "Alpha"))));
         save(upsert(B, Set.of(), Set.of(triple(B, "Beta"))));
@@ -213,7 +165,7 @@ class OutboxRelayTest extends PostgresIntegrationTestBase {
     // broken gate would apply the second row early / out of order; this test fails for that reason.
     @Test
     void sameAggregate_gatedRow_leftPendingThenAppliedNextPass() {
-        config.setBatchSize(1);
+        outboxConfig.setBatchSize(1);
         OutboxEntry first = save(upsert(A, Set.of(), Set.of(triple(A, "v1"))));
         OutboxEntry second = save(upsert(A, Set.of(triple(A, "v1")), Set.of(triple(A, "v2"))));
 
@@ -237,7 +189,7 @@ class OutboxRelayTest extends PostgresIntegrationTestBase {
     // stays PENDING, not FAILED), then assert the later row did NOT apply out of order.
     @Test
     void sameAggregate_laterRowGated_whenEarlierStuckPending() {
-        config.setMaxAttempts(5); // earlier row fails but stays PENDING (not FAILED) this pass
+        outboxConfig.setMaxAttempts(5); // earlier row fails but stays PENDING (not FAILED) this pass
         tdb2.failApplyForGraph(GRAPH);
         OutboxEntry first = save(upsert(A, Set.of(), Set.of(triple(A, "v1"))));
         OutboxEntry second = save(upsert(A, Set.of(), Set.of(triple(A, "v2"))));
@@ -270,7 +222,7 @@ class OutboxRelayTest extends PostgresIntegrationTestBase {
 
     @Test
     void failure_blocksOwnAggregateNotOthers() {
-        config.setMaxAttempts(1); // fail fast to FAILED
+        outboxConfig.setMaxAttempts(1); // fail fast to FAILED
         tdb2.failApplyForGraph(GRAPH + "-broken");
 
         OutboxEntry bad = save(upsertInGraph());
@@ -289,7 +241,7 @@ class OutboxRelayTest extends PostgresIntegrationTestBase {
     // could pass even if the barrier wrongly keyed on FAILED; this one cannot.)
     @Test
     void deleteGraphBarrier_blockedWhileEarlierEditPending_appliesAfterItIsDone() {
-        config.setBatchSize(1);
+        outboxConfig.setBatchSize(1);
         OutboxEntry edit = save(upsert(A, Set.of(), Set.of(triple(A, "Edit"))));
         OutboxEntry del = save(deleteGraph());
 
@@ -311,7 +263,7 @@ class OutboxRelayTest extends PostgresIntegrationTestBase {
     // fail, attempts<cap); the delete in the same batch must NOT drop the graph.
     @Test
     void deleteGraphBarrier_blockedByStuckPendingEarlierRow_sameBatch() {
-        config.setMaxAttempts(5);
+        outboxConfig.setMaxAttempts(5);
         tdb2.failApplyForGraph(GRAPH); // the edit's apply fails → stays PENDING this pass
         OutboxEntry edit = save(upsert(A, Set.of(), Set.of(triple(A, "Edit"))));
         OutboxEntry del = save(deleteGraph());
@@ -341,15 +293,9 @@ class OutboxRelayTest extends PostgresIntegrationTestBase {
     // F9 — corrupt target_iris JSON is treated as a (transient-wrapped) failure, not a pass crash.
     @Test
     void deleteConcepts_corruptJson_failsRowNotPass() {
-        config.setMaxAttempts(1);
-        OutboxEntry bad = new OutboxEntry();
-        bad.setGraphName(GRAPH);
-        bad.setAggregateIri(A);
-        bad.setOperation(OutboxOperation.DELETE_CONCEPTS);
+        outboxConfig.setMaxAttempts(1);
+        OutboxEntry bad = OutboxEntries.pending(GRAPH, A, OutboxOperation.DELETE_CONCEPTS, repository.nextSeq());
         bad.setTargetIris("{not valid json");
-        bad.setStatus(OutboxStatus.PENDING);
-        bad.setCreatedAt(Instant.now());
-        bad.setSeq(repository.nextSeq());
         save(bad);
 
         drain(); // must not throw out of the pass
@@ -365,16 +311,11 @@ class OutboxRelayTest extends PostgresIntegrationTestBase {
     // DIFFERENT-aggregate row in the SAME batch → DONE (so the pass did NOT roll back).
     @Test
     void corruptTriplesPayload_failsRowNotPass_earlierRowStaysDone() {
-        config.setMaxAttempts(1);
+        outboxConfig.setMaxAttempts(1);
         save(upsert(A, Set.of(), Set.of(triple(A, "Alpha")))); // good, lower seq
-        OutboxEntry bad = new OutboxEntry();
-        bad.setGraphName(GRAPH);
-        bad.setAggregateIri(B); // different aggregate so it's processed in the same pass
-        bad.setOperation(OutboxOperation.UPSERT_CONCEPT);
+        // Different aggregate, so it is processed in the same pass.
+        OutboxEntry bad = OutboxEntries.pending(GRAPH, B, OutboxOperation.UPSERT_CONCEPT, repository.nextSeq());
         bad.setInsertTriples("this is not valid n-triples <<<"); // RiotException on parse
-        bad.setStatus(OutboxStatus.PENDING);
-        bad.setCreatedAt(Instant.now());
-        bad.setSeq(repository.nextSeq());
         save(bad);
 
         drain(); // must NOT throw out of the pass
@@ -434,62 +375,25 @@ class OutboxRelayTest extends PostgresIntegrationTestBase {
     }
 
     private OutboxEntry deleteConcepts(String aggregate, List<String> targetIris) {
-        OutboxEntry e = new OutboxEntry();
-        e.setGraphName(GRAPH);
-        e.setAggregateIri(aggregate);
-        e.setOperation(OutboxOperation.DELETE_CONCEPTS);
+        OutboxEntry e = OutboxEntries.pending(GRAPH, aggregate, OutboxOperation.DELETE_CONCEPTS, repository.nextSeq());
         try {
             e.setTargetIris(new tools.jackson.databind.ObjectMapper().writeValueAsString(targetIris));
         } catch (Exception ex) {
             throw new RuntimeException(ex);
         }
-        e.setStatus(OutboxStatus.PENDING);
-        e.setCreatedAt(Instant.now());
-        e.setSeq(repository.nextSeq());
         return e;
     }
 
     private OutboxEntry upsertInGraph() {
         String aggregate = "https://slovnik.gov.cz/g-broken" + "/" + "x/pojem/bad";
-        OutboxEntry e = new OutboxEntry();
-        e.setGraphName("https://slovnik.gov.cz/g-broken");
-        e.setAggregateIri(aggregate);
-        e.setOperation(OutboxOperation.UPSERT_CONCEPT);
+        OutboxEntry e = OutboxEntries.pending("https://slovnik.gov.cz/g-broken", aggregate,
+                OutboxOperation.UPSERT_CONCEPT, repository.nextSeq());
         e.setDeleteTriples("");
         e.setInsertTriples(OutboxTriples.toNTriples(Set.of(triple(aggregate, "boom"))));
-        e.setStatus(OutboxStatus.PENDING);
-        e.setCreatedAt(Instant.now());
-        e.setSeq(repository.nextSeq());
         return e;
     }
 
     private OutboxEntry deleteGraph() {
-        OutboxEntry e = new OutboxEntry();
-        e.setGraphName(GRAPH);
-        e.setAggregateIri(GRAPH);
-        e.setOperation(OutboxOperation.DELETE_GRAPH);
-        e.setStatus(OutboxStatus.PENDING);
-        e.setCreatedAt(Instant.now());
-        e.setSeq(repository.nextSeq());
-        return e;
-    }
-
-    // ---- test infra: a JenaTDB2Repository backed by an in-memory dataset ----
-
-    static class RelayTestConfig {
-        @Bean
-        OutboxConfig outboxConfig() {
-            return new OutboxConfig(); // defaults; individual tests mutate maxAttempts/batchSize
-        }
-
-        @Bean
-        InMemoryTdb2 inMemoryTdb2() {
-            return new InMemoryTdb2();
-        }
-
-        @Bean
-        OutboxRelay outboxRelay(OutboxEntryRepository repo, InMemoryTdb2 tdb2, OutboxConfig config) {
-            return new OutboxRelay(repo, tdb2, config);
-        }
+        return OutboxEntries.pending(GRAPH, GRAPH, OutboxOperation.DELETE_GRAPH, repository.nextSeq());
     }
 }

@@ -27,7 +27,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 /**
@@ -163,12 +162,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             }
 
             // 7. Advisory validation, started once the metadata is committed.
-            CompletableFuture.runAsync(() ->
-                    validationRunner.requestAndSaveValidationReport(ontologyContent, graphName)
-            ).exceptionally(ex -> {
-                log.error("Async validation failed for ontology: {}", graphName, ex);
-                return null;
-            });
+            validationRunner.start(ontologyContent, graphName);
 
             return metadata;
         } finally {

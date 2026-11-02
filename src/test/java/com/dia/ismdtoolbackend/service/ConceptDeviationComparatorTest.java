@@ -12,7 +12,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class ConceptDeviationComparatorTest {
 
@@ -45,10 +45,10 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
-            assertEquals(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS, result.getStatus());
-            assertNotNull(result.getObjectSubjectType());
-            assertEquals("objekt", result.getObjectSubjectType().getLocalValue());
-            assertEquals("subjekt", result.getObjectSubjectType().getPublishedValue());
+            assertThat(result.getStatus()).isEqualTo(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS);
+            assertThat(result.getObjectSubjectType()).isNotNull();
+            assertThat(result.getObjectSubjectType().getLocalValue()).isEqualTo("objekt");
+            assertThat(result.getObjectSubjectType().getPublishedValue()).isEqualTo("subjekt");
         }
 
         @Test
@@ -60,7 +60,7 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
-            assertNull(result.getObjectSubjectType());
+            assertThat(result.getObjectSubjectType()).isNull();
         }
 
         @Test
@@ -73,7 +73,7 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
-            assertNull(result.getObjectSubjectType());
+            assertThat(result.getObjectSubjectType()).isNull();
         }
 
         @Test
@@ -85,10 +85,10 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
-            assertEquals(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS, result.getStatus());
-            assertNotNull(result.getIsPublic());
-            assertEquals(Boolean.TRUE, result.getIsPublic().getLocalValue());
-            assertEquals(Boolean.FALSE, result.getIsPublic().getPublishedValue());
+            assertThat(result.getStatus()).isEqualTo(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS);
+            assertThat(result.getIsPublic()).isNotNull();
+            assertThat(result.getIsPublic().getLocalValue()).isTrue();
+            assertThat(result.getIsPublic().getPublishedValue()).isFalse();
         }
 
         @Test
@@ -100,7 +100,7 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
-            assertNull(result.getIsPublic());
+            assertThat(result.getIsPublic()).isNull();
         }
     }
 
@@ -122,9 +122,10 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
-            assertNull(result.getName(), "name deviation must never be emitted");
-            assertEquals(PublishedConceptDeviationModel.DeviationStatus.NO_DEVIATION, result.getStatus(),
-                    "a name-only difference must not register as a deviation");
+            assertThat(result.getName()).as("name deviation must never be emitted").isNull();
+            assertThat(result.getStatus())
+                    .as("a name-only difference must not register as a deviation")
+                    .isEqualTo(PublishedConceptDeviationModel.DeviationStatus.NO_DEVIATION);
         }
 
         @Test
@@ -140,9 +141,9 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
-            assertEquals(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS, result.getStatus());
-            assertNull(result.getName(), "name is still omitted even when other fields deviate");
-            assertNotNull(result.getDefinition());
+            assertThat(result.getStatus()).isEqualTo(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS);
+            assertThat(result.getName()).as("name is still omitted even when other fields deviate").isNull();
+            assertThat(result.getDefinition()).isNotNull();
         }
     }
 
@@ -160,7 +161,7 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(concept, concept);
 
-            assertEquals(PublishedConceptDeviationModel.DeviationStatus.NO_DEVIATION, result.getStatus());
+            assertThat(result.getStatus()).isEqualTo(PublishedConceptDeviationModel.DeviationStatus.NO_DEVIATION);
         }
 
         @Test
@@ -209,7 +210,7 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
-            assertEquals(PublishedConceptDeviationModel.DeviationStatus.NO_DEVIATION, result.getStatus());
+            assertThat(result.getStatus()).isEqualTo(PublishedConceptDeviationModel.DeviationStatus.NO_DEVIATION);
         }
     }
 
@@ -223,7 +224,7 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
-            assertEquals(PublishedConceptDeviationModel.DeviationStatus.NO_DEVIATION, result.getStatus());
+            assertThat(result.getStatus()).isEqualTo(PublishedConceptDeviationModel.DeviationStatus.NO_DEVIATION);
         }
 
         @Test
@@ -238,11 +239,11 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
-            assertEquals(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS, result.getStatus());
-            assertNotNull(result.getDefinition());
-            assertTrue(result.getDefinition().isDifferent());
-            assertNull(result.getDefinition().getLocalValue());
-            assertEquals(Map.of("cs", "Definice"), result.getDefinition().getPublishedValue());
+            assertThat(result.getStatus()).isEqualTo(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS);
+            assertThat(result.getDefinition()).isNotNull();
+            assertThat(result.getDefinition().isDifferent()).isTrue();
+            assertThat(result.getDefinition().getLocalValue()).isNull();
+            assertThat(result.getDefinition().getPublishedValue()).isEqualTo(Map.of("cs", "Definice"));
         }
 
         @Test
@@ -256,9 +257,9 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
-            assertEquals(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS, result.getStatus());
-            assertNotNull(result.getIdentifier());
-            assertTrue(result.getIdentifier().isDifferent());
+            assertThat(result.getStatus()).isEqualTo(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS);
+            assertThat(result.getIdentifier()).isNotNull();
+            assertThat(result.getIdentifier().isDifferent()).isTrue();
         }
 
         @Test
@@ -272,9 +273,9 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
-            assertEquals(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS, result.getStatus());
-            assertNotNull(result.getTypes());
-            assertTrue(result.getTypes().isDifferent());
+            assertThat(result.getStatus()).isEqualTo(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS);
+            assertThat(result.getTypes()).isNotNull();
+            assertThat(result.getTypes().isDifferent()).isTrue();
         }
     }
 
@@ -292,7 +293,7 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
-            assertEquals(PublishedConceptDeviationModel.DeviationStatus.NO_DEVIATION, result.getStatus());
+            assertThat(result.getStatus()).isEqualTo(PublishedConceptDeviationModel.DeviationStatus.NO_DEVIATION);
         }
 
         @Test
@@ -306,7 +307,7 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
-            assertEquals(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS, result.getStatus());
+            assertThat(result.getStatus()).isEqualTo(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS);
         }
 
         @Test
@@ -320,7 +321,7 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
-            assertEquals(PublishedConceptDeviationModel.DeviationStatus.NO_DEVIATION, result.getStatus());
+            assertThat(result.getStatus()).isEqualTo(PublishedConceptDeviationModel.DeviationStatus.NO_DEVIATION);
         }
     }
 
@@ -338,7 +339,7 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
-            assertEquals(PublishedConceptDeviationModel.DeviationStatus.NO_DEVIATION, result.getStatus());
+            assertThat(result.getStatus()).isEqualTo(PublishedConceptDeviationModel.DeviationStatus.NO_DEVIATION);
         }
 
         @Test
@@ -352,9 +353,9 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
-            assertEquals(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS, result.getStatus());
-            assertNotNull(result.getBroaderClasses());
-            assertTrue(result.getBroaderClasses().isDifferent());
+            assertThat(result.getStatus()).isEqualTo(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS);
+            assertThat(result.getBroaderClasses()).isNotNull();
+            assertThat(result.getBroaderClasses().isDifferent()).isTrue();
         }
     }
 
@@ -372,9 +373,9 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
-            assertEquals(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS, result.getStatus());
-            assertNotNull(result.getDefinition());
-            assertTrue(result.getDefinition().isDifferent());
+            assertThat(result.getStatus()).isEqualTo(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS);
+            assertThat(result.getDefinition()).isNotNull();
+            assertThat(result.getDefinition().isDifferent()).isTrue();
         }
 
         @Test
@@ -388,9 +389,9 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
-            assertEquals(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS, result.getStatus());
-            assertNotNull(result.getDefinition());
-            assertTrue(result.getDefinition().isDifferent());
+            assertThat(result.getStatus()).isEqualTo(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS);
+            assertThat(result.getDefinition()).isNotNull();
+            assertThat(result.getDefinition().isDifferent()).isTrue();
         }
 
         @Test
@@ -404,7 +405,7 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
-            assertEquals(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS, result.getStatus());
+            assertThat(result.getStatus()).isEqualTo(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS);
         }
     }
 
@@ -422,9 +423,9 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
-            assertEquals(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS, result.getStatus());
-            assertNotNull(result.getIsPpdf());
-            assertTrue(result.getIsPpdf().isDifferent());
+            assertThat(result.getStatus()).isEqualTo(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS);
+            assertThat(result.getIsPpdf()).isNotNull();
+            assertThat(result.getIsPpdf().isDifferent()).isTrue();
         }
 
         @Test
@@ -438,8 +439,8 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
-            assertEquals(PublishedConceptDeviationModel.DeviationStatus.NO_DEVIATION, result.getStatus());
-            assertNull(result.getIsPpdf());
+            assertThat(result.getStatus()).isEqualTo(PublishedConceptDeviationModel.DeviationStatus.NO_DEVIATION);
+            assertThat(result.getIsPpdf()).isNull();
         }
 
         @Test
@@ -453,11 +454,11 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
-            assertEquals(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS, result.getStatus());
-            assertNotNull(result.getIsPpdf());
-            assertTrue(result.getIsPpdf().isDifferent());
-            assertEquals(Boolean.TRUE, result.getIsPpdf().getLocalValue());
-            assertEquals(Boolean.FALSE, result.getIsPpdf().getPublishedValue());
+            assertThat(result.getStatus()).isEqualTo(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS);
+            assertThat(result.getIsPpdf()).isNotNull();
+            assertThat(result.getIsPpdf().isDifferent()).isTrue();
+            assertThat(result.getIsPpdf().getLocalValue()).isTrue();
+            assertThat(result.getIsPpdf().getPublishedValue()).isFalse();
         }
 
         @Test
@@ -471,10 +472,10 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
-            assertEquals(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS, result.getStatus());
-            assertNotNull(result.getDomain());
-            assertEquals("domain-local", result.getDomain().getLocalValue());
-            assertEquals("domain-published", result.getDomain().getPublishedValue());
+            assertThat(result.getStatus()).isEqualTo(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS);
+            assertThat(result.getDomain()).isNotNull();
+            assertThat(result.getDomain().getLocalValue()).isEqualTo("domain-local");
+            assertThat(result.getDomain().getPublishedValue()).isEqualTo("domain-published");
         }
     }
 
@@ -496,7 +497,7 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
-            assertEquals(PublishedConceptDeviationModel.DeviationStatus.NO_DEVIATION, result.getStatus());
+            assertThat(result.getStatus()).isEqualTo(PublishedConceptDeviationModel.DeviationStatus.NO_DEVIATION);
         }
 
         @Test
@@ -510,7 +511,7 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
-            assertEquals(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS, result.getStatus());
+            assertThat(result.getStatus()).isEqualTo(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS);
         }
     }
 
@@ -532,10 +533,10 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
-            assertEquals(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS, result.getStatus());
-            assertNull(result.getTypes());
-            assertNull(result.getName());
-            assertNotNull(result.getIdentifier());
+            assertThat(result.getStatus()).isEqualTo(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS);
+            assertThat(result.getTypes()).isNull();
+            assertThat(result.getName()).isNull();
+            assertThat(result.getIdentifier()).isNotNull();
         }
     }
 
@@ -557,7 +558,7 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
-            assertNull(result.getDefiningLegalSources());
+            assertThat(result.getDefiningLegalSources()).isNull();
         }
 
         @Test
@@ -569,7 +570,7 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
-            assertNull(result.getPrivacyProvisions());
+            assertThat(result.getPrivacyProvisions()).isNull();
         }
 
         @Test
@@ -586,7 +587,7 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
-            assertNull(result.getDefiningLegalSources());
+            assertThat(result.getDefiningLegalSources()).isNull();
         }
 
         @Test
@@ -601,7 +602,7 @@ class ConceptDeviationComparatorTest {
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
-            assertNotNull(result.getDefiningLegalSources());
+            assertThat(result.getDefiningLegalSources()).isNotNull();
         }
     }
 }

@@ -12,7 +12,6 @@ import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
 import org.mapstruct.Named;
 
-import java.util.Collections;
 import java.util.List;
 
 @Mapper(componentModel = "spring")
@@ -47,27 +46,14 @@ public interface OntologyMetadataMapper {
                 : ConceptSourceTag.DRAFT);
     }
 
+    /** Delegates to {@link CommentMapper#toDto}. */
     default CommentModel commentEntityToModel(CommentEntity entity) {
-        if (entity == null) {
-            return null;
-        }
-        CommentModel model = new CommentModel();
-        model.setId(entity.getId());
-        model.setUserId(entity.getUserId());
-        model.setComment(entity.getComment());
-        model.setOntologyIRI(entity.getOntologyMetadata() == null ? null : entity.getOntologyMetadata().getGraphName());
-        model.setConceptIRI(entity.getConceptMetadata() == null ? null : entity.getConceptMetadata().getConceptIri());
-        model.setPostedTime(entity.getPostedTime());
-        return model;
+        return CommentMapper.INSTANCE.toDto(entity);
     }
 
+    /** Delegates to {@link CommentMapper#toDtos}. */
     default List<CommentModel> commentEntitiesToModels(List<CommentEntity> entities) {
-        if (entities == null || entities.isEmpty()) {
-            return Collections.emptyList();
-        }
-        return entities.stream()
-                .map(this::commentEntityToModel)
-                .toList();
+        return CommentMapper.INSTANCE.toDtos(entities);
     }
 
     @Named("userToUserId")

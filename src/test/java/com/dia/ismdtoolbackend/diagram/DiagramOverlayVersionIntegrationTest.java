@@ -3,50 +3,28 @@ package com.dia.ismdtoolbackend.diagram;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.PositionDto;
-import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
-import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.exception.DiagramVersionConflictException;
 import com.dia.ismdtoolbackend.exception.DiagramReadbackFailedException;
 import com.dia.ismdtoolbackend.exception.JenaTDB2Exception;
 import com.dia.ismdtoolbackend.mapper.DiagramMapper;
-import com.dia.ismdtoolbackend.outbox.OutboxEntry;
-import com.dia.ismdtoolbackend.outbox.OutboxEntryRepository;
-import com.dia.ismdtoolbackend.outbox.PostgresIntegrationTestBase;
-import com.dia.ismdtoolbackend.outbox.TransactionTemplateConfig;
-import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.DiagramNodeRepository;
 import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
 import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
-import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
-import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
-import com.dia.ismdtoolbackend.service.impl.DiagramLayoutReconciler;
-import com.dia.ismdtoolbackend.service.OntologyLabelLookup;
-import com.dia.ismdtoolbackend.service.impl.DiagramMaterializeService;
-import com.dia.ismdtoolbackend.service.impl.DiagramServiceBeans;
 import com.dia.ismdtoolbackend.service.impl.DiagramServiceImpl;
-import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
+import com.dia.ismdtoolbackend.testsupport.pg.DiagramServiceIT;
+import com.dia.ismdtoolbackend.testsupport.pg.PgTestData;
+import com.dia.ismdtoolbackend.testsupport.pg.PostgresIntegrationTestBase;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.boot.persistence.autoconfigure.EntityScan;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Import;
-import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import org.apache.jena.rdf.model.ModelFactory;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -54,9 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.clearInvocations;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -75,74 +51,41 @@ import static org.mockito.Mockito.when;
  * H2 with a stubbed save) would return whatever the stub holds and pass even when the service forgets to
  * flush. The round-trip test below is the one that fails on a plain {@code save}.
  */
-@DataJpaTest
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@ActiveProfiles("junit")
-@Import({DiagramOverlayVersionIntegrationTest.Beans.class, DiagramServiceBeans.class, TransactionTemplateConfig.class,
-        com.dia.ismdtoolbackend.config.JpaAuditingConfig.class})
-@EntityScan(basePackageClasses = {OutboxEntry.class, ConceptMetadataEntity.class, DiagramEntity.class})
-@EnableJpaRepositories(basePackageClasses = {OutboxEntryRepository.class, ConceptMetadataRepository.class,
-        DiagramRepository.class})
-@Transactional(propagation = Propagation.NOT_SUPPORTED)
+@DiagramServiceIT
 class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
 
     private static final String GRAPH = "https://slovnik.gov.cz/vg";
     private static final String SLUG = "version-ontology";
-    private static final String USER = "user123";
     private static final String CLASS_A = GRAPH + "/pojem/trida-a";
     private static final String CLASS_B = GRAPH + "/pojem/trida-b";
     /** A relationship: renders as an edge, so it never travels in the layout's nodes[]. */
     private static final String REL = GRAPH + "/pojem/vztah-a-b";
 
-    @Autowired private ConceptMetadataRepository conceptRepo;
-    @Autowired private OntologyMetadataRepository ontologyRepo;
-    @Autowired private DiagramRepository diagramRepo;
     @Autowired private DiagramNodeRepository nodeRepo;
     @Autowired private DiagramPendingEditRepository pendingEditRepo;
     @Autowired private TransactionTemplate txTemplate;
     @Autowired private DiagramServiceImpl diagramService;
     @Autowired private JenaTDB2Repository tdb2;
+    @Autowired private PgTestData data;
+
+    private OntologyMetadataEntity ontology;
+    private Long diagramId;
 
     @BeforeEach
     void setUp() {
-        // The context (and its mock) is cached across tests; reset so a stubbed failure can't leak.
-        reset(tdb2);
         when(tdb2.fetchGraph(any())).thenReturn(ModelFactory.createDefaultModel());
-        txTemplate.executeWithoutResult(tx -> {
-            nodeRepo.deleteAllInBatch();
-            diagramRepo.deleteAllInBatch();
-            conceptRepo.deleteAllInBatch();
-            ontologyRepo.deleteAllInBatch();
-        });
-        txTemplate.executeWithoutResult(tx -> {
-            OntologyMetadataEntity ont = new OntologyMetadataEntity();
-            ont.setSlug(SLUG);
-            ont.setGraphName(GRAPH);
-            ont.setUserId(USER);
-            ont.setIsPublished(false);
-            ont.setCreatedAt(LocalDateTime.now());
-            OntologyMetadataEntity saved = ontologyRepo.save(ont);
-            seedConcept(saved, CLASS_A, "Třída A");
-            seedConcept(saved, CLASS_B, "Třída B");
-        });
+        ontology = data.createOntology(SLUG, GRAPH);
+        seedConcept(CLASS_A, "Třída A");
+        seedConcept(CLASS_B, "Třída B");
+        diagramId = data.createDiagram(ontology, "Test diagram");
     }
 
     /**
      * A concept metadata row only — no RDF. The overlay path reads live content through a mocked
      * {@link JenaTDB2Repository} (empty graph → stale node), which does not affect versioning.
      */
-    private void seedConcept(OntologyMetadataEntity ontology, String iri, String name) {
-        ConceptMetadataEntity c = new ConceptMetadataEntity();
-        c.setConceptIri(iri);
-        c.setConceptName(name);
-        c.setConceptType(ConceptType.TRIDA);
-        c.setGraphName(GRAPH);
-        c.setUserId(USER);
-        c.setOntologyMetadata(ontology);
-        c.setSlug(iri.substring(iri.lastIndexOf('/') + 1));
-        c.setCreatedAt(LocalDateTime.now());
-        c.setUpdatedAt(LocalDateTime.now());
-        conceptRepo.save(c);
+    private void seedConcept(String iri, String name) {
+        data.createConcept(ontology, iri, name, ConceptType.TRIDA);
     }
 
     /** Put both classes on the canvas, returning the version of that save. */
@@ -153,7 +96,7 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
                 List.of(node(CLASS_A, 0, 0), node(CLASS_B, 100, 0)),
                 List.of(),
                 null);
-        return diagramService.saveLayout(SLUG, diagramId(), layout).version();
+        return diagramService.saveLayout(SLUG, diagramId, layout).version();
     }
 
     private DiagramLayoutDto.Node node(String iri, double x, double y) {
@@ -167,8 +110,8 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
 
     /** Save the current canvas (both classes) carrying the given overlays. */
     private DiagramDto saveWithOverlays(DiagramLayoutDto.Overlay... overlays) {
-        return diagramService.saveLayout(SLUG, diagramId(), new DiagramLayoutDto(
-                storedVersion(), null,
+        return diagramService.saveLayout(SLUG, diagramId, new DiagramLayoutDto(
+                data.diagramVersion(diagramId), null,
                 List.of(node(CLASS_A, 0, 0), node(CLASS_B, 100, 0)),
                 List.of(),
                 List.of(overlays)));
@@ -182,11 +125,6 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
                 .orElse(null);
     }
 
-    /** The version stored in PG right now — the value a fresh GET would report. */
-    private Long storedVersion() {
-        return diagramRepo.findByOntologyMetadataIdOrderByIdAsc(ontologyId()).stream().findFirst().orElseThrow().getVersion();
-    }
-
     // ---- tests ----------------------------------------------------------------------------------
 
     /**
@@ -197,7 +135,7 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
     @Test
     void overlayOnSave_stagesForAConceptThatIsNotACanvasNode() {
         seedCanvas();                                  // only CLASS_A and CLASS_B are nodes
-        seedConcept(ontologyRepo.findBySlug(SLUG).orElseThrow(), REL, "vztah");
+        seedConcept(REL, "vztah");
 
         DiagramDto saved = saveWithOverlays(
                 new DiagramLayoutDto.Overlay(DiagramMapper.NODE_ID_PREFIX + REL,
@@ -205,11 +143,11 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
 
         assertThat(saved.pendingEdits()).hasSize(1);
         assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(
-                diagramId(), REL))
+                diagramId, REL))
                 .as("the edit is staged against the ontology, needing no canvas node")
                 .isPresent();
         assertThat(nodeRepo.findByDiagramIdAndConceptIri(
-                diagramRepo.findByOntologyMetadataIdOrderByIdAsc(ontologyId()).stream().findFirst().orElseThrow().getId(), REL))
+                diagramId, REL))
                 .as("and staging adds no layout row — a VZTAH is not a canvas node")
                 .isEmpty();
     }
@@ -222,19 +160,19 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
     @Test
     void savingTheLayout_doesNotDiscardAStagedEdit() {
         seedCanvas();
-        seedConcept(ontologyRepo.findBySlug(SLUG).orElseThrow(), REL, "vztah");
+        seedConcept(REL, "vztah");
         saveWithOverlays(new DiagramLayoutDto.Overlay(DiagramMapper.NODE_ID_PREFIX + REL,
                 null, CLASS_B, null, null, null));
 
         // A perfectly ordinary save: classes only, exactly what the new wire contract sends.
-        DiagramDto after = diagramService.saveLayout(SLUG, diagramId(), new DiagramLayoutDto(
-                storedVersion(), null,
+        DiagramDto after = diagramService.saveLayout(SLUG, diagramId, new DiagramLayoutDto(
+                data.diagramVersion(diagramId), null,
                 List.of(node(CLASS_A, 0, 0), node(CLASS_B, 100, 0)),
                 List.of(),
                 List.of()));
 
         assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(
-                diagramId(), REL))
+                diagramId, REL))
                 .isPresent();
         assertThat(after.pendingEdits()).hasSize(1);   // still stageable for Převzít
     }
@@ -247,16 +185,16 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
     @Test
     void omittingOverlaysEntirely_leavesStagedWorkUntouched() {
         seedCanvas();
-        seedConcept(ontologyRepo.findBySlug(SLUG).orElseThrow(), REL, "vztah");
+        seedConcept(REL, "vztah");
         saveWithOverlays(
                 broaderOverlay(CLASS_A, CLASS_B),
                 new DiagramLayoutDto.Overlay(DiagramMapper.NODE_ID_PREFIX + REL,
                         null, CLASS_B, null, null, null));
-        assertThat(diagramService.getDiagram(SLUG, diagramId()).pendingEdits()).hasSize(2);
+        assertThat(diagramService.getDiagram(SLUG, diagramId).pendingEdits()).hasSize(2);
 
         // null overlays — the FE's ReactFlow-built autosave body.
-        DiagramDto afterNull = diagramService.saveLayout(SLUG, diagramId(), new DiagramLayoutDto(
-                storedVersion(), null,
+        DiagramDto afterNull = diagramService.saveLayout(SLUG, diagramId, new DiagramLayoutDto(
+                data.diagramVersion(diagramId), null,
                 List.of(node(CLASS_A, 0, 0), node(CLASS_B, 100, 0)),
                 List.of(),
                 null));
@@ -276,7 +214,7 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
     @Test
     void savingOneOverlay_leavesTheOthersStaged() {
         seedCanvas();
-        seedConcept(ontologyRepo.findBySlug(SLUG).orElseThrow(), REL, "vztah");
+        seedConcept(REL, "vztah");
         saveWithOverlays(new DiagramLayoutDto.Overlay(DiagramMapper.NODE_ID_PREFIX + REL,
                 null, CLASS_B, null, null, null));
 
@@ -314,7 +252,7 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
     @Test
     void anAllNullEntry_discardsThatOverlayOnly() {
         seedCanvas();
-        seedConcept(ontologyRepo.findBySlug(SLUG).orElseThrow(), REL, "vztah");
+        seedConcept(REL, "vztah");
         saveWithOverlays(
                 broaderOverlay(CLASS_A, CLASS_B),
                 new DiagramLayoutDto.Overlay(DiagramMapper.NODE_ID_PREFIX + REL,
@@ -339,7 +277,7 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
         assertThat(saved.version()).as("version advances on a successful save").isGreaterThan(afterSeed);
         // The returned value is the POST-increment one, not the version the service read at entry: a plain
         // save() (no flush) would hand back `afterSeed` here.
-        assertThat(saved.version()).as("returned version matches what is now stored").isEqualTo(storedVersion());
+        assertThat(saved.version()).as("returned version matches what is now stored").isEqualTo(data.diagramVersion(diagramId));
     }
 
     /**
@@ -360,7 +298,7 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
                 List.of(),
                 null);
 
-        DiagramDto saved = diagramService.saveLayout(SLUG, diagramId(), next);
+        DiagramDto saved = diagramService.saveLayout(SLUG, diagramId, next);
 
         assertThat(saved.version()).isGreaterThan(staged.version());
         // And the overlay survived the layout save (membership replace kept the node).
@@ -384,7 +322,7 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
                 List.of(),
                 null);
 
-        assertThatThrownBy(() -> diagramService.saveLayout(SLUG, diagramId(), stale))
+        assertThatThrownBy(() -> diagramService.saveLayout(SLUG, diagramId, stale))
                 .as("a version predating the overlay save is stale → 409")
                 .isInstanceOf(DiagramVersionConflictException.class);
     }
@@ -400,7 +338,7 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
     void saveVersionIsPostIncrementAtTheMomentTheResponseIsBuilt() {
         Long afterSeed = seedCanvas();
 
-        Long stamped = txTemplate.execute(tx -> diagramService.saveLayout(SLUG, diagramId(), new DiagramLayoutDto(
+        Long stamped = txTemplate.execute(tx -> diagramService.saveLayout(SLUG, diagramId, new DiagramLayoutDto(
                 afterSeed, null,
                 List.of(node(CLASS_A, 0, 0), node(CLASS_B, 100, 0)),
                 List.of(),
@@ -420,7 +358,7 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
         seedCanvas();
         saveWithOverlays(broaderOverlay(CLASS_A, CLASS_B));
 
-        DiagramDto diagram = diagramService.getDiagram(SLUG, diagramId());
+        DiagramDto diagram = diagramService.getDiagram(SLUG, diagramId);
 
         assertThat(diagram.version()).as("the diagram itself carries the version").isNotNull();
         assertThat(diagram.nodes()).isNotEmpty();
@@ -441,7 +379,7 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
                                 new PositionDto(100.0, 0.0), null, false, List.of())),
                 List.of(), null);
 
-        DiagramDto saved = diagramService.saveLayout(SLUG, diagramId(), layout);
+        DiagramDto saved = diagramService.saveLayout(SLUG, diagramId, layout);
 
         // Echoed straight back on the save response...
         assertThat(saved.nodes())
@@ -450,7 +388,7 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
                 .satisfies(n -> assertThat(n.collapsed()).isTrue());
 
         // ...and still there on a fresh read, which is what a page reload actually does.
-        DiagramDto reloaded = diagramService.getDiagram(SLUG, diagramId());
+        DiagramDto reloaded = diagramService.getDiagram(SLUG, diagramId);
         assertThat(reloaded.nodes())
                 .filteredOn(n -> (DiagramMapper.NODE_ID_PREFIX + CLASS_A).equals(n.id()))
                 .singleElement()
@@ -479,17 +417,17 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
         DiagramLayoutDto move = new DiagramLayoutDto(
                 before, null, List.of(node(CLASS_A, 999, 999), node(CLASS_B, 100, 0)), List.of(), null);
 
-        assertThatThrownBy(() -> diagramService.saveLayout(SLUG, diagramId(), move))
+        assertThatThrownBy(() -> diagramService.saveLayout(SLUG, diagramId, move))
                 .isInstanceOf(DiagramReadbackFailedException.class)
                 .satisfies(e -> assertThat(((DiagramReadbackFailedException) e).getVersion())
                         .as("the error carries the post-write version so the FE need not re-read")
                         .isEqualTo(before + 1));
 
         // The write is durable: version advanced and the moved position is persisted.
-        assertThat(storedVersion()).as("the committed write survives the failed read").isEqualTo(before + 1);
+        assertThat(data.diagramVersion(diagramId)).as("the committed write survives the failed read").isEqualTo(before + 1);
         txTemplate.executeWithoutResult(tx -> assertThat(
                 nodeRepo.findByDiagramIdAndConceptIri(
-                        diagramRepo.findByOntologyMetadataIdOrderByIdAsc(ontologyId()).stream().findFirst().orElseThrow().getId(), CLASS_A)
+                        diagramId, CLASS_A)
                         .orElseThrow().getPosX())
                 .as("the layout change itself is committed").isEqualTo(999.0));
     }
@@ -507,7 +445,7 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
 
         txTemplate.executeWithoutResult(tx -> assertThat(
                 pendingEditRepo.findByDiagramIdAndConceptIri(
-                        diagramId(), CLASS_A))
+                        diagramId, CLASS_A))
                 .as("the staged overlay is committed despite the failed read").isPresent());
     }
 
@@ -524,7 +462,7 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
         DiagramLayoutDto stale = new DiagramLayoutDto(
                 current - 1, null, List.of(node(CLASS_A, 0, 0)), List.of(), null);
 
-        assertThatThrownBy(() -> diagramService.saveLayout(SLUG, diagramId(), stale))
+        assertThatThrownBy(() -> diagramService.saveLayout(SLUG, diagramId, stale))
                 .isInstanceOf(DiagramVersionConflictException.class);
 
         verify(tdb2, never()).fetchGraph(any());
@@ -560,57 +498,9 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
             return ModelFactory.createDefaultModel();
         });
 
-        diagramService.getDiagram(SLUG, diagramId());
+        diagramService.getDiagram(SLUG, diagramId);
 
         assertThat(txActiveDuringFetch)
                 .as("the fat read's graph fetch must not run inside the PG transaction").isFalse();
-    }
-
-    @TestConfiguration
-    static class Beans {
-
-        /** Empty graph: these tests exercise versioning, not content joining. */
-        @Bean JenaTDB2Repository jenaTDB2Repository() {
-            return mock(JenaTDB2Repository.class);
-        }
-
-        @Bean OntologyDetailExtractor ontologyDetailExtractor() {
-            return mock(OntologyDetailExtractor.class);
-        }
-
-        @Bean DiagramMapper diagramMapper() {
-            return new DiagramMapper();
-        }
-
-        @Bean DiagramLayoutReconciler diagramLayoutReconciler(DiagramMapper mapper,
-                                                              ConceptMetadataRepository conceptRepo,
-                                                              DiagramPendingEditRepository pendingEditRepo) {
-            return new DiagramLayoutReconciler(mapper, conceptRepo, pendingEditRepo);
-        }
-
-        @Bean OntologyLabelLookup ontologyLabelLookup() {
-            return mock(OntologyLabelLookup.class);
-        }
-
-        @Bean DiagramMaterializeService diagramMaterializeService() {
-            return mock(DiagramMaterializeService.class);
-        }
-    }
-
-    private Long ontologyId() {
-        return ontologyRepo.findBySlug(SLUG).orElseThrow().getId();
-    }
-
-    /** The ontology's diagram, created on first use — every write is now addressed by diagram id. */
-    private Long diagramId() {
-        return diagramRepo.findByOntologyMetadataIdOrderByIdAsc(ontologyId()).stream()
-                .findFirst()
-                .map(DiagramEntity::getId)
-                .orElseGet(() -> txTemplate.execute(tx -> {
-                    DiagramEntity d = new DiagramEntity();
-                    d.setOntologyMetadata(ontologyRepo.findBySlug(SLUG).orElseThrow());
-                    d.setName("Test diagram");
-                    return diagramRepo.saveAndFlush(d).getId();
-                }));
     }
 }

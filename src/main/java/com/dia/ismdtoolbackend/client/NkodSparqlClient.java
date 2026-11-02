@@ -8,6 +8,7 @@ import com.dia.ismdtoolbackend.models.nkod.NkodDatasetRow;
 import com.dia.ismdtoolbackend.models.nkod.NkodDistribution;
 import com.dia.ismdtoolbackend.query.NKODSPARQLCodelistQuery;
 import com.dia.ismdtoolbackend.query.NKODSPARQLDatasetQuery;
+import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import com.dia.ismdtoolbackend.utility.sparql.HttpSparqlExecutor;
 import com.dia.ismdtoolbackend.utility.sparql.SparqlSolutions;
 import jakarta.annotation.PostConstruct;
@@ -122,19 +123,20 @@ public class NkodSparqlClient {
      */
     public Optional<NkodDatasetDetail> fetchDatasetDetail(String rawDatasetIri) {
         String datasetIri = SparqlSolutions.toRawUtf8(rawDatasetIri);
-        String existsQuery = NKODSPARQLDatasetQuery.buildDatasetExistsQuery(datasetIri);
-        String detailQuery = NKODSPARQLDatasetQuery.buildDatasetDetailQuery(datasetIri);
-        if (existsQuery == null || detailQuery == null) {
+        // Validated once here; the query builders below never return null for a safe IRI.
+        if (!SparqlIriValidator.isSafeHttpIri(datasetIri)) {
             log.warn("Rejected unsafe NKOD dataset IRI: {}", rawDatasetIri);
             return Optional.empty();
         }
 
-        boolean exists = executor.ask("NKOD dataset exists", existsQuery);
+        boolean exists = executor.ask("NKOD dataset exists",
+                NKODSPARQLDatasetQuery.buildDatasetExistsQuery(datasetIri));
         if (!exists) {
             return Optional.empty();
         }
 
-        NkodDatasetDetail detail = executor.select("NKOD dataset detail", detailQuery,
+        NkodDatasetDetail detail = executor.select("NKOD dataset detail",
+                NKODSPARQLDatasetQuery.buildDatasetDetailQuery(datasetIri),
                 rs -> mapDetailRows(datasetIri, rs));
 
         return Optional.of(withDistributions(datasetIri, detail));
@@ -149,12 +151,11 @@ public class NkodSparqlClient {
      * <p>Fails soft: distributions are supplementary to the concept list this page exists
      * for, so a failure here returns the detail without them rather than 503-ing the whole
      * page.
+     *
+     * <p>{@code datasetIri} is already validated by {@link #fetchDatasetDetail}.
      */
     private NkodDatasetDetail withDistributions(String datasetIri, NkodDatasetDetail detail) {
         String query = NKODSPARQLDatasetQuery.buildDatasetDistributionsQuery(datasetIri);
-        if (query == null) {
-            return detail;
-        }
         List<NkodDistribution> distributions;
         try {
             distributions = executor.select("NKOD dataset distributions", query,

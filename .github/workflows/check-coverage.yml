@@ -4,20 +4,30 @@ on:
   workflow_dispatch:
     inputs:
       coverage_line:
-        description: "JaCoCo line coverage minimum ratio (0.00-1.00)"
+        description: "JaCoCo line minimum (0.00-1.00); empty uses pom.xml"
         required: false
         type: string
-        default: "0.55"
+        default: ""
+      coverage_instruction:
+        description: "JaCoCo instruction minimum (0.00-1.00); empty uses pom.xml"
+        required: false
+        type: string
+        default: ""
       coverage_branch:
-        description: "JaCoCo branch coverage minimum ratio (0.00-1.00)"
+        description: "JaCoCo branch minimum (0.00-1.00); empty uses pom.xml"
         required: false
         type: string
-        default: "0.45"
+        default: ""
       coverage_complexity:
-        description: "JaCoCo complexity coverage minimum ratio (0.00-1.00)"
+        description: "JaCoCo complexity minimum (0.00-1.00); empty uses pom.xml"
         required: false
         type: string
-        default: "0.45"
+        default: ""
+      coverage_method:
+        description: "JaCoCo method minimum (0.00-1.00); empty uses pom.xml"
+        required: false
+        type: string
+        default: ""
 
 jobs:
   check-coverage:
@@ -25,6 +35,8 @@ jobs:
     with:
       enforce_coverage: true
       coverage_line: ${{ inputs.coverage_line }}
+      coverage_instruction: ${{ inputs.coverage_instruction }}
       coverage_branch: ${{ inputs.coverage_branch }}
       coverage_complexity: ${{ inputs.coverage_complexity }}
+      coverage_method: ${{ inputs.coverage_method }}
     secrets: inherit

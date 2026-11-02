@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.utility.sparql;
 import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
 import lombok.extern.slf4j.Slf4j;
 
+import java.time.Clock;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
@@ -32,14 +33,21 @@ public final class SparqlCircuitBreaker {
     private final String endpointLabel;
     private final int failureThreshold;
     private final long cooldownMillis;
+    private final Clock clock;
 
     private final AtomicInteger consecutiveFailures = new AtomicInteger(0);
     private final AtomicLong openedAt = new AtomicLong(0);
 
     public SparqlCircuitBreaker(String endpointLabel, int failureThreshold, long cooldownMillis) {
+        this(endpointLabel, failureThreshold, cooldownMillis, Clock.systemUTC());
+    }
+
+    /** {@code clock} must never read epoch millisecond 0, which marks the breaker closed. */
+    SparqlCircuitBreaker(String endpointLabel, int failureThreshold, long cooldownMillis, Clock clock) {
         this.endpointLabel = endpointLabel;
         this.failureThreshold = failureThreshold;
         this.cooldownMillis = cooldownMillis;
+        this.clock = clock;
     }
 
     /**
@@ -50,7 +58,7 @@ public final class SparqlCircuitBreaker {
     public <T> T call(Supplier<T> action) {
         long openSince = openedAt.get();
         if (openSince > 0) {
-            long elapsed = System.currentTimeMillis() - openSince;
+            long elapsed = clock.millis() - openSince;
             if (elapsed < cooldownMillis) {
                 throw new SparqlEndpointUnavailableException(endpointLabel,
                         endpointLabel + " circuit breaker open (last failure " + elapsed + "ms ago)");
@@ -79,7 +87,7 @@ public final class SparqlCircuitBreaker {
         if (failures < failureThreshold) {
             return;
         }
-        long now = System.currentTimeMillis();
+        long now = clock.millis();
         long prev = openedAt.getAndSet(now);
         if (prev == 0) {
             log.warn("{} circuit breaker opened after {} consecutive failures (cooldown {}ms).",
@@ -94,6 +102,6 @@ public final class SparqlCircuitBreaker {
     boolean isOpen() {
         long openSince = openedAt.get();
         if (openSince == 0) return false;
-        return System.currentTimeMillis() - openSince < cooldownMillis;
+        return clock.millis() - openSince < cooldownMillis;
     }
 }

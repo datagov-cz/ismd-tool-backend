@@ -17,8 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -38,13 +37,13 @@ class RppServiceImplTest {
     @Test
     void emptySnapshotReturnsEmptyListForAgendaSearch() {
         when(snapshotHolder.get()).thenReturn(RppSnapshot.empty());
-        assertEquals(List.of(), service.searchAgendas("anything", 20));
+        assertThat(service.searchAgendas("anything", 20)).isEqualTo(List.of());
     }
 
     @Test
     void emptySnapshotReturnsEmptyListForIsvsSearch() {
         when(snapshotHolder.get()).thenReturn(RppSnapshot.empty());
-        assertEquals(List.of(), service.searchIsvs("anything", 20, "A1382"));
+        assertThat(service.searchIsvs("anything", 20, "A1382")).isEqualTo(List.of());
     }
 
     @Test
@@ -56,7 +55,7 @@ class RppServiceImplTest {
                         new RppAgenda("iri-3", "3", "Gama")),
                 List.of()));
         List<RppSearchResultDto> out = service.searchAgendas(null, 2);
-        assertEquals(List.of("1", "2"), codes(out));
+        assertThat(codes(out)).isEqualTo(List.of("1", "2"));
     }
 
     @Test
@@ -64,7 +63,7 @@ class RppServiceImplTest {
         when(snapshotHolder.get()).thenReturn(snapshot(
                 List.of(new RppAgenda("iri-1", "1", "Alfa")),
                 List.of()));
-        assertEquals(1, service.searchAgendas("   ", 10).size());
+        assertThat(service.searchAgendas("   ", 10)).hasSize(1);
     }
 
     @Test
@@ -74,7 +73,7 @@ class RppServiceImplTest {
                         new RppAgenda("iri-2", "2", "Jiné něco")),
                 List.of()));
         List<RppSearchResultDto> out = service.searchAgendas("sprava", 10);
-        assertEquals(List.of("1"), codes(out));
+        assertThat(codes(out)).isEqualTo(List.of("1"));
     }
 
     @Test
@@ -82,7 +81,7 @@ class RppServiceImplTest {
         when(snapshotHolder.get()).thenReturn(snapshot(
                 List.of(new RppAgenda("iri-1", "1", "Daň z příjmu")),
                 List.of()));
-        assertEquals(1, service.searchAgendas("DAN", 10).size());
+        assertThat(service.searchAgendas("DAN", 10)).hasSize(1);
     }
 
     @Test
@@ -92,7 +91,7 @@ class RppServiceImplTest {
                         new RppAgenda("iri-2", "B999", "jiné")),
                 List.of()));
         List<RppSearchResultDto> out = service.searchAgendas("a1", 10);
-        assertEquals(List.of("A1382"), codes(out));
+        assertThat(codes(out)).isEqualTo(List.of("A1382"));
     }
 
     @Test
@@ -105,7 +104,7 @@ class RppServiceImplTest {
                         new RppAgenda("i4", "4", "match d"),
                         new RppAgenda("i5", "5", "match e")),
                 List.of()));
-        assertEquals(2, service.searchAgendas("match", 2).size());
+        assertThat(service.searchAgendas("match", 2)).hasSize(2);
     }
 
     @Test
@@ -114,7 +113,7 @@ class RppServiceImplTest {
                 List.of(new RppAgenda("i1", "1", "match"),
                         new RppAgenda("i2", "2", "nope")),
                 List.of()));
-        assertEquals(1, service.searchAgendas("match", 50).size());
+        assertThat(service.searchAgendas("match", 50)).hasSize(1);
     }
 
     @Test
@@ -125,7 +124,7 @@ class RppServiceImplTest {
         when(snapshotHolder.get()).thenReturn(snapshot(List.of(), List.of(i1, i2, i3)));
 
         List<RppSearchResultDto> out = service.searchIsvs(null, 10, "A1382");
-        assertEquals(List.of("1", "3", "2"), codes(out));
+        assertThat(codes(out)).isEqualTo(List.of("1", "3", "2"));
     }
 
     @Test
@@ -136,7 +135,7 @@ class RppServiceImplTest {
         when(snapshotHolder.get()).thenReturn(snapshot(List.of(), List.of(i1, i2, i3)));
 
         List<RppSearchResultDto> out = service.searchIsvs(null, 10, "A1382");
-        assertEquals(List.of("1", "2", "3"), codes(out));
+        assertThat(codes(out)).isEqualTo(List.of("1", "2", "3"));
     }
 
     @Test
@@ -146,7 +145,7 @@ class RppServiceImplTest {
         when(snapshotHolder.get()).thenReturn(snapshot(List.of(), List.of(i1, i2)));
 
         List<RppSearchResultDto> out = service.searchIsvs(null, 10, "###not-valid###");
-        assertEquals(List.of("1", "2"), codes(out));
+        assertThat(codes(out)).isEqualTo(List.of("1", "2"));
     }
 
     @Test
@@ -155,8 +154,8 @@ class RppServiceImplTest {
         RppIsvs i2 = new RppIsvs("isvs-2", "2", "Beta", List.of());
         when(snapshotHolder.get()).thenReturn(snapshot(List.of(), List.of(i1, i2)));
 
-        assertEquals(List.of("1", "2"), codes(service.searchIsvs(null, 10, "")));
-        assertEquals(List.of("1", "2"), codes(service.searchIsvs(null, 10, null)));
+        assertThat(codes(service.searchIsvs(null, 10, ""))).isEqualTo(List.of("1", "2"));
+        assertThat(codes(service.searchIsvs(null, 10, null))).isEqualTo(List.of("1", "2"));
     }
 
     @Test
@@ -166,7 +165,7 @@ class RppServiceImplTest {
                         new RppAgenda("i2", "10", "n10"),
                         new RppAgenda("i3", "100", "n100")),
                 List.of()));
-        assertEquals(List.of("9", "10", "100"), codes(service.searchAgendas(null, 10)));
+        assertThat(codes(service.searchAgendas(null, 10))).isEqualTo(List.of("9", "10", "100"));
     }
 
     @Test
@@ -175,9 +174,9 @@ class RppServiceImplTest {
                 List.of(new RppAgenda("iri-x", "42", "Název X")),
                 List.of()));
         RppSearchResultDto dto = service.searchAgendas(null, 10).get(0);
-        assertEquals("iri-x", dto.getIri());
-        assertEquals("42", dto.getCode());
-        assertEquals("Název X", dto.getNazev());
+        assertThat(dto.getIri()).isEqualTo("iri-x");
+        assertThat(dto.getCode()).isEqualTo("42");
+        assertThat(dto.getNazev()).isEqualTo("Název X");
     }
 
     @Test
@@ -187,8 +186,8 @@ class RppServiceImplTest {
         when(snapshotHolder.get()).thenReturn(snapshot(List.of(), List.of(i1, i2)));
 
         List<RppSearchResultDto> out = service.searchIsvs(null, 1, "A1382");
-        assertEquals(1, out.size());
-        assertEquals("2", out.get(0).getCode(), "preferred match should win the single limit slot");
+        assertThat(out).hasSize(1);
+        assertThat(out.get(0).getCode()).as("preferred match should win the single limit slot").isEqualTo("2");
     }
 
     private static List<String> codes(List<RppSearchResultDto> rows) {

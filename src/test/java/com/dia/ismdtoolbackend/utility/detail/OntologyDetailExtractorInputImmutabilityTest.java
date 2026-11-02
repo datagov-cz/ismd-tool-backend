@@ -99,8 +99,8 @@ class OntologyDetailExtractorInputImmutabilityTest {
     }
 
     /**
-     * Regression for the concept-detail response depending on cache state: extracting after
-     * a transform must match extracting without one, since {@code canonicalLocalConcept} is
+     * The concept-detail response does not depend on cache state: extracting after
+     * a transform matches extracting without one, since {@code canonicalLocalConcept} is
      * {@code @Cacheable} and only runs the transform on a miss.
      */
     @Test

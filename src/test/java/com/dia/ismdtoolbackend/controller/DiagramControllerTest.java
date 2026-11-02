@@ -1,9 +1,8 @@
 package com.dia.ismdtoolbackend.controller;
 
-import com.dia.ismdtoolbackend.config.GlobalExceptionHandler;
-import com.dia.ismdtoolbackend.config.security.TestOntologySecurityService;
-import com.dia.ismdtoolbackend.config.security.TestSecurityConfig;
 import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
+import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramConceptUsageDto;
+import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramConceptUsageKind;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramSummaryDto;
@@ -11,17 +10,16 @@ import com.dia.ismdtoolbackend.controller.dto.diagram.MaterializeResultDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.PositionDto;
 import com.dia.ismdtoolbackend.models.diagram.EdgeWaypoint;
 import com.dia.ismdtoolbackend.exception.DiagramContentUnavailableException;
+import com.dia.ismdtoolbackend.exception.DiagramNameConflictException;
 import com.dia.ismdtoolbackend.exception.DiagramReadbackFailedException;
 import com.dia.ismdtoolbackend.service.DiagramService;
 import com.dia.ismdtoolbackend.service.impl.DiagramConceptUsageService;
+import com.dia.ismdtoolbackend.testsupport.web.ControllerSliceTest;
+import com.dia.ismdtoolbackend.testsupport.web.StubOntologySecurityService;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.context.annotation.Import;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.mockito.ArgumentCaptor;
@@ -35,7 +33,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -49,27 +49,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * ownership-gated ({@code belongsToUserBySlug}) and 403 for a non-owner. Service is mocked — this exercises
  * routing + authz, not the fat-read join.
  */
-@WebMvcTest(controllers = DiagramController.class,
-        excludeAutoConfiguration = {
-                org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration.class,
-                org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration.class,
-                org.springframework.boot.security.oauth2.client.autoconfigure.OAuth2ClientAutoConfiguration.class,
-                org.springframework.boot.security.oauth2.client.autoconfigure.servlet.OAuth2ClientWebSecurityAutoConfiguration.class,
-                org.springframework.boot.security.oauth2.server.resource.autoconfigure.OAuth2ResourceServerAutoConfiguration.class
-        })
-@Import({TestSecurityConfig.class, TestOntologySecurityService.class, GlobalExceptionHandler.class})
-@ActiveProfiles("junit")
+@ControllerSliceTest(controllers = DiagramController.class)
 class DiagramControllerTest {
+
+    @Autowired
+    private StubOntologySecurityService ontologySecurity;
 
     @Autowired private MockMvc mockMvc;
 
     @MockitoBean private DiagramService diagramService;
     @MockitoBean private DiagramConceptUsageService conceptUsageService;
-
-    @BeforeEach
-    void setUp() {
-        TestOntologySecurityService.reset();   // allowModify = true (owner) by default
-    }
 
     @Test
     @WithMockSecurityUser(userId = "user123")
@@ -133,7 +122,7 @@ class DiagramControllerTest {
     @Test
     @WithMockSecurityUser(userId = "not-the-owner")
     void getDetail_readableByNonOwner() throws Exception {
-        TestOntologySecurityService.setAllowModify(false);   // not the owner → writes would 403
+        ontologySecurity.denyModify();   // not the owner → writes would 403
         when(diagramService.getDiagram(eq("pracovni-pomer"), eq(5L)))
                 .thenReturn(new DiagramDto(5L, "Hlavní diagram", "pracovni-pomer", 0L, null, List.of(), List.of(), List.of()));
 
@@ -175,7 +164,7 @@ class DiagramControllerTest {
     @Test
     @WithMockSecurityUser(userId = "not-the-owner")
     void rename_forbiddenForNonOwner() throws Exception {
-        TestOntologySecurityService.setAllowModify(false);   // belongsToUserBySlug → false
+        ontologySecurity.denyModify();   // belongsToUserBySlug → false
 
         mockMvc.perform(patch("/api/diagram/pracovni-pomer/5/rename")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -189,7 +178,7 @@ class DiagramControllerTest {
     @Test
     @WithMockSecurityUser(userId = "not-the-owner")
     void materialize_forbiddenForNonOwner() throws Exception {
-        TestOntologySecurityService.setAllowModify(false);   // belongsToUserBySlug → false
+        ontologySecurity.denyModify();   // belongsToUserBySlug → false
 
         mockMvc.perform(post("/api/diagram/pracovni-pomer/5/materialize"))
                 .andExpect(status().isForbidden());
@@ -475,5 +464,163 @@ class DiagramControllerTest {
         assertThat(serialized.has("version"))
                 .as("nodes inside the fat read omit the version key entirely; body was: %s", body)
                 .isFalse();
+    }
+
+    // ========== List for an ontology, concept usage, create, delete ==========
+
+    /** Reads are canViewResource(): a non-owner gets the ontology's diagrams, asked for by the path slug. */
+    @Test
+    @WithMockSecurityUser(userId = "not-the-owner")
+    void listForOntology_returnsTheSlugsDiagrams_toANonOwner() throws Exception {
+        ontologySecurity.denyModify();
+        when(diagramService.listForOntology("pracovni-pomer")).thenReturn(List.of(
+                new DiagramSummaryDto(5L, "Hlavní diagram", "pracovni-pomer", "https://x/pracovni-pomer", null, 7, null),
+                new DiagramSummaryDto(6L, "Pohled HR", "pracovni-pomer", "https://x/pracovni-pomer", null, 2, null)));
+
+        mockMvc.perform(get("/api/diagram/pracovni-pomer/list"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Seznam diagramů byl úspěšně načten."))
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].diagramId").value(5))
+                .andExpect(jsonPath("$.data[1].name").value("Pohled HR"))
+                .andExpect(jsonPath("$.data[1].nodeCount").value(2));
+
+        verify(diagramService).listForOntology("pracovni-pomer");
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "not-the-owner")
+    void conceptUsage_returnsPlacements_toANonOwner() throws Exception {
+        ontologySecurity.denyModify();
+        when(conceptUsageService.usageForSlug("zamestnava")).thenReturn(new DiagramConceptUsageDto(
+                "https://x/pojem/zaměstnává", Map.of("cs", "Zaměstnává"), "zamestnava",
+                List.of(new DiagramConceptUsageDto.Placement(5L, "Hlavní diagram", "pracovni-pomer",
+                        DiagramConceptUsageKind.EDGE, null, null, null, List.of(), List.of(), true))));
+
+        mockMvc.perform(get("/api/diagram/usage/concept/{conceptSlug}", "zamestnava"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Výskyt pojmu na diagramech byl úspěšně načten."))
+                .andExpect(jsonPath("$.data.conceptIri").value("https://x/pojem/zaměstnává"))
+                .andExpect(jsonPath("$.data.conceptName.cs").value("Zaměstnává"))
+                .andExpect(jsonPath("$.data.placements.length()").value(1))
+                .andExpect(jsonPath("$.data.placements[0].diagramId").value(5))
+                .andExpect(jsonPath("$.data.placements[0].ontologySlug").value("pracovni-pomer"))
+                .andExpect(jsonPath("$.data.placements[0].kind").value("EDGE"))
+                .andExpect(jsonPath("$.data.placements[0].pending").value(true))
+                // NON_NULL: hostClass is set only for PROPERTY_ROW
+                .andExpect(jsonPath("$.data.placements[0].hostClass").doesNotExist());
+
+        verify(conceptUsageService).usageForSlug("zamestnava");
+        verifyNoInteractions(diagramService);
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void conceptUsage_onNoCanvas_isAnEmptyList() throws Exception {
+        when(conceptUsageService.usageForSlug("osamely")).thenReturn(new DiagramConceptUsageDto(
+                "https://x/pojem/osamělý", null, "osamely", List.of()));
+
+        mockMvc.perform(get("/api/diagram/usage/concept/{conceptSlug}", "osamely"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.placements").isEmpty())
+                .andExpect(jsonPath("$.data.conceptName").doesNotExist());
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void create_passesSlugAndNameToTheService() throws Exception {
+        when(diagramService.createDiagram("pracovni-pomer", "Pohled HR")).thenReturn(
+                new DiagramDto(6L, "Pohled HR", "pracovni-pomer", 0L, null, List.of(), List.of(), List.of()));
+
+        mockMvc.perform(post("/api/diagram/{slug}/create", "pracovni-pomer")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Pohled HR\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Diagram byl úspěšně vytvořen."))
+                .andExpect(jsonPath("$.data.diagramId").value(6))
+                .andExpect(jsonPath("$.data.name").value("Pohled HR"))
+                .andExpect(jsonPath("$.data.version").value(0));
+
+        verify(diagramService).createDiagram("pracovni-pomer", "Pohled HR");
+    }
+
+    /** The name is optional; an omitted one reaches the service as null, which picks the default name. */
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void create_withoutName_passesNull() throws Exception {
+        when(diagramService.createDiagram("pracovni-pomer", null)).thenReturn(
+                new DiagramDto(7L, "Diagram 2", "pracovni-pomer", 0L, null, List.of(), List.of(), List.of()));
+
+        mockMvc.perform(post("/api/diagram/{slug}/create", "pracovni-pomer")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.name").value("Diagram 2"));
+
+        verify(diagramService).createDiagram("pracovni-pomer", null);
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void create_nameOver255_isRejectedBeforeService() throws Exception {
+        mockMvc.perform(post("/api/diagram/{slug}/create", "pracovni-pomer")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"" + "x".repeat(256) + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("REQUEST_VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString(
+                        "name: Název diagramu může mít nejvýše 255 znaků.")));
+
+        verifyNoInteractions(diagramService);
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void create_nameTaken_is409() throws Exception {
+        when(diagramService.createDiagram("pracovni-pomer", "Hlavní diagram"))
+                .thenThrow(new DiagramNameConflictException("Hlavní diagram"));
+
+        mockMvc.perform(post("/api/diagram/{slug}/create", "pracovni-pomer")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Hlavní diagram\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("DIAGRAM_NAME_CONFLICT"));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "not-the-owner")
+    void create_forbiddenForNonOwner() throws Exception {
+        ontologySecurity.denyModify();
+
+        mockMvc.perform(post("/api/diagram/{slug}/create", "pracovni-pomer")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Pohled HR\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+
+        verifyNoInteractions(diagramService);
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void delete_passesSlugAndIdToTheService() throws Exception {
+        mockMvc.perform(delete("/api/diagram/{slug}/{id}", "pracovni-pomer", 5L))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Diagram byl úspěšně smazán."))
+                .andExpect(jsonPath("$.data").doesNotExist());
+
+        verify(diagramService).deleteDiagram("pracovni-pomer", 5L);
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "not-the-owner")
+    void delete_forbiddenForNonOwner() throws Exception {
+        ontologySecurity.denyModify();
+
+        mockMvc.perform(delete("/api/diagram/{slug}/{id}", "pracovni-pomer", 5L))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(diagramService);
     }
 }

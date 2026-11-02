@@ -1,28 +1,16 @@
 package com.dia.ismdtoolbackend.outbox;
 
+import com.dia.ismdtoolbackend.testsupport.pg.OutboxFlowIT;
+import com.dia.ismdtoolbackend.testsupport.pg.OutboxFlowTestBase;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.Statement;
-import org.apache.jena.sys.JenaSystem;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.persistence.autoconfigure.EntityScan;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Import;
-import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import java.time.Instant;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -34,17 +22,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * rollback, and that the scheduler drains a backlog. Runs against real Postgres +
  * an in-memory Jena dataset (same harness as the relay test).
  */
-@DataJpaTest
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@ActiveProfiles("junit")
-@Import({TransactionTemplateConfig.class, OutboxRelayTriggerTest.TriggerTestConfig.class})
-@EntityScan(basePackageClasses = OutboxEntry.class)
-@EnableJpaRepositories(basePackageClasses = OutboxEntryRepository.class)
-@Transactional(propagation = Propagation.NOT_SUPPORTED)
-class OutboxRelayTriggerTest extends PostgresIntegrationTestBase {
+@OutboxFlowIT
+class OutboxRelayTriggerTest extends OutboxFlowTestBase {
 
     private static final String GRAPH = "https://slovnik.gov.cz/g";
     private static final String A = GRAPH + "/pojem/a";
+    private static final String B = GRAPH + "/pojem/b";
     private static final String PREF_LABEL = "http://www.w3.org/2004/02/skos/core#prefLabel";
 
     @Autowired
@@ -54,36 +37,17 @@ class OutboxRelayTriggerTest extends PostgresIntegrationTestBase {
     @Autowired
     private OutboxRelayScheduler scheduler;
     @Autowired
-    private OutboxConfig config;
-    @Autowired
     private OutboxEntryRepository repository;
     @Autowired
     private TransactionTemplate txTemplate;
-    @Autowired
-    private InMemoryTdb2 tdb2;
-
-    @BeforeAll
-    static void initJena() {
-        JenaSystem.init();
-    }
-
-    @BeforeEach
-    void reset() {
-        // The Postgres container is shared by every subclass; start from an empty table.
-        txTemplate.executeWithoutResult(tx -> repository.deleteAll());
-        tdb2.reset();
-        config.setBatchSize(100);
-        config.setMaxAttempts(10);
-    }
-
-    @AfterEach
-    void cleanUp() {
-        txTemplate.executeWithoutResult(tx -> repository.deleteAll());
-    }
 
     private static Statement triple(String literal) {
+        return triple(A, literal);
+    }
+
+    private static Statement triple(String subject, String literal) {
         Model m = ModelFactory.createDefaultModel();
-        Resource s = m.createResource(A);
+        Resource s = m.createResource(subject);
         Property p = m.createProperty(PREF_LABEL);
         return m.createStatement(s, p, literal);
     }
@@ -107,20 +71,30 @@ class OutboxRelayTriggerTest extends PostgresIntegrationTestBase {
 
     @Test
     void nudge_doesNotDrainOnRollback() {
+        // A committed row for another aggregate: any drain would apply it.
+        txTemplate.executeWithoutResult(tx ->
+                writer.enqueueUpsert(GRAPH, B, Set.of(), Set.of(triple(B, "Committed earlier"))));
+
         assertThatThrownBy(() -> txTemplate.executeWithoutResult(tx -> {
             writer.enqueueUpsert(GRAPH, A, Set.of(), Set.of(triple("Rolled back")));
             trigger.nudgeAfterCommit();
             throw new IllegalStateException("boom after enqueue + nudge");
         })).isInstanceOf(IllegalStateException.class);
 
-        // The tx rolled back: the row never committed, and afterCommit never fired.
-        assertThat(repository.count()).isZero();
+        // The rolled-back row is gone and no drain ran: the earlier row is still pending.
+        assertThat(repository.findAll())
+                .singleElement()
+                .satisfies(e -> {
+                    assertThat(e.getAggregateIri()).isEqualTo(B);
+                    assertThat(e.getStatus()).isEqualTo(OutboxStatus.PENDING);
+                });
         assertThat(graphHas("Rolled back")).isFalse();
+        assertThat(tdb2.dataset().getNamedModel(GRAPH).contains(triple(B, "Committed earlier"))).isFalse();
     }
 
     @Test
     void scheduler_drainsBacklog() {
-        config.setBatchSize(1); // force multiple passes so the backstop's drain-loop is exercised
+        outboxConfig.setBatchSize(1); // force multiple passes so the backstop's drain-loop is exercised
         txTemplate.executeWithoutResult(tx -> {
             writer.enqueueUpsert(GRAPH, A, Set.of(), Set.of(triple("One")));
             writer.enqueueUpsert(GRAPH + "/pojem/b", GRAPH + "/pojem/b", Set.of(),
@@ -130,37 +104,5 @@ class OutboxRelayTriggerTest extends PostgresIntegrationTestBase {
         scheduler.drainScheduled();
 
         assertThat(repository.countByStatus(OutboxStatus.DONE)).isEqualTo(2);
-    }
-
-    static class TriggerTestConfig {
-        @Bean
-        OutboxConfig outboxConfig() {
-            return new OutboxConfig();
-        }
-
-        @Bean
-        InMemoryTdb2 inMemoryTdb2() {
-            return new InMemoryTdb2();
-        }
-
-        @Bean
-        OutboxWriter outboxWriter(OutboxEntryRepository repo) {
-            return new OutboxWriter(repo);
-        }
-
-        @Bean
-        OutboxRelay outboxRelay(OutboxEntryRepository repo, InMemoryTdb2 tdb2, OutboxConfig config) {
-            return new OutboxRelay(repo, tdb2, config);
-        }
-
-        @Bean
-        OutboxRelayTrigger outboxRelayTrigger(OutboxRelay relay) {
-            return new OutboxRelayTrigger(relay);
-        }
-
-        @Bean
-        OutboxRelayScheduler outboxRelayScheduler(OutboxRelay relay) {
-            return new OutboxRelayScheduler(relay);
-        }
     }
 }

@@ -18,6 +18,9 @@ public enum ErrorCode {
     INVALID_ARGUMENT(HttpStatus.BAD_REQUEST, "Požadavek obsahuje neplatnou hodnotu."),
     DATA_INTEGRITY_VIOLATION(HttpStatus.BAD_REQUEST,
             "Zápis porušuje omezení databáze — pravděpodobně již existuje záznam se stejnou hodnotou."),
+    METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "Tato metoda není pro danou adresu podporována."),
+    UNSUPPORTED_MEDIA_TYPE(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Formát obsahu požadavku není podporován."),
+    ENDPOINT_NOT_FOUND(HttpStatus.NOT_FOUND, "Požadovaná adresa neexistuje."),
 
     // Access
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "Přihlášení je neplatné nebo vypršelo."),

@@ -2,8 +2,8 @@ package com.dia.ismdtoolbackend.client.esbirka;
 
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class StaleUrlsTest {
 
@@ -13,58 +13,59 @@ class StaleUrlsTest {
 
     @Test
     void encodesSlashesAsOnePathSegment() {
-        assertEquals("%2Fsb%2F1997%2F49", StaleUrls.encodePathSegment("/sb/1997/49"));
+        assertThat(StaleUrls.encodePathSegment("/sb/1997/49")).isEqualTo("%2Fsb%2F1997%2F49");
     }
 
     @Test
     void encodesHashOfFragmentStaleUrl() {
-        assertEquals("%2Fsb%2F2012%2F89%2F2026-01-01%23par_3000",
-                StaleUrls.encodePathSegment("/sb/2012/89/2026-01-01#par_3000"));
+        assertThat(StaleUrls.encodePathSegment("/sb/2012/89/2026-01-01#par_3000"))
+                .isEqualTo("%2Fsb%2F2012%2F89%2F2026-01-01%23par_3000");
     }
 
     @Test
     void encodesNonAsciiAsUtf8Bytes() {
-        assertEquals("%2Fa%C5%A1b%20c", StaleUrls.encodePathSegment("/ašb c"));
+        assertThat(StaleUrls.encodePathSegment("/ašb c")).isEqualTo("%2Fa%C5%A1b%20c");
     }
 
     @Test
     void lawStaleUrlOfLawVersionAndFragmentIris() {
-        assertEquals("/sb/1997/49", StaleUrls.lawStaleUrl(LAW_IRI));
-        assertEquals("/sb/1997/49", StaleUrls.lawStaleUrl(VERSION_IRI));
-        assertEquals("/sb/1997/49", StaleUrls.lawStaleUrl(FRAGMENT_IRI));
+        assertThat(StaleUrls.lawStaleUrl(LAW_IRI)).isEqualTo("/sb/1997/49");
+        assertThat(StaleUrls.lawStaleUrl(VERSION_IRI)).isEqualTo("/sb/1997/49");
+        assertThat(StaleUrls.lawStaleUrl(FRAGMENT_IRI)).isEqualTo("/sb/1997/49");
     }
 
     @Test
     void versionStaleUrlOfVersionAndFragmentIris() {
-        assertEquals("/sb/1997/49/2025-11-01", StaleUrls.versionStaleUrl(VERSION_IRI));
-        assertEquals("/sb/1997/49/2025-11-01", StaleUrls.versionStaleUrl(FRAGMENT_IRI));
-        assertEquals("/sb/1997/49/0000-00-00", StaleUrls.versionStaleUrl(LAW_IRI + "/0000-00-00"));
+        assertThat(StaleUrls.versionStaleUrl(VERSION_IRI)).isEqualTo("/sb/1997/49/2025-11-01");
+        assertThat(StaleUrls.versionStaleUrl(FRAGMENT_IRI)).isEqualTo("/sb/1997/49/2025-11-01");
+        assertThat(StaleUrls.versionStaleUrl(LAW_IRI + "/0000-00-00")).isEqualTo("/sb/1997/49/0000-00-00");
     }
 
     @Test
     void versionStaleUrlRejectsLawIri() {
-        assertThrows(IllegalArgumentException.class, () -> StaleUrls.versionStaleUrl(LAW_IRI));
-        assertThrows(IllegalArgumentException.class, () -> StaleUrls.versionStaleUrl(LAW_IRI + "/dokument"));
+        assertThatThrownBy(() -> StaleUrls.versionStaleUrl(LAW_IRI)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> StaleUrls.versionStaleUrl(LAW_IRI + "/dokument"))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void rejectsNonCanonicalIris() {
-        assertThrows(IllegalArgumentException.class,
-                () -> StaleUrls.lawStaleUrl("https://www.e-sbirka.cz/eli/cz/sb/1997/49"));
-        assertThrows(IllegalArgumentException.class,
-                () -> StaleUrls.lawStaleUrl("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1997"));
-        assertThrows(IllegalArgumentException.class, () -> StaleUrls.lawStaleUrl(null));
+        assertThatThrownBy(() -> StaleUrls.lawStaleUrl("https://www.e-sbirka.cz/eli/cz/sb/1997/49"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> StaleUrls.lawStaleUrl("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1997"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> StaleUrls.lawStaleUrl(null)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void toIriInvertsStaleUrl() {
-        assertEquals(VERSION_IRI, StaleUrls.toIri(StaleUrls.versionStaleUrl(VERSION_IRI)));
-        assertEquals(LAW_IRI, StaleUrls.toIri("/sb/1997/49"));
+        assertThat(StaleUrls.toIri(StaleUrls.versionStaleUrl(VERSION_IRI))).isEqualTo(VERSION_IRI);
+        assertThat(StaleUrls.toIri("/sb/1997/49")).isEqualTo(LAW_IRI);
     }
 
     @Test
     void toLawStaleUrlDropsVersionDate() {
-        assertEquals("/sm/2020/12", StaleUrls.toLawStaleUrl("/sm/2020/12/0000-00-00"));
-        assertEquals("/sb/1997/49", StaleUrls.toLawStaleUrl("/sb/1997/49"));
+        assertThat(StaleUrls.toLawStaleUrl("/sm/2020/12/0000-00-00")).isEqualTo("/sm/2020/12");
+        assertThat(StaleUrls.toLawStaleUrl("/sb/1997/49")).isEqualTo("/sb/1997/49");
     }
 }

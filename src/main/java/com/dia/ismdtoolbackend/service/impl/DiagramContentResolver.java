@@ -259,18 +259,6 @@ class DiagramContentResolver {
         return onCanvas;
     }
 
-    /** The property IRIs each class node has been curated to render, by class IRI. */
-    private Map<String, Set<String>> curatedProperties(List<DiagramNodeEntity> nodes) {
-        Map<String, Set<String>> curated = new HashMap<>();
-        for (DiagramNodeEntity n : nodes) {
-            List<String> visible = n.getVisibleProperties();
-            if (!visible.isEmpty()) {
-                curated.put(n.getConceptIri(), new HashSet<>(visible));
-            }
-        }
-        return curated;
-    }
-
     /**
      * A concept is a relationship when PG says so, or, when PG has no type for it, when its RDF carries both
      * a domain and a range. {@code concept_metadata.concept_type} is null for uploads whose OFN tag carries
@@ -388,7 +376,7 @@ class DiagramContentResolver {
                 return value.toLowerCase(Locale.ROOT);
             }
         }
-        return row.iri() != null ? row.iri() : "";
+        return row.iri();
     }
 
     /** True when this endpoint cannot anchor an edge: absent, or not a node on the canvas. */

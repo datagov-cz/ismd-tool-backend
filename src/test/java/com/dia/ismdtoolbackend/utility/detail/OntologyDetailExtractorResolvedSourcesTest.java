@@ -7,9 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class OntologyDetailExtractorResolvedSourcesTest {
 
@@ -21,50 +19,53 @@ class OntologyDetailExtractorResolvedSourcesTest {
 
     @Test
     void buildResolvedSources_nullInput_returnsEmptyList() {
-        assertTrue(OntologyDetailExtractor.buildResolvedSources(null).isEmpty(),
-                "stable contract: empty list, never null, so the field serializes as []");
+        assertThat(OntologyDetailExtractor.buildResolvedSources(null))
+                .as("stable contract: empty list, never null, so the field serializes as []")
+                .isEmpty();
     }
 
     @Test
     void buildResolvedSources_emptyInput_returnsEmptyList() {
-        assertTrue(OntologyDetailExtractor.buildResolvedSources(List.of()).isEmpty(),
-                "stable contract: empty list, never null, so the field serializes as []");
+        assertThat(OntologyDetailExtractor.buildResolvedSources(List.of()))
+                .as("stable contract: empty list, never null, so the field serializes as []")
+                .isEmpty();
     }
 
     @Test
     void buildResolvedSources_lawUrl_skippedNonFragment() {
         List<ResolvedLegalSourceDto> out = OntologyDetailExtractor.buildResolvedSources(List.of(LAW));
-        assertEquals(1, out.size());
-        assertEquals(EnrichmentStatus.SKIPPED_NON_FRAGMENT, out.get(0).getEnrichmentStatus());
-        assertEquals(ParsedEli.Level.LAW, out.get(0).getLevel());
-        assertEquals("Zákon č. 361/2000 Sb.", out.get(0).getDisplayLabel(),
-                "extractor populates parse-only displayLabel via EsbirkaCzechCitationFormatter");
+        assertThat(out).hasSize(1);
+        assertThat(out.get(0).getEnrichmentStatus()).isEqualTo(EnrichmentStatus.SKIPPED_NON_FRAGMENT);
+        assertThat(out.get(0).getLevel()).isEqualTo(ParsedEli.Level.LAW);
+        assertThat(out.get(0).getDisplayLabel())
+                .as("extractor populates parse-only displayLabel via EsbirkaCzechCitationFormatter")
+                .isEqualTo("Zákon č. 361/2000 Sb.");
     }
 
     @Test
     void buildResolvedSources_fragmentUrl_pendingHasFallbackDisplayLabel() {
         List<ResolvedLegalSourceDto> out = OntologyDetailExtractor.buildResolvedSources(List.of(FRAGMENT));
-        assertEquals(EnrichmentStatus.PENDING, out.get(0).getEnrichmentStatus());
-        assertEquals("Zákon č. 361/2000 Sb., § 2 písm. d) (znění od 1. 4. 2024)",
-                out.get(0).getDisplayLabel(),
-                "fragment fallback uses segment-derived citation");
+        assertThat(out.get(0).getEnrichmentStatus()).isEqualTo(EnrichmentStatus.PENDING);
+        assertThat(out.get(0).getDisplayLabel())
+                .as("fragment fallback uses segment-derived citation")
+                .isEqualTo("Zákon č. 361/2000 Sb., § 2 písm. d) (znění od 1. 4. 2024)");
     }
 
     @Test
     void buildResolvedSources_fragmentUrl_pending() {
         List<ResolvedLegalSourceDto> out = OntologyDetailExtractor.buildResolvedSources(List.of(FRAGMENT));
-        assertEquals(1, out.size());
-        assertEquals(EnrichmentStatus.PENDING, out.get(0).getEnrichmentStatus());
-        assertEquals(ParsedEli.Level.FRAGMENT, out.get(0).getLevel());
-        assertNull(out.get(0).getFragmentCitation(), "extractor never calls SPARQL");
+        assertThat(out).hasSize(1);
+        assertThat(out.get(0).getEnrichmentStatus()).isEqualTo(EnrichmentStatus.PENDING);
+        assertThat(out.get(0).getLevel()).isEqualTo(ParsedEli.Level.FRAGMENT);
+        assertThat(out.get(0).getFragmentCitation()).as("extractor never calls SPARQL").isNull();
     }
 
     @Test
     void buildResolvedSources_invalidUrl_invalidIri() {
         List<ResolvedLegalSourceDto> out = OntologyDetailExtractor.buildResolvedSources(List.of("garbage"));
-        assertEquals(1, out.size());
-        assertEquals(EnrichmentStatus.INVALID_IRI, out.get(0).getEnrichmentStatus());
-        assertEquals("garbage", out.get(0).getOriginalUrl());
+        assertThat(out).hasSize(1);
+        assertThat(out.get(0).getEnrichmentStatus()).isEqualTo(EnrichmentStatus.INVALID_IRI);
+        assertThat(out.get(0).getOriginalUrl()).isEqualTo("garbage");
     }
 
     @Test
@@ -73,14 +74,16 @@ class OntologyDetailExtractorResolvedSourcesTest {
         // return an empty list, never null, so the field always serializes as [].
         ResolvedLegalSourceDto invalid =
                 OntologyDetailExtractor.buildResolvedSources(List.of("garbage")).get(0);
-        assertTrue(invalid.getFragmentSegments().isEmpty(),
-                "fragmentSegments must be empty, never null, even for INVALID_IRI");
+        assertThat(invalid.getFragmentSegments())
+                .as("fragmentSegments must be empty, never null, even for INVALID_IRI")
+                .isEmpty();
 
         // non-fragment parse leaves no segments either
         ResolvedLegalSourceDto law =
                 OntologyDetailExtractor.buildResolvedSources(List.of(LAW)).get(0);
-        assertTrue(law.getFragmentSegments().isEmpty(),
-                "fragmentSegments must be empty, never null, for non-fragment URLs");
+        assertThat(law.getFragmentSegments())
+                .as("fragmentSegments must be empty, never null, for non-fragment URLs")
+                .isEmpty();
     }
 
     @Test
@@ -88,22 +91,22 @@ class OntologyDetailExtractorResolvedSourcesTest {
         List<ResolvedLegalSourceDto> out = OntologyDetailExtractor.buildResolvedSources(
                 List.of(LAW, FRAGMENT, "junk", VERSION));
 
-        assertEquals(4, out.size());
-        assertEquals(EnrichmentStatus.SKIPPED_NON_FRAGMENT, out.get(0).getEnrichmentStatus());
-        assertEquals(EnrichmentStatus.PENDING, out.get(1).getEnrichmentStatus());
-        assertEquals(EnrichmentStatus.INVALID_IRI, out.get(2).getEnrichmentStatus());
-        assertEquals(EnrichmentStatus.SKIPPED_NON_FRAGMENT, out.get(3).getEnrichmentStatus());
+        assertThat(out).hasSize(4);
+        assertThat(out.get(0).getEnrichmentStatus()).isEqualTo(EnrichmentStatus.SKIPPED_NON_FRAGMENT);
+        assertThat(out.get(1).getEnrichmentStatus()).isEqualTo(EnrichmentStatus.PENDING);
+        assertThat(out.get(2).getEnrichmentStatus()).isEqualTo(EnrichmentStatus.INVALID_IRI);
+        assertThat(out.get(3).getEnrichmentStatus()).isEqualTo(EnrichmentStatus.SKIPPED_NON_FRAGMENT);
     }
 
     @Test
     void buildResolvedSources_legacyHost_originalPreservedCanonicalIris() {
         List<ResolvedLegalSourceDto> out = OntologyDetailExtractor.buildResolvedSources(List.of(LEGACY_FRAGMENT));
 
-        assertEquals(1, out.size());
+        assertThat(out).hasSize(1);
         ResolvedLegalSourceDto dto = out.get(0);
-        assertEquals(EnrichmentStatus.PENDING, dto.getEnrichmentStatus());
-        assertEquals(LEGACY_FRAGMENT, dto.getOriginalUrl());
-        assertTrue(dto.getLawIri().startsWith("https://opendata.eselpoint.gov.cz/esel-esb/"));
-        assertTrue(dto.getFragmentIri().startsWith("https://opendata.eselpoint.gov.cz/esel-esb/"));
+        assertThat(dto.getEnrichmentStatus()).isEqualTo(EnrichmentStatus.PENDING);
+        assertThat(dto.getOriginalUrl()).isEqualTo(LEGACY_FRAGMENT);
+        assertThat(dto.getLawIri()).startsWith("https://opendata.eselpoint.gov.cz/esel-esb/");
+        assertThat(dto.getFragmentIri()).startsWith("https://opendata.eselpoint.gov.cz/esel-esb/");
     }
 }

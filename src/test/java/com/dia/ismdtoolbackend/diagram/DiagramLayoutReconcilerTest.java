@@ -1,6 +1,5 @@
 package com.dia.ismdtoolbackend.diagram;
 
-import com.dia.ismdtoolbackend.config.JpaAuditingConfig;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.PositionDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.ViewportDto;
@@ -16,24 +15,19 @@ import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.mapper.DiagramMapper;
 import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
 import com.dia.ismdtoolbackend.models.diagram.EdgeWaypoint;
-import com.dia.ismdtoolbackend.outbox.PostgresIntegrationTestBase;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.DiagramNodeRepository;
 import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
 import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.impl.DiagramLayoutReconciler;
+import com.dia.ismdtoolbackend.testsupport.pg.PlainJpaIT;
+import com.dia.ismdtoolbackend.testsupport.pg.PostgresIntegrationTestBase;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.boot.persistence.autoconfigure.EntityScan;
-import org.springframework.context.annotation.Import;
-import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -53,19 +47,15 @@ import static org.mockito.Mockito.verify;
  * Exercises {@link DiagramLayoutReconciler} directly (the pure membership logic), mirroring the two-step
  * flush protocol {@code DiagramServiceImpl.saveLayout} uses.
  */
-@DataJpaTest
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@ActiveProfiles("junit")
-@EntityScan(basePackageClasses = {DiagramEntity.class, ConceptMetadataEntity.class})
-@EnableJpaRepositories(basePackageClasses = {DiagramRepository.class, ConceptMetadataRepository.class})
-@Import(JpaAuditingConfig.class)
+@PlainJpaIT
+@Transactional
 class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
 
-    /** Spied so a save's query count can be asserted, not just its result. */
-    @MockitoSpyBean private ConceptMetadataRepository conceptRepository;
+    /** A spy (from {@link PlainJpaIT}), so a save's query count can be asserted, not just its result. */
+    @Autowired private ConceptMetadataRepository conceptRepository;
     @Autowired private DiagramRepository diagramRepository;
     @Autowired private DiagramNodeRepository nodeRepository;
-    @MockitoSpyBean private DiagramPendingEditRepository pendingEditRepository;
+    @Autowired private DiagramPendingEditRepository pendingEditRepository;
     @Autowired private OntologyMetadataRepository ontologyRepository;
     @Autowired private EntityManager em;
 

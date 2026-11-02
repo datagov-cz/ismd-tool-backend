@@ -17,7 +17,9 @@ import java.net.http.HttpClient;
 import java.util.*;
 import java.util.concurrent.Semaphore;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.Mockito.*;
 
 class JenaTDB2RepositorySearchTest {
@@ -71,7 +73,7 @@ class JenaTDB2RepositorySearchTest {
     @Test
     void searchByText_emptyGraphNames_returnsEmptyList() {
         List<Map<String, String>> results = repository.searchByText("test", List.of(), 100);
-        assertTrue(results.isEmpty());
+        assertThat(results).isEmpty();
     }
 
     @Test
@@ -81,8 +83,7 @@ class JenaTDB2RepositorySearchTest {
         List<Map<String, String>> results = repository.searchByText(
                 "test", List.of("https://example.org/ontology/1"), 100);
 
-        assertTrue(results.isEmpty(),
-                "Should return empty list when text index is unavailable");
+        assertThat(results).as("Should return empty list when text index is unavailable").isEmpty();
         // The short-circuit must happen BEFORE any SPARQL is issued so the missing-index
         // case can't silently return garbage via OPTIONAL joins on an unbound variable.
         verify(mockConnection, never()).query(anyString());
@@ -103,10 +104,12 @@ class JenaTDB2RepositorySearchTest {
                 HttpClient.newHttpClient(), new Semaphore(4), 5000,
                 mockConnection, prodEnv, new RuntimeException("Connection refused"));
 
-        assertDoesNotThrow(repo::init,
-                "Boot must not crash when Fuseki is unreachable, even in production");
-        assertFalse(repo.isTextIndexAvailable(),
-                "Probe couldn't run, so text search should be marked unavailable");
+        assertThatCode(repo::init)
+                .as("Boot must not crash when Fuseki is unreachable, even in production")
+                .doesNotThrowAnyException();
+        assertThat(repo.isTextIndexAvailable())
+                .as("Probe couldn't run, so text search should be marked unavailable")
+                .isFalse();
     }
 
     @Test
@@ -135,10 +138,13 @@ class JenaTDB2RepositorySearchTest {
                 HttpClient.newHttpClient(), new Semaphore(4), 5000,
                 mockConnection, prodEnv, null);
 
-        IllegalStateException ex = assertThrows(IllegalStateException.class, repo::init,
-                "Definite misconfiguration must fail fast in non-test profiles");
-        assertTrue(ex.getMessage().contains("text index"),
-                "Error message should point operators at the text index config");
+        IllegalStateException ex = assertThatExceptionOfType(IllegalStateException.class)
+                .as("Definite misconfiguration must fail fast in non-test profiles")
+                .isThrownBy(repo::init)
+                .actual();
+        assertThat(ex)
+                .as("Error message should point operators at the text index config")
+                .hasMessageContaining("text index");
     }
 
     @Test
@@ -164,14 +170,14 @@ class JenaTDB2RepositorySearchTest {
                 HttpClient.newHttpClient(), new Semaphore(4), 5000,
                 mockConnection, testEnv, null);
 
-        assertDoesNotThrow(repo::init);
-        assertFalse(repo.isTextIndexAvailable());
+        assertThatCode(repo::init).doesNotThrowAnyException();
+        assertThat(repo.isTextIndexAvailable()).isFalse();
     }
 
     @Test
     void searchByText_nullGraphNames_returnsEmptyList() {
         List<Map<String, String>> results = repository.searchByText("test", null, 100);
-        assertTrue(results.isEmpty());
+        assertThat(results).isEmpty();
     }
 
     @Test
@@ -212,13 +218,12 @@ class JenaTDB2RepositorySearchTest {
         List<Map<String, String>> results = repository.searchByText("osoba",
                 List.of("https://example.org/ontology/1"), 100);
 
-        assertEquals(1, results.size());
-        assertEquals("https://example.org/concept/osoba", results.get(0).get("resourceIri"));
-        assertEquals("https://example.org/ontology/1", results.get(0).get("graphName"));
-        assertEquals("Osoba", results.get(0).get("prefLabel"));
-        assertEquals("cs", results.get(0).get("prefLabelLang"));
-        assertEquals("http://www.w3.org/2004/02/skos/core#Concept",
-                results.get(0).get("types"));
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).get("resourceIri")).isEqualTo("https://example.org/concept/osoba");
+        assertThat(results.get(0).get("graphName")).isEqualTo("https://example.org/ontology/1");
+        assertThat(results.get(0).get("prefLabel")).isEqualTo("Osoba");
+        assertThat(results.get(0).get("prefLabelLang")).isEqualTo("cs");
+        assertThat(results.get(0).get("types")).isEqualTo("http://www.w3.org/2004/02/skos/core#Concept");
     }
 
     @Test
@@ -233,8 +238,7 @@ class JenaTDB2RepositorySearchTest {
         repository.searchByText("test'injection", List.of("https://example.org/ontology/1"), 100);
 
         String executedSparql = sparqlCaptor.getValue();
-        assertTrue(executedSparql.contains("test\\'injection"),
-                "Single quotes should be escaped in SPARQL query");
+        assertThat(executedSparql).as("Single quotes should be escaped in SPARQL query").contains("test\\'injection");
     }
 
     @Test
@@ -253,13 +257,16 @@ class JenaTDB2RepositorySearchTest {
         // The hyphen is a Lucene meta-char; we replace it with a space so the Lucene
         // analyzer (StandardTokenizer) treats the input as whitespace-separated tokens.
         // Collapsed whitespace means no double spaces survive.
-        assertTrue(executedSparql.contains("a124 datový slovník iskn"),
-                "Hyphen must be replaced with whitespace and collapsed; was: " + executedSparql);
-        assertFalse(executedSparql.contains("\\-"),
-                "No literal Lucene-escaped hyphen should remain; was: " + executedSparql);
+        assertThat(executedSparql)
+                .as("Hyphen must be replaced with whitespace and collapsed; was: " + executedSparql)
+                .contains("a124 datový slovník iskn");
+        assertThat(executedSparql)
+                .as("No literal Lucene-escaped hyphen should remain; was: " + executedSparql)
+                .doesNotContain("\\-");
         // Sanity check: the produced SPARQL must parse.
-        assertDoesNotThrow(() -> org.apache.jena.query.QueryFactory.create(executedSparql),
-                "Generated SPARQL must be syntactically valid");
+        assertThatCode(() -> org.apache.jena.query.QueryFactory.create(executedSparql))
+                .as("Generated SPARQL must be syntactically valid")
+                .doesNotThrowAnyException();
     }
 
     // --- fetchConceptLabels ---
@@ -267,13 +274,13 @@ class JenaTDB2RepositorySearchTest {
     @Test
     void fetchConceptLabels_emptyIris_returnsEmptyModel() {
         Model result = repository.fetchConceptLabels(List.of());
-        assertTrue(result.isEmpty());
+        assertThat(result.isEmpty()).isTrue();
     }
 
     @Test
     void fetchConceptLabels_nullIris_returnsEmptyModel() {
         Model result = repository.fetchConceptLabels(null);
-        assertTrue(result.isEmpty());
+        assertThat(result.isEmpty()).isTrue();
     }
 
     @Test
@@ -290,8 +297,8 @@ class JenaTDB2RepositorySearchTest {
         Model result = repository.fetchConceptLabels(
                 List.of("https://example.org/concept/osoba"));
 
-        assertFalse(result.isEmpty());
-        assertEquals(1, result.size());
+        assertThat(result.isEmpty()).isFalse();
+        assertThat(result.size()).isEqualTo(1);
     }
 
     @Test
@@ -307,8 +314,8 @@ class JenaTDB2RepositorySearchTest {
                 "https://example.org/concept/2"));
 
         String executedSparql = sparqlCaptor.getValue().toString();
-        assertTrue(executedSparql.contains("<https://example.org/concept/1>"));
-        assertTrue(executedSparql.contains("<https://example.org/concept/2>"));
+        assertThat(executedSparql).contains("<https://example.org/concept/1>");
+        assertThat(executedSparql).contains("<https://example.org/concept/2>");
     }
 
     // --- filterByRelationTypes ---
@@ -316,14 +323,14 @@ class JenaTDB2RepositorySearchTest {
     @Test
     void filterByRelationTypes_emptyIris_returnsEmptySet() {
         Set<String> result = repository.filterByRelationTypes(List.of(), List.of(RelationType.SUBCLASS));
-        assertTrue(result.isEmpty());
+        assertThat(result).isEmpty();
     }
 
     @Test
     void filterByRelationTypes_emptyRelationTypes_returnsEmptySet() {
         Set<String> result = repository.filterByRelationTypes(
                 List.of("https://example.org/concept/1"), List.of());
-        assertTrue(result.isEmpty());
+        assertThat(result).isEmpty();
     }
 
     @Test
@@ -339,7 +346,7 @@ class JenaTDB2RepositorySearchTest {
                 List.of("https://example.org/concept/1"),
                 List.of(RelationType.SUBCLASS));
 
-        assertTrue(sparqlCaptor.getValue().contains("rdfs:subClassOf"));
+        assertThat(sparqlCaptor.getValue()).contains("rdfs:subClassOf");
     }
 
     @Test
@@ -356,9 +363,9 @@ class JenaTDB2RepositorySearchTest {
                 List.of(RelationType.SUBCLASS, RelationType.EXACT_MATCH));
 
         String sparql = sparqlCaptor.getValue();
-        assertTrue(sparql.contains("UNION"));
-        assertTrue(sparql.contains("rdfs:subClassOf"));
-        assertTrue(sparql.contains("skos:exactMatch"));
+        assertThat(sparql).contains("UNION");
+        assertThat(sparql).contains("rdfs:subClassOf");
+        assertThat(sparql).contains("skos:exactMatch");
     }
 
     @Test
@@ -381,8 +388,8 @@ class JenaTDB2RepositorySearchTest {
                 List.of("https://example.org/concept/1", "https://example.org/concept/2"),
                 List.of(RelationType.SUBCLASS));
 
-        assertEquals(1, result.size());
-        assertTrue(result.contains("https://example.org/concept/1"));
+        assertThat(result).hasSize(1);
+        assertThat(result).contains("https://example.org/concept/1");
     }
 
     /**

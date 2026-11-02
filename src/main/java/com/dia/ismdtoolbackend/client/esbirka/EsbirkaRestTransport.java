@@ -23,7 +23,6 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
-import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpTimeoutException;
@@ -94,7 +93,7 @@ class EsbirkaRestTransport {
                 .connectTimeout(callTimeout)
                 .build();
         this.restClient = RestClient.builder()
-                .requestFactory(new DeadlineAwareRequestFactory(httpClient, callTimeout))
+                .requestFactory(new DeadlineAwareRequestFactory(httpClient))
                 .configureMessageConverters(converters -> converters.withJsonConverter(
                         new JacksonJsonHttpMessageConverter(jsonMapper)))
                 .build();
@@ -329,9 +328,10 @@ class EsbirkaRestTransport {
                 || "json".equalsIgnoreCase(contentType.getSubtypeSuffix()));
     }
 
+    /** The JDK client signals a read or connect timeout with {@link HttpTimeoutException}. */
     private static boolean isTimeout(Throwable e) {
         for (Throwable t = e; t != null; t = t.getCause()) {
-            if (t instanceof HttpTimeoutException || t instanceof SocketTimeoutException) {
+            if (t instanceof HttpTimeoutException) {
                 return true;
             }
         }
@@ -369,16 +369,15 @@ class EsbirkaRestTransport {
     /**
      * Shares one pooled {@link HttpClient} and applies the read timeout of the current call, so a
      * call is cut to the remaining request deadline. {@link JdkClientHttpRequestFactory} is a thin
-     * wrapper, cheap to create per request.
+     * wrapper, cheap to create per request. Only {@link #exchange} creates requests, and it sets
+     * {@link #CALL_TIMEOUT} first.
      */
     private static final class DeadlineAwareRequestFactory implements ClientHttpRequestFactory {
         private final HttpClient httpClient;
-        private final Duration defaultTimeout;
         private final Executor bodyExecutor;
 
-        DeadlineAwareRequestFactory(HttpClient httpClient, Duration defaultTimeout) {
+        DeadlineAwareRequestFactory(HttpClient httpClient) {
             this.httpClient = httpClient;
-            this.defaultTimeout = defaultTimeout;
             this.bodyExecutor = new SimpleAsyncTaskExecutor("esbirka-rest-body-");
         }
 
@@ -387,8 +386,7 @@ class EsbirkaRestTransport {
         @NonNull
         public ClientHttpRequest createRequest(@NonNull URI uri, @NonNull HttpMethod httpMethod) throws IOException {
             JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient, bodyExecutor);
-            Duration timeout = CALL_TIMEOUT.get();
-            factory.setReadTimeout(timeout != null ? timeout : defaultTimeout);
+            factory.setReadTimeout(CALL_TIMEOUT.get());
             factory.enableCompression(true);
             return factory.createRequest(uri, httpMethod);
         }

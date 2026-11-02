@@ -10,7 +10,7 @@ import java.util.Map;
 
 import static com.dia.constants.VocabularyConstants.*;
 import static com.dia.ismdtoolbackend.utility.exporter.RdfTestModelFactory.*;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 @DisplayName("ConceptJsonMapper - Domain and Range")
 class ConceptDomainRangeTest {
@@ -33,7 +33,7 @@ class ConceptDomainRangeTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, relation.getURI());
 
-        assertEquals(domainClass.getURI(), result.get(DEFINICNI_OBOR));
+        assertThat(result.get(DEFINICNI_OBOR)).isEqualTo(domainClass.getURI());
     }
 
     @Test
@@ -47,7 +47,7 @@ class ConceptDomainRangeTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, relation.getURI());
 
-        assertEquals(rangeClass.getURI(), result.get(OBOR_HODNOT));
+        assertThat(result.get(OBOR_HODNOT)).isEqualTo(rangeClass.getURI());
     }
 
     @Test
@@ -60,7 +60,7 @@ class ConceptDomainRangeTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, prop.getURI());
 
-        assertEquals("xsd:string", result.get(OBOR_HODNOT));
+        assertThat(result.get(OBOR_HODNOT)).isEqualTo("xsd:string");
     }
 
     @Test
@@ -73,7 +73,7 @@ class ConceptDomainRangeTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, prop.getURI());
 
-        assertEquals("xsd:date", result.get(OBOR_HODNOT));
+        assertThat(result.get(OBOR_HODNOT)).isEqualTo("xsd:date");
     }
 
     @Test
@@ -86,7 +86,7 @@ class ConceptDomainRangeTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, prop.getURI());
 
-        assertEquals("xsd:boolean", result.get(OBOR_HODNOT));
+        assertThat(result.get(OBOR_HODNOT)).isEqualTo("xsd:boolean");
     }
 
     @Test
@@ -98,8 +98,8 @@ class ConceptDomainRangeTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertFalse(result.containsKey(DEFINICNI_OBOR));
-        assertFalse(result.containsKey(OBOR_HODNOT));
+        assertThat(result).doesNotContainKey(DEFINICNI_OBOR);
+        assertThat(result).doesNotContainKey(OBOR_HODNOT);
     }
 
     @Test
@@ -112,7 +112,7 @@ class ConceptDomainRangeTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, relation.getURI());
 
-        assertTrue(result.containsKey(DEFINICNI_OBOR));
-        assertFalse(result.containsKey(OBOR_HODNOT));
+        assertThat(result).containsKey(DEFINICNI_OBOR);
+        assertThat(result).doesNotContainKey(OBOR_HODNOT);
     }
 }

@@ -250,7 +250,8 @@ public class ModelAnalyzer {
 
         boolean hasPojem = hasConceptOfType(model, POJEM);
 
-        boolean hasConceptualModelTypes = hasConceptOfType(model, TSP) ||
+        boolean hasConceptualModelTypes = hasConceptOfType(model, TRIDA) ||
+                                         hasConceptOfType(model, TSP) ||
                                          hasConceptOfType(model, TOP) ||
                                          hasConceptOfType(model, VLASTNOST) ||
                                          hasConceptOfType(model, VZTAH);

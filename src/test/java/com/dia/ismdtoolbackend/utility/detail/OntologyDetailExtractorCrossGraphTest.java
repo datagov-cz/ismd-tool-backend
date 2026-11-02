@@ -22,10 +22,9 @@ import static com.dia.constants.VocabularyConstants.VZTAH;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Regression for the cross-graph property/relationship read asymmetry: a member
- * (property or relationship) whose {@code rdfs:domain} points at a class but which
- * lives in a <em>different</em> vocabulary graph than the class was dropped from the
- * class-detail response, even though it stayed visible from the member's own detail.
+ * A member (property or relationship) whose {@code rdfs:domain} points at a class but which lives
+ * in a <em>different</em> vocabulary graph than the class is listed on the class detail, as it is
+ * on the member's own detail.
  *
  * <p>The class-detail read ({@code extractConceptDetail}) traverses a flat model.
  * The production fix merges the cross-graph members into that model before extraction
@@ -73,8 +72,7 @@ class OntologyDetailExtractorCrossGraphTest {
 
     /**
      * A class is the {@code rdfs:range} (not the domain) of a relationship — that relationship
-     * must still surface on the class detail. Regression for the bug where a class only ever
-     * listed relationships where it was the domain, so a range-target class showed nothing.
+     * surfaces on the class detail, as does one where the class is the domain.
      */
     @Test
     void classDetail_includesRelationshipWhereClassIsRange() {

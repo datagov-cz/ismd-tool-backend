@@ -152,21 +152,16 @@ final class FusekiConceptQueries {
                     Map<String, Integer> relationships = new HashMap<>();
                     try (QueryExecution qExec = conn.query(pss.asQuery())) {
                         ResultSet rs = qExec.execSelect();
+                        // ?concept comes from VALUES (IRIs), ?kind is FILTERed to vlastnost or vztah,
+                        // and a grouped COUNT row is at least 1.
                         while (rs.hasNext()) {
                             QuerySolution row = rs.next();
-                            Resource concept = row.getResource("concept");
-                            Resource kind = row.getResource("kind");
-                            if (concept == null || !concept.isURIResource() || kind == null) {
-                                continue;
-                            }
+                            String concept = row.getResource("concept").getURI();
                             int n = row.getLiteral("n").getInt();
-                            if (n <= 0) {
-                                continue;
-                            }
-                            if ((OFN_NAMESPACE + VLASTNOST).equals(kind.getURI())) {
-                                properties.merge(concept.getURI(), n, Integer::sum);
-                            } else if ((OFN_NAMESPACE + VZTAH).equals(kind.getURI())) {
-                                relationships.merge(concept.getURI(), n, Integer::sum);
+                            if ((OFN_NAMESPACE + VLASTNOST).equals(row.getResource("kind").getURI())) {
+                                properties.merge(concept, n, Integer::sum);
+                            } else {
+                                relationships.merge(concept, n, Integer::sum);
                             }
                         }
                     }
@@ -195,8 +190,9 @@ final class FusekiConceptQueries {
                         ResultSet results = qExec.execSelect();
                         while (results.hasNext()) {
                             QuerySolution solution = results.next();
+                            // ?related is always bound; a blank-node member has no IRI to return.
                             Resource related = solution.getResource("related");
-                            if (related != null && related.isURIResource()) {
+                            if (related.isURIResource()) {
                                 relatedUris.add(related.getURI());
                             }
                         }
@@ -328,10 +324,10 @@ final class FusekiConceptQueries {
                 });
     }
 
-    /** Append one solution's URI binding, skipping absent bindings and duplicates. */
+    /** Append one solution's binding, skipping absent bindings and duplicates; FILTER(isIRI) keeps only IRIs. */
     private static void collectIri(List<String> target, QuerySolution row, String var) {
         RDFNode node = row.get(var);
-        if (node != null && node.isURIResource() && !target.contains(node.asResource().getURI())) {
+        if (node != null && !target.contains(node.asResource().getURI())) {
             target.add(node.asResource().getURI());
         }
     }

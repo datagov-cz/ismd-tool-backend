@@ -12,7 +12,7 @@ import java.util.Map;
 
 import static com.dia.constants.VocabularyConstants.*;
 import static com.dia.ismdtoolbackend.utility.exporter.RdfTestModelFactory.*;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 @DisplayName("ConceptJsonMapper - Alternative Names (altLabel)")
 class ConceptAlternativeNamesTest {
@@ -34,14 +34,14 @@ class ConceptAlternativeNamesTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertTrue(result.containsKey(ALTERNATIVNI_NAZEV));
+        assertThat(result).containsKey(ALTERNATIVNI_NAZEV);
         @SuppressWarnings("unchecked")
         Map<String, Object> altNames = (Map<String, Object>) result.get(ALTERNATIVNI_NAZEV);
         @SuppressWarnings("unchecked")
         List<Object> csValues = (List<Object>) altNames.get("cs");
-        assertNotNull(csValues);
-        assertEquals(1, csValues.size());
-        assertEquals("Fyzická osoba", csValues.get(0));
+        assertThat(csValues).isNotNull();
+        assertThat(csValues).hasSize(1);
+        assertThat(csValues.get(0)).isEqualTo("Fyzická osoba");
     }
 
     @Test
@@ -59,7 +59,7 @@ class ConceptAlternativeNamesTest {
         Map<String, Object> altNames = (Map<String, Object>) result.get(ALTERNATIVNI_NAZEV);
         @SuppressWarnings("unchecked")
         List<Object> csValues = (List<Object>) altNames.get("cs");
-        assertEquals(2, csValues.size());
+        assertThat(csValues).hasSize(2);
     }
 
     @Test
@@ -74,8 +74,7 @@ class ConceptAlternativeNamesTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertFalse(result.containsKey(ALTERNATIVNI_NAZEV),
-                "Non-SKOS altLabel properties should be ignored");
+        assertThat(result).as("Non-SKOS altLabel properties should be ignored").doesNotContainKey(ALTERNATIVNI_NAZEV);
     }
 
     @Test
@@ -87,7 +86,7 @@ class ConceptAlternativeNamesTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertFalse(result.containsKey(ALTERNATIVNI_NAZEV));
+        assertThat(result).doesNotContainKey(ALTERNATIVNI_NAZEV);
     }
 
     @Test
@@ -103,7 +102,7 @@ class ConceptAlternativeNamesTest {
 
         @SuppressWarnings("unchecked")
         Map<String, Object> altNames = (Map<String, Object>) result.get(ALTERNATIVNI_NAZEV);
-        assertNotNull(altNames.get("cs"));
-        assertNotNull(altNames.get("en"));
+        assertThat(altNames.get("cs")).isNotNull();
+        assertThat(altNames.get("en")).isNotNull();
     }
 }

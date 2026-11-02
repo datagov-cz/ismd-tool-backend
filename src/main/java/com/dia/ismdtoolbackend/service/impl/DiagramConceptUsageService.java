@@ -193,7 +193,7 @@ public class DiagramConceptUsageService {
     /** Drops IRIs that resolved to nothing rather than emitting nulls the FE would filter. */
     private List<ResolvedConceptDto> resolveList(List<String> iris,
                                                  Map<String, ResolvedConceptDto> resolved) {
-        if (iris == null || iris.isEmpty()) {
+        if (iris.isEmpty()) {
             return List.of();
         }
         return iris.stream().map(resolved::get).filter(Objects::nonNull).toList();

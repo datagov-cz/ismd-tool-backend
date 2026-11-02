@@ -10,7 +10,6 @@ import com.dia.ismdtoolbackend.models.PublishedOntologyDeviationModel;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
 import com.dia.ismdtoolbackend.service.impl.OntologyDeviationComparator;
 import com.dia.ismdtoolbackend.service.WorkingCopyDeviationService;
-import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntModel;
@@ -29,7 +28,6 @@ import java.util.*;
 public class PublishedResourceUtil {
 
     private final NkdSparqlClient nkdSparqlClient;
-    private final OntologyDetailExtractor detailExtractor;
     private final OntologyDeviationComparator ontologyDeviationComparator;
     private final WorkingCopyDeviationService workingCopyDeviationService;
 

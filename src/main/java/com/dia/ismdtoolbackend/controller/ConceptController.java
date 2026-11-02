@@ -100,7 +100,7 @@ public class ConceptController {
     @PatchMapping("/{conceptId}/edit")
     @PreAuthorize("@ontologySecurityService.canModifyConcept(#conceptId)")
     public ResponseEntity<ApiResponseDto<ConceptMetadataModel>> editConcept(
-            @Valid @RequestBody ConceptEditModel conceptEditModel,
+            @RequestBody ConceptEditModel conceptEditModel,
             @AuthenticationPrincipal SecurityUser securityUser,
             @PathVariable Long conceptId
     ) {

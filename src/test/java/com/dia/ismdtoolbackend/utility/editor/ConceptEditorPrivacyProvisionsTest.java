@@ -1,6 +1,5 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
-import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
@@ -10,17 +9,12 @@ import java.util.List;
 
 import static com.dia.constants.VocabularyConstants.*;
 import static org.apache.jena.vocabulary.RDF.type;
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.when;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 /**
- * Regression: privacy provisions are carried by ALL concept types (class,
- * property, relationship) — each can be public/non-public. The create path
- * (ConceptCreator) already writes them for all three; the edit path previously
- * only wrote them for class concepts, silently losing provisions on property /
- * relationship edits. These tests pin that property and relationship edits both
- * WRITE valid provisions and REJECT invalid ones.
+ * Privacy provisions belong to every concept type (class, property, relationship), as on create.
+ * Property and relationship edits write valid provisions and reject invalid ones.
  */
 class ConceptEditorPrivacyProvisionsTest extends ConceptEditorTestBase {
 
@@ -51,15 +45,15 @@ class ConceptEditorPrivacyProvisionsTest extends ConceptEditorTestBase {
         String iri = DEFAULT_NS + "prop-priv";
         seedProperty(iri);
 
-        stubAllPropertyFieldsNull(propertyConceptEditModel);
-        when(propertyConceptEditModel.getPrivacyProvisions()).thenReturn(List.of(VALID_ELI));
-        when(propertyConceptEditModel.getIsPublic()).thenReturn(Boolean.FALSE);
+        propertyConceptEditModel.setPrivacyProvisions(List.of(VALID_ELI));
+        propertyConceptEditModel.setIsPublic(Boolean.FALSE);
 
         conceptEditor.editConcept(iri, propertyConceptEditModel, model, null);
 
         Resource updated = model.getResource(iri);
-        assertTrue(updated.hasProperty(provisionProp(), model.createResource(VALID_ELI)),
-                "property edit must persist the privacy provision IRI");
+        assertThat(updated.hasProperty(provisionProp(), model.createResource(VALID_ELI)))
+                .as("property edit must persist the privacy provision IRI")
+                .isTrue();
     }
 
     @Test
@@ -67,15 +61,15 @@ class ConceptEditorPrivacyProvisionsTest extends ConceptEditorTestBase {
         String iri = DEFAULT_NS + "rel-priv";
         seedRelationship(iri);
 
-        stubAllRelationshipFieldsNull(relationshipConceptEditModel);
-        when(relationshipConceptEditModel.getPrivacyProvisions()).thenReturn(List.of(VALID_ELI));
-        when(relationshipConceptEditModel.getIsPublic()).thenReturn(Boolean.FALSE);
+        relationshipConceptEditModel.setPrivacyProvisions(List.of(VALID_ELI));
+        relationshipConceptEditModel.setIsPublic(Boolean.FALSE);
 
         conceptEditor.editConcept(iri, relationshipConceptEditModel, model, null);
 
         Resource updated = model.getResource(iri);
-        assertTrue(updated.hasProperty(provisionProp(), model.createResource(VALID_ELI)),
-                "relationship edit must persist the privacy provision IRI");
+        assertThat(updated.hasProperty(provisionProp(), model.createResource(VALID_ELI)))
+                .as("relationship edit must persist the privacy provision IRI")
+                .isTrue();
     }
 
     @Test
@@ -84,20 +78,14 @@ class ConceptEditorPrivacyProvisionsTest extends ConceptEditorTestBase {
         seedProperty(iri);
         long sizeBefore = model.size();
 
-        lenient().when(propertyConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.VLASTNOST);
-        lenient().when(propertyConceptEditModel.getPrivacyProvisions()).thenReturn(List.of(INVALID_ELI));
-        lenient().when(propertyConceptEditModel.getDefiningLegalSource()).thenReturn(null);
-        lenient().when(propertyConceptEditModel.getRelatedLegalSource()).thenReturn(null);
-        lenient().when(propertyConceptEditModel.getDefiningNonLegalSource()).thenReturn(null);
-        lenient().when(propertyConceptEditModel.getRelatedNonLegalSource()).thenReturn(null);
-        lenient().when(propertyConceptEditModel.getExactMatch()).thenReturn(null);
-        lenient().when(propertyConceptEditModel.getAgendaCode()).thenReturn(null);
-        lenient().when(propertyConceptEditModel.getAgendaSystemCode()).thenReturn(null);
+        propertyConceptEditModel.setPrivacyProvisions(List.of(INVALID_ELI));
 
-        ConceptValidationException ex = assertThrows(ConceptValidationException.class, () ->
-                conceptEditor.editConcept(iri, propertyConceptEditModel, model, null));
-        assertTrue(ex.getMessage().contains("privacyProvisions"), ex.getMessage());
-        assertEquals(sizeBefore, model.size(), "rejected edit must not mutate the model");
+        ConceptValidationException ex = assertThatExceptionOfType(ConceptValidationException.class)
+                .isThrownBy(() ->
+                conceptEditor.editConcept(iri, propertyConceptEditModel, model, null))
+                .actual();
+        assertThat(ex).as(ex.getMessage()).hasMessageContaining("privacyProvisions");
+        assertThat(model.size()).as("rejected edit must not mutate the model").isEqualTo(sizeBefore);
     }
 
     @Test
@@ -106,20 +94,14 @@ class ConceptEditorPrivacyProvisionsTest extends ConceptEditorTestBase {
         seedRelationship(iri);
         long sizeBefore = model.size();
 
-        lenient().when(relationshipConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.VZTAH);
-        lenient().when(relationshipConceptEditModel.getPrivacyProvisions()).thenReturn(List.of(INVALID_ELI));
-        lenient().when(relationshipConceptEditModel.getDefiningLegalSource()).thenReturn(null);
-        lenient().when(relationshipConceptEditModel.getRelatedLegalSource()).thenReturn(null);
-        lenient().when(relationshipConceptEditModel.getDefiningNonLegalSource()).thenReturn(null);
-        lenient().when(relationshipConceptEditModel.getRelatedNonLegalSource()).thenReturn(null);
-        lenient().when(relationshipConceptEditModel.getExactMatch()).thenReturn(null);
-        lenient().when(relationshipConceptEditModel.getAgendaCode()).thenReturn(null);
-        lenient().when(relationshipConceptEditModel.getAgendaSystemCode()).thenReturn(null);
+        relationshipConceptEditModel.setPrivacyProvisions(List.of(INVALID_ELI));
 
-        ConceptValidationException ex = assertThrows(ConceptValidationException.class, () ->
-                conceptEditor.editConcept(iri, relationshipConceptEditModel, model, null));
-        assertTrue(ex.getMessage().contains("privacyProvisions"), ex.getMessage());
-        assertEquals(sizeBefore, model.size(), "rejected edit must not mutate the model");
+        ConceptValidationException ex = assertThatExceptionOfType(ConceptValidationException.class)
+                .isThrownBy(() ->
+                conceptEditor.editConcept(iri, relationshipConceptEditModel, model, null))
+                .actual();
+        assertThat(ex).as(ex.getMessage()).hasMessageContaining("privacyProvisions");
+        assertThat(model.size()).as("rejected edit must not mutate the model").isEqualTo(sizeBefore);
     }
 
     // --- Other stored copies of the provisions ------------------------------
@@ -137,9 +119,8 @@ class ConceptEditorPrivacyProvisionsTest extends ConceptEditorTestBase {
     }
 
     private void editProvisions(String iri, List<String> provisions) {
-        stubAllPropertyFieldsNull(propertyConceptEditModel);
-        when(propertyConceptEditModel.getPrivacyProvisions()).thenReturn(provisions);
-        when(propertyConceptEditModel.getIsPublic()).thenReturn(Boolean.FALSE);
+        propertyConceptEditModel.setPrivacyProvisions(provisions);
+        propertyConceptEditModel.setIsPublic(Boolean.FALSE);
         lastResult = conceptEditor.editConcept(iri, propertyConceptEditModel, model, null);
     }
 
@@ -155,9 +136,10 @@ class ConceptEditorPrivacyProvisionsTest extends ConceptEditorTestBase {
         editProvisions(iri, List.of(OTHER_ELI));
 
         Resource updated = model.getResource(iri);
-        assertEquals(java.util.Set.of(OTHER_ELI), objects(updated, provisionProp()));
-        assertEquals(java.util.Set.of(OTHER_ELI), objects(updated, namespaceCopy()),
-                "the stale provision must not survive under the vocabulary-namespace property");
+        assertThat(objects(updated, provisionProp())).isEqualTo(java.util.Set.of(OTHER_ELI));
+        assertThat(objects(updated, namespaceCopy()))
+                .as("the stale provision must not survive under the vocabulary-namespace property")
+                .isEqualTo(java.util.Set.of(OTHER_ELI));
     }
 
     @Test
@@ -170,8 +152,8 @@ class ConceptEditorPrivacyProvisionsTest extends ConceptEditorTestBase {
         editProvisions(iri, List.of());
 
         Resource updated = model.getResource(iri);
-        assertTrue(objects(updated, provisionProp()).isEmpty());
-        assertTrue(objects(updated, namespaceCopy()).isEmpty());
+        assertThat(objects(updated, provisionProp())).isEmpty();
+        assertThat(objects(updated, namespaceCopy())).isEmpty();
     }
 
     @Test
@@ -187,9 +169,9 @@ class ConceptEditorPrivacyProvisionsTest extends ConceptEditorTestBase {
         editProvisions(iri, List.of(OTHER_ELI));
 
         Resource updated = model.getResource(iri);
-        assertFalse(updated.hasProperty(foreignNamespace));
-        assertFalse(updated.hasProperty(canonicalOfn));
-        assertEquals(java.util.Set.of(OTHER_ELI), objects(updated, provisionProp()));
+        assertThat(updated.hasProperty(foreignNamespace)).isFalse();
+        assertThat(updated.hasProperty(canonicalOfn)).isFalse();
+        assertThat(objects(updated, provisionProp())).isEqualTo(java.util.Set.of(OTHER_ELI));
     }
 
     /** An unchanged edit must stage nothing: a staged change bumps updatedAt. */
@@ -204,8 +186,8 @@ class ConceptEditorPrivacyProvisionsTest extends ConceptEditorTestBase {
 
         java.util.function.Predicate<org.apache.jena.rdf.model.Statement> aboutProvisions =
                 s -> s.getPredicate().getURI().endsWith(USTANOVENI_NEVEREJNOST);
-        assertTrue(lastResult.statementsToRemove.stream().noneMatch(aboutProvisions));
-        assertTrue(lastResult.statementsToAdd.stream().noneMatch(aboutProvisions));
+        assertThat(lastResult.statementsToRemove.stream().noneMatch(aboutProvisions)).isTrue();
+        assertThat(lastResult.statementsToAdd.stream().noneMatch(aboutProvisions)).isTrue();
     }
 
     // --- Non-public classification ------------------------------------------
@@ -225,9 +207,10 @@ class ConceptEditorPrivacyProvisionsTest extends ConceptEditorTestBase {
 
         editProvisions(iri, List.of(VALID_ELI));
 
-        assertTrue(model.getResource(iri).hasProperty(type, nonPublicType()));
-        assertTrue(lastResult.statementsToRemove.stream().noneMatch(s -> s.getObject().equals(nonPublicType())));
-        assertTrue(lastResult.statementsToAdd.stream().noneMatch(s -> s.getObject().equals(nonPublicType())));
+        assertThat(model.getResource(iri).hasProperty(type, nonPublicType())).isTrue();
+        assertThat(lastResult.statementsToRemove.stream().noneMatch(s -> s.getObject().equals(nonPublicType())))
+                .isTrue();
+        assertThat(lastResult.statementsToAdd.stream().noneMatch(s -> s.getObject().equals(nonPublicType()))).isTrue();
     }
 
     @Test
@@ -239,7 +222,7 @@ class ConceptEditorPrivacyProvisionsTest extends ConceptEditorTestBase {
 
         editProvisions(iri, null);
 
-        assertTrue(model.getResource(iri).hasProperty(type, nonPublicType()));
+        assertThat(model.getResource(iri).hasProperty(type, nonPublicType())).isTrue();
     }
 
     @Test
@@ -251,7 +234,7 @@ class ConceptEditorPrivacyProvisionsTest extends ConceptEditorTestBase {
 
         editProvisions(iri, List.of());
 
-        assertFalse(model.getResource(iri).hasProperty(type, nonPublicType()));
+        assertThat(model.getResource(iri).hasProperty(type, nonPublicType())).isFalse();
     }
 
     @Test
@@ -261,6 +244,6 @@ class ConceptEditorPrivacyProvisionsTest extends ConceptEditorTestBase {
 
         editProvisions(iri, List.of(VALID_ELI));
 
-        assertTrue(model.getResource(iri).hasProperty(type, nonPublicType()));
+        assertThat(model.getResource(iri).hasProperty(type, nonPublicType())).isTrue();
     }
 }

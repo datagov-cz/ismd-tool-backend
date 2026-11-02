@@ -81,7 +81,7 @@ class DetailModelMapper {
                 .alternativeName((Map<String, Object>) conceptMap.get(ALTERNATIVNI_NAZEV))
                 .definition(coerceToStringMap(conceptMap.get(DEFINICE), conceptIri, DEFINICE))
                 .description(coerceToStringMap(conceptMap.get(POPIS), conceptIri, POPIS))
-                .identifier((String) conceptMap.get(IDENTIFIKATOR))
+                .identifier(firstText(conceptMap.get(IDENTIFIKATOR)))
                 .exactMatches((List<String>) conceptMap.get(EKVIVALENTNI_POJEM))
                 .domain((String) conceptMap.get(DEFINICNI_OBOR))
                 .range((String) conceptMap.get(OBOR_HODNOT))
@@ -161,5 +161,13 @@ class DetailModelMapper {
     private Map<String, String> extractMultilingualDescription(Resource vocabularyResource) {
         return extractMultilingualValue(vocabularyResource,
                 ResourceFactory.createProperty(DCT_NS + "description"));
+    }
+
+    /** The concept map holds an identifier as a list (one per {@code dcterms:identifier}); the detail shows the first. */
+    private static String firstText(Object value) {
+        if (value instanceof List<?> values) {
+            return values.isEmpty() ? null : String.valueOf(values.get(0));
+        }
+        return value == null ? null : value.toString();
     }
 }

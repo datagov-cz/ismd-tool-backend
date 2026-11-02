@@ -72,8 +72,8 @@ public class OntologyEditor {
         try {
             boolean iriChanged = nameChanged && !iri.equals(newOntologyIRI);
             if (iriChanged) {
-                renameOntologyIRI(model, iri, newOntologyIRI, statementsToRemove, statementsToAdd);
-                updateAllConceptIRIs(model, oldNamespace, newNamespace, statementsToRemove, statementsToAdd);
+                renameVocabulary(model, iri, newOntologyIRI, oldNamespace, newNamespace,
+                        statementsToRemove, statementsToAdd);
             }
 
             if (editModel.getNameModel() != null) {
@@ -182,42 +182,44 @@ public class OntologyEditor {
         }
     }
 
-    private void renameOntologyIRI(Model model, String oldIRI, String newIRI,
-                                   Set<Statement> toRemove, Set<Statement> toAdd) {
-        Resource oldOntology = model.getResource(oldIRI);
+    /**
+     * Moves the vocabulary and every concept in its namespace to their new IRIs. One old-to-new
+     * mapping is applied to both ends of every statement touching a moved resource, so a link
+     * between two moved resources (vocabulary to concept, concept to concept) lands on both new
+     * IRIs. A moved concept's {@code skos:inScheme} is set to the new vocabulary IRI even when it
+     * named a stale scheme: a concept whose IRI does not prefix-match its scheme is not resolved
+     * as an owned concept.
+     */
+    private void renameVocabulary(Model model, String oldIRI, String newIRI, String oldNamespace,
+                                  String newNamespace, Set<Statement> toRemove, Set<Statement> toAdd) {
+        Resource newScheme = model.getResource(newIRI);
+        Map<Resource, Resource> renames = new HashMap<>(conceptRenames(model, oldNamespace, newNamespace));
+        log.info("Updating {} concept IRIs from namespace '{}' to '{}'", renames.size(), oldNamespace, newNamespace);
+        Set<Resource> movedConcepts = new HashSet<>(renames.keySet());
+        renames.put(model.getResource(oldIRI), newScheme);
 
-        StmtIterator iter = model.listStatements(oldOntology, null, (RDFNode) null);
-        while (iter.hasNext()) {
-            Statement stmt = iter.next();
-            toRemove.add(stmt);
-            toAdd.add(model.createStatement(
-                    model.getResource(newIRI),
-                    stmt.getPredicate(),
-                    stmt.getObject()
-            ));
+        Set<Statement> touched = new HashSet<>();
+        for (Resource moved : renames.keySet()) {
+            model.listStatements(moved, null, (RDFNode) null).forEachRemaining(touched::add);
+            model.listStatements(null, null, moved).forEachRemaining(touched::add);
         }
 
-        iter = model.listStatements(null, null, oldOntology);
-        while (iter.hasNext()) {
-            Statement stmt = iter.next();
+        for (Statement stmt : touched) {
+            Resource subject = renames.getOrDefault(stmt.getSubject(), stmt.getSubject());
+            RDFNode object = stmt.getObject().isResource()
+                    ? renames.getOrDefault(stmt.getObject().asResource(), stmt.getObject().asResource())
+                    : stmt.getObject();
+            if (movedConcepts.contains(stmt.getSubject()) && stmt.getPredicate().equals(SKOS.inScheme)) {
+                object = newScheme;
+            }
             toRemove.add(stmt);
-            toAdd.add(model.createStatement(
-                    stmt.getSubject(),
-                    stmt.getPredicate(),
-                    model.getResource(newIRI)
-            ));
+            toAdd.add(model.createStatement(subject, stmt.getPredicate(), object));
         }
     }
 
-    private void updateAllConceptIRIs(Model model, String oldNamespace, String newNamespace,
-                                      Set<Statement> toRemove, Set<Statement> toAdd) {
-        log.info("Updating all concept IRIs from namespace '{}' to '{}'", oldNamespace, newNamespace);
-
-        Set<Resource> conceptsToUpdate = new HashSet<>();
+    private Map<Resource, Resource> conceptRenames(Model model, String oldNamespace, String newNamespace) {
         String oldOntologyIRI = oldNamespace.replaceAll("[/#]$", "");
-        String newOntologyIRI = newNamespace.replaceAll("[/#]$", "");
-        Resource newScheme = model.getResource(newOntologyIRI);
-
+        Map<Resource, Resource> renames = new HashMap<>();
         ResIterator resIter = model.listSubjects();
         while (resIter.hasNext()) {
             Resource resource = resIter.next();
@@ -225,49 +227,11 @@ public class OntologyEditor {
                 && resource.getURI().startsWith(oldNamespace)
                 && !resource.getURI().equals(oldOntologyIRI)
                 && resource.hasProperty(RDF.type, SKOS.Concept)) {
-                conceptsToUpdate.add(resource);
+                String localPart = resource.getURI().substring(oldNamespace.length());
+                renames.put(resource, model.getResource(newNamespace + localPart));
             }
         }
-
-        log.info("Found {} concepts to update", conceptsToUpdate.size());
-
-        for (Resource oldConcept : conceptsToUpdate) {
-            String oldConceptIRI = oldConcept.getURI();
-            String conceptLocalPart = oldConceptIRI.substring(oldNamespace.length());
-            String newConceptIRI = newNamespace + conceptLocalPart;
-
-            log.debug("Updating concept IRI: {} -> {}", oldConceptIRI, newConceptIRI);
-
-            StmtIterator iter = model.listStatements(oldConcept, null, (RDFNode) null);
-            while (iter.hasNext()) {
-                Statement stmt = iter.next();
-                toRemove.add(stmt);
-                // A concept's skos:inScheme names the ontology; on rename force it to the new
-                // ontology IRI. Copying the object verbatim leaves it on the old (or a stale
-                // pre-rename) scheme, so the concept's IRI no longer prefix-matches its scheme
-                // and OWNED_CONCEPT_PATTERN stops resolving it (invisible to resolver/upload,
-                // mis-flagged PG_MISSING_RDF by the reconciler).
-                RDFNode newObject = stmt.getPredicate().equals(SKOS.inScheme)
-                        ? newScheme
-                        : stmt.getObject();
-                toAdd.add(model.createStatement(
-                        model.getResource(newConceptIRI),
-                        stmt.getPredicate(),
-                        newObject
-                ));
-            }
-
-            iter = model.listStatements(null, null, oldConcept);
-            while (iter.hasNext()) {
-                Statement stmt = iter.next();
-                toRemove.add(stmt);
-                toAdd.add(model.createStatement(
-                        stmt.getSubject(),
-                        stmt.getPredicate(),
-                        model.getResource(newConceptIRI)
-                ));
-            }
-        }
+        return renames;
     }
 
     private String getNameForUriGeneration(NameModel nameModel) {

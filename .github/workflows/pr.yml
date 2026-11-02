@@ -32,11 +32,15 @@ jobs:
           .github/scripts/check-migration-compat.sh "origin/${{ github.base_ref }}"
 
   run-tests:
+    # Coverage thresholds come from pom.xml. A JACOCO_*_MINIMUM repository variable overrides one
+    # without a PR; an unset variable passes "" and keeps the pom value.
     uses: ./.github/workflows/reusable-test.yml
     with:
-      coverage_line: ${{ vars.JACOCO_LINE_MINIMUM || '0.55' }}
-      coverage_branch: ${{ vars.JACOCO_BRANCH_MINIMUM || '0.45' }}
-      coverage_complexity: ${{ vars.JACOCO_COMPLEXITY_MINIMUM || '0.45' }}
+      coverage_line: ${{ vars.JACOCO_LINE_MINIMUM }}
+      coverage_instruction: ${{ vars.JACOCO_INSTRUCTION_MINIMUM }}
+      coverage_branch: ${{ vars.JACOCO_BRANCH_MINIMUM }}
+      coverage_complexity: ${{ vars.JACOCO_COMPLEXITY_MINIMUM }}
+      coverage_method: ${{ vars.JACOCO_METHOD_MINIMUM }}
     secrets: inherit
 
   validate-docker-build:

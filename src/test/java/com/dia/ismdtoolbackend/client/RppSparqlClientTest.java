@@ -3,186 +3,132 @@ package com.dia.ismdtoolbackend.client;
 import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
 import com.dia.ismdtoolbackend.models.rpp.RppAgenda;
 import com.dia.ismdtoolbackend.models.rpp.RppIsvs;
-import com.github.tomakehurst.wiremock.WireMockServer;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
+import com.dia.ismdtoolbackend.testsupport.sparql.SparqlJson;
+import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.net.http.HttpClient;
 import java.util.List;
 
-import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.dia.ismdtoolbackend.testsupport.sparql.SparqlJson.literal;
+import static com.dia.ismdtoolbackend.testsupport.sparql.SparqlJson.uri;
+import static com.dia.ismdtoolbackend.testsupport.sparql.SparqlStubs.serverError;
+import static com.dia.ismdtoolbackend.testsupport.sparql.SparqlStubs.sparqlJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.any;
 import static com.github.tomakehurst.wiremock.client.WireMock.anyUrl;
-import static com.github.tomakehurst.wiremock.client.WireMock.stubFor;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
-@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class RppSparqlClientTest {
 
-    private WireMockServer wm;
+    private static final HttpClient HTTP = HttpClient.newHttpClient();
+
+    @RegisterExtension
+    static final WireMockExtension WM = WireMockExtension.newInstance()
+            .options(wireMockConfig().dynamicPort())
+            .build();
+
     private RppSparqlClient client;
-
-    @BeforeAll
-    void startServer() {
-        wm = new WireMockServer(wireMockConfig().dynamicPort());
-        wm.start();
-        com.github.tomakehurst.wiremock.client.WireMock.configureFor("localhost", wm.port());
-    }
-
-    @AfterAll
-    void stopServer() {
-        wm.stop();
-    }
 
     @BeforeEach
     void setUp() {
-        wm.resetAll();
-        client = new RppSparqlClient(HttpClient.newHttpClient());
-        ReflectionTestUtils.setField(client, "rppEndpoint", wm.baseUrl() + "/sparql");
+        client = new RppSparqlClient(HTTP);
+        ReflectionTestUtils.setField(client, "rppEndpoint", WM.baseUrl() + "/sparql");
         ReflectionTestUtils.setField(client, "rppSparqlTimeout", 2000);
-    }
-
-    @AfterEach
-    void tearDown() {
-        wm.resetAll();
     }
 
     @Test
     void emptyResultSetReturnsEmptyList() {
         stubSparql(emptyResults());
         List<RppAgenda> out = client.fetchAllAgendas();
-        assertEquals(0, out.size());
+        assertThat(out).isEmpty();
     }
 
     @Test
     void isvsCollapseZeroAgendas() {
-        String json = """
-                {
-                  "head": { "vars": ["isvs", "code", "nazev", "agenda"] },
-                  "results": { "bindings": [
-                    { "isvs": {"type":"uri","value":"http://example.org/i/1"},
-                      "code":  {"type":"literal","value":"100"},
-                      "nazev":{"type":"literal","value":"Alfa"} }
-                  ] }
-                }
-                """;
-        stubSparql(json);
+        stubSparql(SparqlJson.select("isvs", "code", "nazev", "agenda")
+                .row(uri("isvs", "http://example.org/i/1"), literal("code", "100"), literal("nazev", "Alfa")));
         List<RppIsvs> out = client.fetchAllIsvs();
-        assertEquals(1, out.size());
-        assertEquals("http://example.org/i/1", out.get(0).getIri());
-        assertEquals(0, out.get(0).getAgendaIris().size());
+        assertThat(out).hasSize(1);
+        assertThat(out.get(0).getIri()).isEqualTo("http://example.org/i/1");
+        assertThat(out.get(0).getAgendaIris()).isEmpty();
     }
 
     @Test
     void isvsCollapseOneAgenda() {
-        String json = """
-                {
-                  "head": { "vars": ["isvs", "code", "nazev", "agenda"] },
-                  "results": { "bindings": [
-                    { "isvs":  {"type":"uri","value":"http://example.org/i/1"},
-                      "code":   {"type":"literal","value":"100"},
-                      "nazev": {"type":"literal","value":"Alfa"},
-                      "agenda":{"type":"uri","value":"http://example.org/a/A1"} }
-                  ] }
-                }
-                """;
-        stubSparql(json);
+        stubSparql(SparqlJson.select("isvs", "code", "nazev", "agenda")
+                .row(isvsAlfa("http://example.org/a/A1")));
         List<RppIsvs> out = client.fetchAllIsvs();
-        assertEquals(1, out.size());
-        assertEquals(List.of("http://example.org/a/A1"), out.get(0).getAgendaIris());
+        assertThat(out).hasSize(1);
+        assertThat(out.get(0).getAgendaIris()).isEqualTo(List.of("http://example.org/a/A1"));
     }
 
     @Test
     void isvsCollapseMultipleAgendas() {
-        String json = """
-                {
-                  "head": { "vars": ["isvs", "code", "nazev", "agenda"] },
-                  "results": { "bindings": [
-                    { "isvs":  {"type":"uri","value":"http://example.org/i/1"},
-                      "code":   {"type":"literal","value":"100"},
-                      "nazev": {"type":"literal","value":"Alfa"},
-                      "agenda":{"type":"uri","value":"http://example.org/a/A1"} },
-                    { "isvs":  {"type":"uri","value":"http://example.org/i/1"},
-                      "code":   {"type":"literal","value":"100"},
-                      "nazev": {"type":"literal","value":"Alfa"},
-                      "agenda":{"type":"uri","value":"http://example.org/a/A2"} },
-                    { "isvs":  {"type":"uri","value":"http://example.org/i/1"},
-                      "code":   {"type":"literal","value":"100"},
-                      "nazev": {"type":"literal","value":"Alfa"},
-                      "agenda":{"type":"uri","value":"http://example.org/a/A1"} }
-                  ] }
-                }
-                """;
-        stubSparql(json);
+        stubSparql(SparqlJson.select("isvs", "code", "nazev", "agenda")
+                .row(isvsAlfa("http://example.org/a/A1"))
+                .row(isvsAlfa("http://example.org/a/A2"))
+                .row(isvsAlfa("http://example.org/a/A1")));
         List<RppIsvs> out = client.fetchAllIsvs();
-        assertEquals(1, out.size());
-        assertEquals(List.of("http://example.org/a/A1", "http://example.org/a/A2"), out.get(0).getAgendaIris());
+        assertThat(out).hasSize(1);
+        assertThat(out.get(0).getAgendaIris()).isEqualTo(List.of("http://example.org/a/A1", "http://example.org/a/A2"));
     }
 
     @Test
     void malformedRowIsSkipped() {
-        String json = """
-                {
-                  "head": { "vars": ["agenda", "code", "nazev"] },
-                  "results": { "bindings": [
-                    { "agenda": {"type":"uri","value":"http://example.org/a/A1"},
-                      "nazev":  {"type":"literal","value":"Missing code"} },
-                    { "agenda": {"type":"uri","value":"http://example.org/a/A2"},
-                      "code":    {"type":"literal","value":"2"},
-                      "nazev":  {"type":"literal","value":"Valid"} }
-                  ] }
-                }
-                """;
-        stubSparql(json);
+        stubSparql(SparqlJson.select("agenda", "code", "nazev")
+                .row(uri("agenda", "http://example.org/a/A1"), literal("nazev", "Missing code"))
+                .row(uri("agenda", "http://example.org/a/A2"), literal("code", "2"), literal("nazev", "Valid")));
         List<RppAgenda> out = client.fetchAllAgendas();
-        assertEquals(1, out.size());
-        assertEquals("2", out.get(0).getCode());
+        assertThat(out).hasSize(1);
+        assertThat(out.get(0).getCode()).isEqualTo("2");
     }
 
     @Test
     void upstream500ThrowsRppUnavailable() {
-        stubFor(any(anyUrl()).willReturn(aResponse().withStatus(500)));
-        assertThrows(SparqlEndpointUnavailableException.class, () -> client.fetchAllAgendas());
+        WM.stubFor(any(anyUrl()).willReturn(serverError()));
+        assertThatThrownBy(() -> client.fetchAllAgendas()).isInstanceOf(SparqlEndpointUnavailableException.class);
     }
 
     @Test
     void upstreamTimeoutThrowsRppUnavailable() {
-        stubFor(any(anyUrl()).willReturn(aResponse()
-                .withHeader("Content-Type", "application/sparql-results+json")
-                .withFixedDelay(5000)
-                .withBody(emptyResults())));
-        SparqlEndpointUnavailableException ex = assertThrows(SparqlEndpointUnavailableException.class, () -> client.fetchAllAgendas());
-        assertNotNull(ex.getMessage());
+        ReflectionTestUtils.setField(client, "rppSparqlTimeout", 250);
+        WM.stubFor(any(anyUrl()).willReturn(sparqlJson(emptyResults()).withFixedDelay(1_500)));
+        SparqlEndpointUnavailableException ex = assertThatExceptionOfType(SparqlEndpointUnavailableException.class)
+                .isThrownBy(() -> client.fetchAllAgendas())
+                .actual();
+        assertThat(ex.getMessage()).isNotNull();
     }
 
     @Test
     void unconfiguredEndpointThrowsRppUnavailable() {
         ReflectionTestUtils.setField(client, "rppEndpoint", "");
-        SparqlEndpointUnavailableException ex = assertThrows(SparqlEndpointUnavailableException.class, () -> client.fetchAllAgendas());
-        assertTrue(ex.getMessage().contains("not configured"));
+        SparqlEndpointUnavailableException ex = assertThatExceptionOfType(SparqlEndpointUnavailableException.class)
+                .isThrownBy(() -> client.fetchAllAgendas())
+                .actual();
+        assertThat(ex).hasMessageContaining("not configured");
+    }
+
+    private static SparqlJson.Binding[] isvsAlfa(String agendaIri) {
+        return new SparqlJson.Binding[] {
+                uri("isvs", "http://example.org/i/1"), literal("code", "100"), literal("nazev", "Alfa"),
+                uri("agenda", agendaIri)};
     }
 
     private static void stubSparql(String body) {
-        stubFor(any(anyUrl()).willReturn(aResponse()
-                .withHeader("Content-Type", "application/sparql-results+json")
-                .withBody(body)));
+        WM.stubFor(any(anyUrl()).willReturn(sparqlJson(body)));
+    }
+
+    private static void stubSparql(SparqlJson result) {
+        stubSparql(result.toJson());
     }
 
     private static String emptyResults() {
-        return """
-                {
-                  "head": { "vars": ["agenda", "code", "nazev"] },
-                  "results": { "bindings": [] }
-                }
-                """;
+        return SparqlJson.select("agenda", "code", "nazev").toJson();
     }
 }

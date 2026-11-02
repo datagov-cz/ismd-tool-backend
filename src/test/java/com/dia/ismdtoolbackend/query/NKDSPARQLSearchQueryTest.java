@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class NKDSPARQLSearchQueryTest {
 
@@ -18,10 +18,11 @@ class NKDSPARQLSearchQueryTest {
     void buildOntologyIriListQuery_listsAllOwlOntologies() {
         String query = NKDSPARQLSearchQuery.buildOntologyIriListQuery();
 
-        assertTrue(query.contains("owl:Ontology"));
-        assertTrue(query.contains("?resource"));
-        assertFalse(query.contains("bif:contains"),
-                "IRI list query must not invoke the broken bif:contains planner path");
+        assertThat(query).contains("owl:Ontology");
+        assertThat(query).contains("?resource");
+        assertThat(query)
+                .as("IRI list query must not invoke the broken bif:contains planner path")
+                .doesNotContain("bif:contains");
     }
 
     @Test
@@ -29,10 +30,10 @@ class NKDSPARQLSearchQueryTest {
         String query = NKDSPARQLSearchQuery.buildOntologySearchQuery(
                 "osoba", "cs", 20, 0, SAMPLE_CANDIDATE_IRIS);
 
-        assertTrue(query.contains("bif:contains"));
-        assertTrue(query.contains("\"osoba*\""));
-        assertTrue(query.contains("LIMIT 20"));
-        assertTrue(query.contains("OFFSET 0"));
+        assertThat(query).contains("bif:contains");
+        assertThat(query).contains("\"osoba*\"");
+        assertThat(query).contains("LIMIT 20");
+        assertThat(query).contains("OFFSET 0");
     }
 
     @Test
@@ -43,12 +44,14 @@ class NKDSPARQLSearchQueryTest {
         String query = NKDSPARQLSearchQuery.buildOntologySearchQuery(
                 "osoba", "cs", 20, 0, SAMPLE_CANDIDATE_IRIS);
 
-        assertTrue(query.contains("VALUES ?resource"),
-                "Ontology search must restrict via VALUES, not type-filter (Virtuoso #960)");
-        assertTrue(query.contains("<https://example.org/ontology/1>"));
-        assertTrue(query.contains("<https://example.org/ontology/2>"));
-        assertFalse(query.contains("?resource a owl:Ontology"),
-                "Type-narrowing on ontology search triggers Virtuoso planner bug");
+        assertThat(query)
+                .as("Ontology search must restrict via VALUES, not type-filter (Virtuoso #960)")
+                .contains("VALUES ?resource");
+        assertThat(query).contains("<https://example.org/ontology/1>");
+        assertThat(query).contains("<https://example.org/ontology/2>");
+        assertThat(query)
+                .as("Type-narrowing on ontology search triggers Virtuoso planner bug")
+                .doesNotContain("?resource a owl:Ontology");
     }
 
     @Test
@@ -56,9 +59,9 @@ class NKDSPARQLSearchQueryTest {
         String query = NKDSPARQLSearchQuery.buildOntologySearchQuery(
                 "test", "cs", 10, 0, SAMPLE_CANDIDATE_IRIS);
 
-        assertTrue(query.contains("skos:prefLabel"));
-        assertTrue(query.contains("dcterms:title"));
-        assertTrue(query.contains("dcterms:description"));
+        assertThat(query).contains("skos:prefLabel");
+        assertThat(query).contains("dcterms:title");
+        assertThat(query).contains("dcterms:description");
     }
 
     @Test
@@ -66,7 +69,7 @@ class NKDSPARQLSearchQueryTest {
         String query = NKDSPARQLSearchQuery.buildOntologySearchQuery(
                 "test", "en", 10, 0, SAMPLE_CANDIDATE_IRIS);
 
-        assertTrue(query.contains("LANG(?prefLabel) = \"en\""));
+        assertThat(query).contains("LANG(?prefLabel) = \"en\"");
     }
 
     @Test
@@ -74,8 +77,8 @@ class NKDSPARQLSearchQueryTest {
         String query = NKDSPARQLSearchQuery.buildOntologySearchQuery(
                 "test", "cs", 50, 100, SAMPLE_CANDIDATE_IRIS);
 
-        assertTrue(query.contains("LIMIT 50"));
-        assertTrue(query.contains("OFFSET 100"));
+        assertThat(query).contains("LIMIT 50");
+        assertThat(query).contains("OFFSET 100");
     }
 
     @Test
@@ -87,10 +90,9 @@ class NKDSPARQLSearchQueryTest {
         String query = NKDSPARQLSearchQuery.buildOntologySearchQuery(
                 "test", "cs", 10, 0, mixed);
 
-        assertTrue(query.contains("<https://example.org/safe>"));
-        assertTrue(query.contains("<https://example.org/safe2>"));
-        assertFalse(query.contains("javascript:"),
-                "Unsafe IRI leaked into VALUES block");
+        assertThat(query).contains("<https://example.org/safe>");
+        assertThat(query).contains("<https://example.org/safe2>");
+        assertThat(query).as("Unsafe IRI leaked into VALUES block").doesNotContain("javascript:");
     }
 
     @Test
@@ -98,31 +100,31 @@ class NKDSPARQLSearchQueryTest {
         String query = NKDSPARQLSearchQuery.buildOntologySearchCountQuery(
                 "test", SAMPLE_CANDIDATE_IRIS);
 
-        assertTrue(query.contains("COUNT(DISTINCT ?resource)"));
-        assertTrue(query.contains("VALUES ?resource"));
-        assertTrue(query.contains("<https://example.org/ontology/1>"));
-        assertFalse(query.contains("?resource a owl:Ontology"));
+        assertThat(query).contains("COUNT(DISTINCT ?resource)");
+        assertThat(query).contains("VALUES ?resource");
+        assertThat(query).contains("<https://example.org/ontology/1>");
+        assertThat(query).doesNotContain("?resource a owl:Ontology");
     }
 
     @Test
     void buildConceptSearchQuery_containsBifContainsWithWildcard() {
         String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("osoba", "cs", 20, 0, null, null, null);
 
-        assertTrue(query.contains("bif:contains"));
-        assertTrue(query.contains("\"osoba*\""));
-        assertTrue(query.contains("skos:Concept"));
-        assertTrue(query.contains("LIMIT 20"));
-        assertTrue(query.contains("OFFSET 0"));
+        assertThat(query).contains("bif:contains");
+        assertThat(query).contains("\"osoba*\"");
+        assertThat(query).contains("skos:Concept");
+        assertThat(query).contains("LIMIT 20");
+        assertThat(query).contains("OFFSET 0");
     }
 
     @Test
     void buildConceptSearchQuery_searchesCorrectFields() {
         String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("test", "cs", 10, 0, null, null, null);
 
-        assertTrue(query.contains("skos:prefLabel"));
-        assertTrue(query.contains("skos:altLabel"));
-        assertTrue(query.contains("dcterms:description"));
-        assertTrue(query.contains("skos:definition"));
+        assertThat(query).contains("skos:prefLabel");
+        assertThat(query).contains("skos:altLabel");
+        assertThat(query).contains("dcterms:description");
+        assertThat(query).contains("skos:definition");
     }
 
     @Test
@@ -134,25 +136,25 @@ class NKDSPARQLSearchQueryTest {
 
         String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("osoba", "cs", 20, 0, ontologyIris, null, null);
 
-        assertTrue(query.contains("VALUES ?ontology"));
-        assertTrue(query.contains("<https://slovnik.gov.cz/datovy/osoby>"));
-        assertTrue(query.contains("<https://slovnik.gov.cz/datovy/adresy>"));
+        assertThat(query).contains("VALUES ?ontology");
+        assertThat(query).contains("<https://slovnik.gov.cz/datovy/osoby>");
+        assertThat(query).contains("<https://slovnik.gov.cz/datovy/adresy>");
         // Must NOT use FILTER(?ontology IN (...))
-        assertFalse(query.contains("FILTER(?ontology IN"));
+        assertThat(query).doesNotContain("FILTER(?ontology IN");
     }
 
     @Test
     void buildConceptSearchQuery_withoutOntologyIriFilter_noValuesClause() {
         String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("osoba", "cs", 20, 0, null, null, null);
 
-        assertFalse(query.contains("VALUES ?ontology"));
+        assertThat(query).doesNotContain("VALUES ?ontology");
     }
 
     @Test
     void buildConceptSearchQuery_withEmptyOntologyIriList_noValuesClause() {
         String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("osoba", "cs", 20, 0, List.of(), null, null);
 
-        assertFalse(query.contains("VALUES ?ontology"));
+        assertThat(query).doesNotContain("VALUES ?ontology");
     }
 
     @Test
@@ -160,7 +162,7 @@ class NKDSPARQLSearchQueryTest {
         String query = NKDSPARQLSearchQuery.buildConceptSearchQuery(
                 "osoba", "cs", 20, 0, null, List.of(RelationType.SUBCLASS), null);
 
-        assertTrue(query.contains("FILTER EXISTS { ?resource rdfs:subClassOf ?x }"));
+        assertThat(query).contains("FILTER EXISTS { ?resource rdfs:subClassOf ?x }");
     }
 
     @Test
@@ -168,9 +170,9 @@ class NKDSPARQLSearchQueryTest {
         String query = NKDSPARQLSearchQuery.buildConceptSearchQuery(
                 "osoba", "cs", 20, 0, null, List.of(RelationType.SUBCLASS, RelationType.EXACT_MATCH), null);
 
-        assertTrue(query.contains("EXISTS { ?resource rdfs:subClassOf ?x }"));
-        assertTrue(query.contains("EXISTS { ?resource skos:exactMatch ?x }"));
-        assertTrue(query.contains("||"));
+        assertThat(query).contains("EXISTS { ?resource rdfs:subClassOf ?x }");
+        assertThat(query).contains("EXISTS { ?resource skos:exactMatch ?x }");
+        assertThat(query).contains("||");
     }
 
     @Test
@@ -178,7 +180,7 @@ class NKDSPARQLSearchQueryTest {
         for (RelationType rt : RelationType.values()) {
             String query = NKDSPARQLSearchQuery.buildConceptSearchQuery(
                     "test", "cs", 10, 0, null, List.of(rt), null);
-            assertTrue(query.contains("FILTER EXISTS"), "Missing FILTER EXISTS for " + rt);
+            assertThat(query).as("Missing FILTER EXISTS for " + rt).contains("FILTER EXISTS");
         }
     }
 
@@ -187,7 +189,7 @@ class NKDSPARQLSearchQueryTest {
         String query = NKDSPARQLSearchQuery.buildConceptSearchQuery(
                 "test", "cs", 10, 0, null, List.of(RelationType.SUPERCLASS), null);
 
-        assertTrue(query.contains("{ ?x rdfs:subClassOf ?resource }"));
+        assertThat(query).contains("{ ?x rdfs:subClassOf ?resource }");
     }
 
     @Test
@@ -195,7 +197,7 @@ class NKDSPARQLSearchQueryTest {
         String query = NKDSPARQLSearchQuery.buildConceptSearchQuery(
                 "test", "cs", 10, 0, null, List.of(RelationType.PROPERTY_OF), null);
 
-        assertTrue(query.contains("{ ?resource rdfs:domain ?x }"));
+        assertThat(query).contains("{ ?resource rdfs:domain ?x }");
     }
 
     @Test
@@ -203,42 +205,42 @@ class NKDSPARQLSearchQueryTest {
         String query = NKDSPARQLSearchQuery.buildConceptSearchQuery(
                 "test", "cs", 10, 0, null, List.of(RelationType.RELATIONSHIP_OF), null);
 
-        assertTrue(query.contains("{ ?resource rdfs:range ?x }"));
+        assertThat(query).contains("{ ?resource rdfs:range ?x }");
     }
 
     @Test
     void sanitizeSearchTerm_removesQuotes() {
-        assertEquals("test", NKDSPARQLSearchQuery.sanitizeSearchTerm("te\"st"));
-        assertEquals("test", NKDSPARQLSearchQuery.sanitizeSearchTerm("te'st"));
+        assertThat(NKDSPARQLSearchQuery.sanitizeSearchTerm("te\"st")).isEqualTo("test");
+        assertThat(NKDSPARQLSearchQuery.sanitizeSearchTerm("te'st")).isEqualTo("test");
     }
 
     @Test
     void sanitizeSearchTerm_removesAngleBrackets() {
-        assertEquals("test", NKDSPARQLSearchQuery.sanitizeSearchTerm("te<s>t"));
+        assertThat(NKDSPARQLSearchQuery.sanitizeSearchTerm("te<s>t")).isEqualTo("test");
     }
 
     @Test
     void sanitizeSearchTerm_removesBackslashes() {
-        assertEquals("test", NKDSPARQLSearchQuery.sanitizeSearchTerm("te\\st"));
+        assertThat(NKDSPARQLSearchQuery.sanitizeSearchTerm("te\\st")).isEqualTo("test");
     }
 
     @Test
     void sanitizeSearchTerm_handlesNull() {
-        assertEquals("", NKDSPARQLSearchQuery.sanitizeSearchTerm(null));
+        assertThat(NKDSPARQLSearchQuery.sanitizeSearchTerm(null)).isEqualTo("");
     }
 
     @Test
     void sanitizeSearchTerm_preservesCzechDiacritics() {
-        assertEquals("čeština", NKDSPARQLSearchQuery.sanitizeSearchTerm("čeština"));
-        assertEquals("příliš žluťoučký", NKDSPARQLSearchQuery.sanitizeSearchTerm("příliš žluťoučký"));
+        assertThat(NKDSPARQLSearchQuery.sanitizeSearchTerm("čeština")).isEqualTo("čeština");
+        assertThat(NKDSPARQLSearchQuery.sanitizeSearchTerm("příliš žluťoučký")).isEqualTo("příliš žluťoučký");
     }
 
     // ── lang sanitization (defence-in-depth: lang lands inside a SPARQL string literal) ──
 
     @Test
     void sanitizeLang_passesThroughValidTags() {
-        assertEquals("cs", NKDSPARQLSearchQuery.sanitizeLang("cs"));
-        assertEquals("en-US", NKDSPARQLSearchQuery.sanitizeLang("en-US"));
+        assertThat(NKDSPARQLSearchQuery.sanitizeLang("cs")).isEqualTo("cs");
+        assertThat(NKDSPARQLSearchQuery.sanitizeLang("en-US")).isEqualTo("en-US");
     }
 
     @Test
@@ -248,24 +250,24 @@ class NKDSPARQLSearchQueryTest {
         // but keeps letters. The result is a useless lang tag (won't match any
         // labels) but is structurally safe — that's the goal.
         String result = NKDSPARQLSearchQuery.sanitizeLang("cs\" ) FILTER(false) #");
-        assertFalse(result.contains("\""), "quote must be stripped");
-        assertFalse(result.contains(")"), "paren must be stripped");
-        assertFalse(result.contains("("), "paren must be stripped");
-        assertFalse(result.contains("#"), "hash must be stripped");
-        assertFalse(result.contains(" "), "space must be stripped");
+        assertThat(result).as("quote must be stripped").doesNotContain("\"");
+        assertThat(result).as("paren must be stripped").doesNotContain(")");
+        assertThat(result).as("paren must be stripped").doesNotContain("(");
+        assertThat(result).as("hash must be stripped").doesNotContain("#");
+        assertThat(result).as("space must be stripped").doesNotContain(" ");
     }
 
     @Test
     void sanitizeLang_stripsDotsAndSpaces() {
-        assertEquals("csbogustag", NKDSPARQLSearchQuery.sanitizeLang("cs.bogus.tag"));
-        assertEquals("encs", NKDSPARQLSearchQuery.sanitizeLang("en cs"));
+        assertThat(NKDSPARQLSearchQuery.sanitizeLang("cs.bogus.tag")).isEqualTo("csbogustag");
+        assertThat(NKDSPARQLSearchQuery.sanitizeLang("en cs")).isEqualTo("encs");
     }
 
     @Test
     void sanitizeLang_nullOrEmpty_defaultsToCs() {
-        assertEquals("cs", NKDSPARQLSearchQuery.sanitizeLang(null));
-        assertEquals("cs", NKDSPARQLSearchQuery.sanitizeLang(""));
-        assertEquals("cs", NKDSPARQLSearchQuery.sanitizeLang("\""));
+        assertThat(NKDSPARQLSearchQuery.sanitizeLang(null)).isEqualTo("cs");
+        assertThat(NKDSPARQLSearchQuery.sanitizeLang("")).isEqualTo("cs");
+        assertThat(NKDSPARQLSearchQuery.sanitizeLang("\"")).isEqualTo("cs");
     }
 
     @Test
@@ -273,16 +275,14 @@ class NKDSPARQLSearchQueryTest {
         String query = NKDSPARQLSearchQuery.buildOntologySearchQuery(
                 "test", "cs\" ) FILTER(false) #", 10, 0, SAMPLE_CANDIDATE_IRIS);
         // The injected payload must not appear unescaped inside the string literal.
-        assertFalse(query.contains("\" ) FILTER(false)"),
-                "Lang injection leaked into query: " + query);
+        assertThat(query).as("Lang injection leaked into query: " + query).doesNotContain("\" ) FILTER(false)");
     }
 
     @Test
     void buildConceptSearchQuery_maliciousLang_isSanitized() {
         String query = NKDSPARQLSearchQuery.buildConceptSearchQuery(
                 "test", "cs\" ) FILTER(false) #", 10, 0, null, null, null);
-        assertFalse(query.contains("\" ) FILTER(false)"),
-                "Lang injection leaked into query: " + query);
+        assertThat(query).as("Lang injection leaked into query: " + query).doesNotContain("\" ) FILTER(false)");
     }
 
     @Test
@@ -292,24 +292,24 @@ class NKDSPARQLSearchQueryTest {
 
         String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("test", "cs", 10, 0, iris, types, null);
 
-        assertTrue(query.contains("VALUES ?ontology"));
-        assertTrue(query.contains("FILTER EXISTS"));
+        assertThat(query).contains("VALUES ?ontology");
+        assertThat(query).contains("FILTER EXISTS");
     }
 
     @Test
     void buildConceptSearchQuery_appliesLanguagePreference() {
         String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("test", "en", 10, 0, null, null, null);
 
-        assertTrue(query.contains("LANG(?prefLabel) = \"en\""));
+        assertThat(query).contains("LANG(?prefLabel) = \"en\"");
     }
 
     @Test
     void buildConceptSearchQuery_projectsRoleMarkers() {
         String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("test", "cs", 10, 0, null, null, null);
 
-        assertTrue(query.contains("?roleTrida"));
-        assertTrue(query.contains("?roleVlastnost"));
-        assertTrue(query.contains("?roleVztah"));
+        assertThat(query).contains("?roleTrida");
+        assertThat(query).contains("?roleVlastnost");
+        assertThat(query).contains("?roleVztah");
     }
 
     @Test
@@ -317,49 +317,50 @@ class NKDSPARQLSearchQueryTest {
         String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("test", "cs", 10, 0, null, null, null);
 
         // OFN role tags (ISMD-published) and OWL types (NKD-carried) both bind the marker.
-        assertTrue(query.contains("http://www.w3.org/2002/07/owl#Class"));
-        assertTrue(query.contains("http://www.w3.org/2002/07/owl#DatatypeProperty"));
-        assertTrue(query.contains("http://www.w3.org/2002/07/owl#ObjectProperty"));
-        assertTrue(query.contains("třída"));
-        assertTrue(query.contains("vlastnost"));
-        assertTrue(query.contains("vztah"));
+        assertThat(query).contains("http://www.w3.org/2002/07/owl#Class");
+        assertThat(query).contains("http://www.w3.org/2002/07/owl#DatatypeProperty");
+        assertThat(query).contains("http://www.w3.org/2002/07/owl#ObjectProperty");
+        assertThat(query).contains("třída");
+        assertThat(query).contains("vlastnost");
+        assertThat(query).contains("vztah");
     }
 
     @Test
     void buildConceptSearchQuery_includesOntologyVariable() {
         String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("test", "cs", 10, 0, null, null, null);
 
-        assertTrue(query.contains("?ontology"));
-        assertTrue(query.contains("skos:inScheme ?ontology"));
+        assertThat(query).contains("?ontology");
+        assertThat(query).contains("skos:inScheme ?ontology");
     }
 
     @Test
     void isSafeHttpIri_acceptsHttpAndHttps() {
-        assertTrue(SparqlIriValidator.isSafeHttpIri("https://slovnik.gov.cz/datovy/osoby"));
-        assertTrue(SparqlIriValidator.isSafeHttpIri("http://example.org/ontology#Thing"));
+        assertThat(SparqlIriValidator.isSafeHttpIri("https://slovnik.gov.cz/datovy/osoby")).isTrue();
+        assertThat(SparqlIriValidator.isSafeHttpIri("http://example.org/ontology#Thing")).isTrue();
     }
 
     @Test
     void isSafeHttpIri_rejectsInjectionAttempts() {
         // Space + SPARQL fragment that would break out of <...>
-        assertFalse(SparqlIriValidator.isSafeHttpIri(
-                "http://example.org/ont } SELECT * WHERE { ?s ?p ?o"));
-        assertFalse(SparqlIriValidator.isSafeHttpIri("http://example.org/>malicious"));
-        assertFalse(SparqlIriValidator.isSafeHttpIri("http://example.org/a\nb"));
+        assertThat(SparqlIriValidator.isSafeHttpIri(
+                "http://example.org/ont } SELECT * WHERE { ?s ?p ?o"))
+                .isFalse();
+        assertThat(SparqlIriValidator.isSafeHttpIri("http://example.org/>malicious")).isFalse();
+        assertThat(SparqlIriValidator.isSafeHttpIri("http://example.org/a\nb")).isFalse();
     }
 
     @Test
     void isSafeHttpIri_rejectsNonHttpSchemes() {
-        assertFalse(SparqlIriValidator.isSafeHttpIri("file:///etc/passwd"));
-        assertFalse(SparqlIriValidator.isSafeHttpIri("javascript:alert(1)"));
-        assertFalse(SparqlIriValidator.isSafeHttpIri("urn:isbn:0451450523"));
+        assertThat(SparqlIriValidator.isSafeHttpIri("file:///etc/passwd")).isFalse();
+        assertThat(SparqlIriValidator.isSafeHttpIri("javascript:alert(1)")).isFalse();
+        assertThat(SparqlIriValidator.isSafeHttpIri("urn:isbn:0451450523")).isFalse();
     }
 
     @Test
     void isSafeHttpIri_rejectsNullAndBlank() {
-        assertFalse(SparqlIriValidator.isSafeHttpIri(null));
-        assertFalse(SparqlIriValidator.isSafeHttpIri(""));
-        assertFalse(SparqlIriValidator.isSafeHttpIri("   "));
+        assertThat(SparqlIriValidator.isSafeHttpIri(null)).isFalse();
+        assertThat(SparqlIriValidator.isSafeHttpIri("")).isFalse();
+        assertThat(SparqlIriValidator.isSafeHttpIri("   ")).isFalse();
     }
 
     @Test
@@ -371,9 +372,9 @@ class NKDSPARQLSearchQueryTest {
 
         String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("osoba", "cs", 20, 0, iris, null, null);
 
-        assertTrue(query.contains("<https://slovnik.gov.cz/datovy/osoby>"));
-        assertFalse(query.contains("SELECT * WHERE { ?s ?p ?o"));
-        assertFalse(query.contains("} SELECT"));
+        assertThat(query).contains("<https://slovnik.gov.cz/datovy/osoby>");
+        assertThat(query).doesNotContain("SELECT * WHERE { ?s ?p ?o");
+        assertThat(query).doesNotContain("} SELECT");
     }
 
     @Test
@@ -385,6 +386,6 @@ class NKDSPARQLSearchQueryTest {
 
         String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("osoba", "cs", 20, 0, iris, null, null);
 
-        assertFalse(query.contains("VALUES ?ontology"));
+        assertThat(query).doesNotContain("VALUES ?ontology");
     }
 }

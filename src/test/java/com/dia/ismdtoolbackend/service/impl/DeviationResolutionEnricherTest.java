@@ -13,8 +13,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.mockito.junit.jupiter.MockitoSettings;
-import org.mockito.quality.Strictness;
 
 import java.util.List;
 import java.util.Map;
@@ -32,7 +30,6 @@ import static org.mockito.Mockito.when;
  * diff, keyed by IRI. Origin-agnostic (WORKING_COPY and LINK_TARGET share it).
  */
 @ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT)
 class DeviationResolutionEnricherTest {
 
     @Mock private ReferencedConceptResolutionEngine resolutionEngine;

@@ -13,9 +13,8 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class EsbirkaRateGateTest {
 
@@ -30,6 +29,9 @@ class EsbirkaRateGateTest {
         AtomicInteger inFlight = new AtomicInteger();
         AtomicInteger maxInFlight = new AtomicInteger();
         CountDownLatch start = new CountDownLatch(1);
+        // The first MAX_IN_FLIGHT calls hold until all of them are in flight, so the cap is
+        // reached however late the scheduler runs a caller; the latch is open for later calls.
+        CountDownLatch capReached = new CountDownLatch(MAX_IN_FLIGHT);
         ExecutorService pool = Executors.newFixedThreadPool(CALLERS);
         try {
             List<Future<?>> futures = new ArrayList<>();
@@ -39,7 +41,9 @@ class EsbirkaRateGateTest {
                     departures.add(gate.acquire(EsbirkaDeadline.after(Duration.ofSeconds(10))));
                     maxInFlight.accumulateAndGet(inFlight.incrementAndGet(), Math::max);
                     try {
-                        Thread.sleep(100); // the "call": longer than the spacing, so the cap is reached
+                        capReached.countDown();
+                        capReached.await(5, TimeUnit.SECONDS);
+                        Thread.sleep(100); // the "call": longer than the spacing
                     } finally {
                         inFlight.decrementAndGet();
                         gate.release();
@@ -55,14 +59,16 @@ class EsbirkaRateGateTest {
             pool.shutdownNow();
         }
 
-        assertEquals(CALLERS, departures.size());
+        assertThat(departures).hasSize(CALLERS);
         List<Long> sorted = new ArrayList<>(departures);
         Collections.sort(sorted);
         for (int i = 1; i < sorted.size(); i++) {
             long gapMs = TimeUnit.NANOSECONDS.toMillis(sorted.get(i) - sorted.get(i - 1));
-            assertTrue(gapMs >= SPACING_MS, "departures " + (i - 1) + "→" + i + " only " + gapMs + " ms apart");
+            assertThat(gapMs)
+                    .as("departures " + (i - 1) + "→" + i + " only " + gapMs + " ms apart")
+                    .isGreaterThanOrEqualTo(SPACING_MS);
         }
-        assertEquals(MAX_IN_FLIGHT, maxInFlight.get(), "in-flight cap must be reached and never exceeded");
+        assertThat(maxInFlight.get()).as("in-flight cap must be reached and never exceeded").isEqualTo(MAX_IN_FLIGHT);
     }
 
     @Test
@@ -72,9 +78,9 @@ class EsbirkaRateGateTest {
         gate.release();
 
         long t0 = System.nanoTime();
-        assertThrows(EsbirkaRateGate.DeadlineExceeded.class,
-                () -> gate.acquire(EsbirkaDeadline.after(Duration.ofMillis(200))));
-        assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0) < 1_000);
+        assertThatThrownBy(() -> gate.acquire(EsbirkaDeadline.after(Duration.ofMillis(200))))
+                .isInstanceOf(EsbirkaRateGate.DeadlineExceeded.class);
+        assertThat(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0)).isLessThan(1_000);
     }
 
     @Test
@@ -83,10 +89,10 @@ class EsbirkaRateGateTest {
         gate.acquire(EsbirkaDeadline.after(Duration.ofSeconds(1)));
 
         long t0 = System.nanoTime();
-        assertThrows(EsbirkaRateGate.DeadlineExceeded.class,
-                () -> gate.acquire(EsbirkaDeadline.after(Duration.ofMillis(150))));
+        assertThatThrownBy(() -> gate.acquire(EsbirkaDeadline.after(Duration.ofMillis(150))))
+                .isInstanceOf(EsbirkaRateGate.DeadlineExceeded.class);
         long waitedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0);
-        assertTrue(waitedMs >= 100 && waitedMs < 1_000, "waited " + waitedMs + " ms");
+        assertThat(waitedMs >= 100 && waitedMs < 1_000).as("waited " + waitedMs + " ms").isTrue();
 
         gate.release();
         gate.acquire(EsbirkaDeadline.after(Duration.ofMillis(150)));

@@ -67,11 +67,7 @@ public class OntologyLabelLookup {
 
         Map<String, Map<String, String>> out = new LinkedHashMap<>();
         for (String graphName : distinct) {
-            Resource ontology = metadata.getResource(graphName);
-            if (ontology == null) {
-                continue;
-            }
-            Map<String, String> labels = extractMultilingualValue(ontology);
+            Map<String, String> labels = extractMultilingualValue(metadata.getResource(graphName));
             if (!labels.isEmpty()) {
                 out.put(graphName, labels);
             }
@@ -84,8 +80,7 @@ public class OntologyLabelLookup {
         if (graphName == null || graphName.isEmpty()) {
             return null;
         }
-        Map<String, Map<String, String>> labels = labelsByGraph(List.of(graphName));
-        return labels == null ? null : labels.get(graphName);
+        return labelsByGraph(List.of(graphName)).get(graphName);
     }
 
     /**
@@ -104,12 +99,13 @@ public class OntologyLabelLookup {
                     continue;
                 }
                 Literal literal = object.asLiteral();
+                // Jena returns "" (never null) for a missing lexical form or language tag.
                 String value = literal.getString();
-                if (value == null || value.trim().isEmpty()) {
+                if (value.trim().isEmpty()) {
                     continue;
                 }
                 String lang = literal.getLanguage();
-                valuesByLang.putIfAbsent((lang != null && !lang.isEmpty()) ? lang : DEFAULT_LANG, value);
+                valuesByLang.putIfAbsent(lang.isEmpty() ? DEFAULT_LANG : lang, value);
             }
         } finally {
             iter.close();

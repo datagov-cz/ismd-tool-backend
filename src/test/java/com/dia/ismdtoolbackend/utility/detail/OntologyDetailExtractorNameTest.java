@@ -18,13 +18,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Regression for the ontology-level {@code název} losing every language variant but {@code cs}.
- *
- * <p>The detail extractor used to collapse the vocabulary name to a single {@code String}
- * ({@code ModelAnalyzer.extractModelName} returns the first literal) and re-wrap it under
- * {@code cs} only, so a multilingual name created/edited via the API came back single-language.
- * Description never had this bug because it was read multilingually straight off the resource;
- * the name now goes through the same {@code extractMultilingualValue} path.
+ * The ontology-level {@code název} keeps every language variant, read straight off the vocabulary
+ * resource through {@code extractMultilingualValue}, as the description is.
  */
 @ExtendWith(MockitoExtension.class)
 class OntologyDetailExtractorNameTest {

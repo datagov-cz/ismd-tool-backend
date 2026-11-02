@@ -1,26 +1,22 @@
 package com.dia.ismdtoolbackend.controller;
 
-import com.dia.ismdtoolbackend.config.GlobalExceptionHandler;
 import com.dia.ismdtoolbackend.config.RppConfig;
-import com.dia.ismdtoolbackend.config.security.TestOntologySecurityService;
-import com.dia.ismdtoolbackend.config.security.TestSecurityConfig;
 import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
 import com.dia.ismdtoolbackend.client.RppSparqlClient;
 import com.dia.ismdtoolbackend.controller.dto.RppSearchResultDto;
 import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
 import com.dia.ismdtoolbackend.service.RppService;
+import com.dia.ismdtoolbackend.testsupport.web.ControllerSliceTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.context.annotation.Import;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
@@ -30,16 +26,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(controllers = RppController.class,
-        excludeAutoConfiguration = {
-                org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration.class,
-                org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration.class,
-                org.springframework.boot.security.oauth2.client.autoconfigure.OAuth2ClientAutoConfiguration.class,
-                org.springframework.boot.security.oauth2.client.autoconfigure.servlet.OAuth2ClientWebSecurityAutoConfiguration.class,
-                org.springframework.boot.security.oauth2.server.resource.autoconfigure.OAuth2ResourceServerAutoConfiguration.class
-        })
-@Import({TestSecurityConfig.class, TestOntologySecurityService.class, GlobalExceptionHandler.class})
-@ActiveProfiles("junit")
+@ControllerSliceTest(controllers = RppController.class)
 class RppControllerTest {
 
     @Autowired
@@ -93,9 +80,9 @@ class RppControllerTest {
         ArgumentCaptor<Integer> limitCap = ArgumentCaptor.forClass(Integer.class);
         ArgumentCaptor<String> prefCap = ArgumentCaptor.forClass(String.class);
         verify(rppService).searchIsvs(qCap.capture(), limitCap.capture(), prefCap.capture());
-        org.junit.jupiter.api.Assertions.assertEquals("alfa", qCap.getValue());
-        org.junit.jupiter.api.Assertions.assertEquals(10, limitCap.getValue());
-        org.junit.jupiter.api.Assertions.assertEquals("A1382", prefCap.getValue());
+        assertThat(qCap.getValue()).isEqualTo("alfa");
+        assertThat(limitCap.getValue()).isEqualTo(10);
+        assertThat(prefCap.getValue()).isEqualTo("A1382");
     }
 
     @Test
@@ -107,7 +94,7 @@ class RppControllerTest {
 
         ArgumentCaptor<Integer> limitCap = ArgumentCaptor.forClass(Integer.class);
         verify(rppService).searchAgendas(any(), limitCap.capture());
-        org.junit.jupiter.api.Assertions.assertEquals(20, limitCap.getValue());
+        assertThat(limitCap.getValue()).isEqualTo(20);
     }
 
     @Test
@@ -134,7 +121,7 @@ class RppControllerTest {
 
         ArgumentCaptor<String> qCap = ArgumentCaptor.forClass(String.class);
         verify(rppService).searchAgendas(qCap.capture(), anyInt());
-        org.junit.jupiter.api.Assertions.assertNull(qCap.getValue());
+        assertThat(qCap.getValue()).isNull();
     }
 
     @Test

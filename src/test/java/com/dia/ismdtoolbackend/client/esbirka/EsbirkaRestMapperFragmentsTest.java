@@ -14,10 +14,7 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * {@link EsbirkaRestMapper#toFragments} against the SPARQL rows recorded for the same fragments:
@@ -36,19 +33,23 @@ class EsbirkaRestMapperFragmentsTest {
         List<SparqlFragment> sparql = EsbirkaRestFixtures.sparqlContent(law).stream()
                 .sorted(Comparator.comparing(SparqlFragment::order)).toList();
 
-        assertEquals(sparql.stream().map(SparqlFragment::iri).toList(),
-                mapped.stream().map(FragmentModel::getIri).toList(), law + ": fragment set and order");
+        assertThat(mapped.stream().map(FragmentModel::getIri).toList())
+                .as(law + ": fragment set and order")
+                .isEqualTo(sparql.stream().map(SparqlFragment::iri).toList());
         for (int i = 0; i < mapped.size(); i++) {
             FragmentModel m = mapped.get(i);
             SparqlFragment s = sparql.get(i);
-            assertEquals(s.parent(), m.getParentIri(), "parent of " + m.getIri());
-            assertEquals(s.citace(), m.getCitation(), "citation of " + m.getIri());
-            assertEquals(EsbirkaFragmentKind.fromIri(s.iri()), m.getKind(), "kind of " + m.getIri());
-            assertEquals(EsbirkaHtmlSanitizer.sanitize(s.obsah()), m.getBodyHtml(), "body of " + m.getIri());
-            assertEquals(EsbirkaHtmlText.toPlainText(s.obsah()), EsbirkaHtmlText.toPlainText(m.getBodyHtml()),
-                    "text of " + m.getIri());
+            assertThat(m.getParentIri()).as("parent of " + m.getIri()).isEqualTo(s.parent());
+            assertThat(m.getCitation()).as("citation of " + m.getIri()).isEqualTo(s.citace());
+            assertThat(m.getKind()).as("kind of " + m.getIri()).isEqualTo(EsbirkaFragmentKind.fromIri(s.iri()));
+            assertThat(m.getBodyHtml()).as("body of " + m.getIri()).isEqualTo(EsbirkaHtmlSanitizer.sanitize(s.obsah()));
+            assertThat(EsbirkaHtmlText.toPlainText(m.getBodyHtml()))
+                    .as("text of " + m.getIri())
+                    .isEqualTo(EsbirkaHtmlText.toPlainText(s.obsah()));
             if (i > 0) {
-                assertTrue(mapped.get(i - 1).getOrder().compareTo(m.getOrder()) < 0, "order must be lex-increasing");
+                assertThat(mapped.get(i - 1).getOrder().compareTo(m.getOrder()))
+                        .as("order must be lex-increasing")
+                        .isLessThan(0);
             }
         }
     }
@@ -60,9 +61,10 @@ class EsbirkaRestMapperFragmentsTest {
         List<FragmentModel> mapped = EsbirkaRestMapper.toFragments(pages);
 
         FragmentModel firstOfPage1 = mapped.get(page0);
-        assertNotNull(firstOfPage1.getParentIri());
-        assertTrue(mapped.subList(0, page0).stream().anyMatch(f -> f.getIri().equals(firstOfPage1.getParentIri())),
-                "first fragment of page 1 has its parent on page 0");
+        assertThat(firstOfPage1.getParentIri()).isNotNull();
+        assertThat(mapped.subList(0, page0).stream().anyMatch(f -> f.getIri().equals(firstOfPage1.getParentIri())))
+                .as("first fragment of page 1 has its parent on page 0")
+                .isTrue();
     }
 
     @Test
@@ -70,41 +72,47 @@ class EsbirkaRestMapperFragmentsTest {
         Map<String, FragmentModel> byIri = byIri("sb-1997-49");
         String grouper = V49 + "/norma/cast_3/hlava_2/par_22b/frag_3305333";
 
-        assertEquals(V49 + "/norma/cast_3/hlava_2/par_22b", byIri.get(grouper).getParentIri());
-        assertNull(byIri.get(grouper).getCitation(), "grouper repeating its paragraph carries no citation");
-        assertEquals(grouper, byIri.get(V49 + "/norma/cast_3/hlava_2/par_22b/pism_a").getParentIri());
-        assertEquals("§ 22b písm. a)", byIri.get(V49 + "/norma/cast_3/hlava_2/par_22b/pism_a").getCitation());
+        assertThat(byIri.get(grouper).getParentIri()).isEqualTo(V49 + "/norma/cast_3/hlava_2/par_22b");
+        assertThat(byIri.get(grouper).getCitation()).as("grouper repeating its paragraph carries no citation").isNull();
+        assertThat(byIri.get(V49 + "/norma/cast_3/hlava_2/par_22b/pism_a").getParentIri()).isEqualTo(grouper);
+        assertThat(byIri.get(V49 + "/norma/cast_3/hlava_2/par_22b/pism_a").getCitation()).isEqualTo("§ 22b písm. a)");
     }
 
     @Test
     void containersAndDocumentRootCarryNoCitation() {
         Map<String, FragmentModel> byIri = byIri("sb-1997-49");
 
-        assertNull(byIri.get(V49).getParentIri());
-        assertNull(byIri.get(V49).getCitation());
-        assertNull(byIri.get(V49 + "/norma").getCitation());
-        assertEquals("Část 1", byIri.get(V49 + "/norma/cast_1").getCitation());
+        assertThat(byIri.get(V49).getParentIri()).isNull();
+        assertThat(byIri.get(V49).getCitation()).isNull();
+        assertThat(byIri.get(V49 + "/norma").getCitation()).isNull();
+        assertThat(byIri.get(V49 + "/norma/cast_1").getCitation()).isEqualTo("Část 1");
     }
 
     @Test
     void stripsMultiWordActTypes() {
-        assertTrue(citations("sb-1992-586").stream().anyMatch("§ 1"::equals), "Zákon České národní rady (4 words)");
-        assertTrue(citations("sb-1993-1").stream().anyMatch("Čl. 1"::equals), "Ústavní zákon České národní rady (5 words)");
-        assertTrue(citations("sb-1993-1").stream().noneMatch(c -> c.contains(" č. ") || c.contains("rady")));
+        assertThat(citations("sb-1992-586").stream().anyMatch("§ 1"::equals))
+                .as("Zákon České národní rady (4 words)")
+                .isTrue();
+        assertThat(citations("sb-1993-1").stream().anyMatch("Čl. 1"::equals))
+                .as("Ústavní zákon České národní rady (5 words)")
+                .isTrue();
+        assertThat(citations("sb-1993-1").stream().noneMatch(c -> c.contains(" č. ") || c.contains("rady"))).isTrue();
     }
 
     @Test
     void rebuildsUpperCaseHeadingsFromTheIri() {
         List<String> citations = citations("sb-2012-89-2014");
 
-        assertTrue(citations.contains("Část 1 Hlava 1 Díl 1"));
-        assertTrue(citations.stream().anyMatch(c -> c.contains("Pododdíl ")), "pododdíl label");
-        assertTrue(citations.stream().noneMatch(c -> c.contains("ČÁST") || c.contains("HLAVA")));
+        assertThat(citations).contains("Část 1 Hlava 1 Díl 1");
+        assertThat(citations.stream().anyMatch(c -> c.contains("Pododdíl "))).as("pododdíl label").isTrue();
+        assertThat(citations.stream().noneMatch(c -> c.contains("ČÁST") || c.contains("HLAVA"))).isTrue();
     }
 
     @Test
     void keepsAnnexFootnoteCitations() {
-        assertTrue(citations("sb-2007-361").stream().anyMatch(c -> c.startsWith("pozn.")), "annex footnotes keep theirs");
+        assertThat(citations("sb-2007-361").stream().anyMatch(c -> c.startsWith("pozn.")))
+                .as("annex footnotes keep theirs")
+                .isTrue();
     }
 
     private static Map<String, FragmentModel> byIri(String law) {

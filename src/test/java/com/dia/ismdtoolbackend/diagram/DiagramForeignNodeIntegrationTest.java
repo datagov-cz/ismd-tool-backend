@@ -1,49 +1,31 @@
 package com.dia.ismdtoolbackend.diagram;
 
-import com.dia.ismdtoolbackend.outbox.TransactionTemplateConfig;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.PositionDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
-import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
-import com.dia.ismdtoolbackend.outbox.OutboxEntry;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.mapper.DiagramMapper;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel.ConceptDetailModel;
-import com.dia.ismdtoolbackend.outbox.PostgresIntegrationTestBase;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
-import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
-import com.dia.ismdtoolbackend.outbox.OutboxEntryRepository;
-import com.dia.ismdtoolbackend.service.impl.DiagramLayoutReconciler;
-import com.dia.ismdtoolbackend.service.OntologyLabelLookup;
-import com.dia.ismdtoolbackend.service.impl.DiagramMaterializeService;
-import com.dia.ismdtoolbackend.service.impl.DiagramServiceBeans;
 import com.dia.ismdtoolbackend.service.impl.DiagramServiceImpl;
+import com.dia.ismdtoolbackend.testsupport.pg.DiagramServiceIT;
+import com.dia.ismdtoolbackend.testsupport.pg.PgTestData;
+import com.dia.ismdtoolbackend.testsupport.pg.PostgresIntegrationTestBase;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.persistence.autoconfigure.EntityScan;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Import;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -51,8 +33,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.when;
 
 /**
@@ -74,20 +54,11 @@ import static org.mockito.Mockito.when;
  *       fix intact while still letting the link be drawn, and it is what matters most here.</li>
  * </ol>
  */
-@DataJpaTest
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@ActiveProfiles("junit")
-@Import({DiagramForeignNodeIntegrationTest.Beans.class, DiagramServiceBeans.class, TransactionTemplateConfig.class,
-        com.dia.ismdtoolbackend.config.JpaAuditingConfig.class})
-@EntityScan(basePackageClasses = {OutboxEntry.class, ConceptMetadataEntity.class, DiagramEntity.class})
-@EnableJpaRepositories(basePackageClasses = {OutboxEntryRepository.class, ConceptMetadataRepository.class,
-        DiagramRepository.class})
-@Transactional(propagation = Propagation.NOT_SUPPORTED)
+@DiagramServiceIT
 class DiagramForeignNodeIntegrationTest extends PostgresIntegrationTestBase {
 
     private static final String GRAPH = "https://slovnik.gov.cz/mine";
     private static final String SLUG = "foreign-node-ontology";
-    private static final String USER = "user123";
     private static final String MY_CLASS = GRAPH + "/pojem/zamestnanec";
     /** A VZTAH this ontology owns — the subject of an overlay pointing at a foreign range. */
     private static final String MY_VZTAH = GRAPH + "/pojem/ma-osobu";
@@ -105,33 +76,27 @@ class DiagramForeignNodeIntegrationTest extends PostgresIntegrationTestBase {
 
     @Autowired private ConceptMetadataRepository conceptRepo;
     @Autowired private OntologyMetadataRepository ontologyRepo;
-    @Autowired private DiagramRepository diagramRepo;
     @Autowired private DiagramPendingEditRepository pendingEditRepo;
     @Autowired private TransactionTemplate txTemplate;
     @Autowired private DiagramServiceImpl diagramService;
     @Autowired private JenaTDB2Repository tdb2;
     @Autowired private OntologyDetailExtractor extractor;
+    @Autowired private PgTestData data;
+
+    private Long diagramId;
 
     @BeforeEach
     void setUp() {
-        reset(tdb2, extractor);
         when(tdb2.fetchGraph(any())).thenReturn(nonEmptyModel());
         when(extractor.applyOFNTransformations(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        txTemplate.executeWithoutResult(tx -> {
-            pendingEditRepo.deleteAllInBatch();
-            diagramRepo.deleteAllInBatch();
-            conceptRepo.deleteAllInBatch();
-            ontologyRepo.deleteAllInBatch();
-        });
-        txTemplate.executeWithoutResult(tx -> {
-            OntologyMetadataEntity mine = ontology(SLUG, GRAPH, USER);
-            seedConcept(mine, MY_CLASS, "Zaměstnanec", ConceptType.TRIDA, GRAPH);
-            seedConcept(mine, MY_VZTAH, "má osobu", ConceptType.VZTAH, GRAPH);
-            OntologyMetadataEntity theirs = ontology(OTHER_SLUG, OTHER_GRAPH, OTHER_USER);
-            seedConcept(theirs, FOREIGN_CLASS, "Osoba", ConceptType.TRIDA, OTHER_GRAPH);
-            seedConcept(theirs, FOREIGN_PARENT, "Subjekt", ConceptType.TRIDA, OTHER_GRAPH);
-        });
+        OntologyMetadataEntity mine = data.createOntology(SLUG, GRAPH);
+        data.createConcept(mine, MY_CLASS, "Zaměstnanec", ConceptType.TRIDA);
+        data.createConcept(mine, MY_VZTAH, "má osobu", ConceptType.VZTAH);
+        OntologyMetadataEntity theirs = data.createOntology(OTHER_SLUG, OTHER_GRAPH, OTHER_USER, false);
+        data.createConcept(theirs, FOREIGN_CLASS, "Osoba", ConceptType.TRIDA);
+        data.createConcept(theirs, FOREIGN_PARENT, "Subjekt", ConceptType.TRIDA);
+        diagramId = data.createDiagram(mine, "Test diagram");
     }
 
     // ---- rendering ------------------------------------------------------------------------------
@@ -285,17 +250,17 @@ class DiagramForeignNodeIntegrationTest extends PostgresIntegrationTestBase {
         stubGraph(GRAPH, concept(MY_CLASS, "Zaměstnanec"));
 
         DiagramLayoutDto layout = new DiagramLayoutDto(
-                storedVersion(), null,
+                data.diagramVersion(diagramId), null,
                 List.of(node(MY_CLASS, 0, 0), node(FOREIGN_CLASS, 300, 0)),
                 List.of(),
                 List.of(new DiagramLayoutDto.Overlay(
                         FOREIGN_CLASS, MY_CLASS, null, null, null, null)));
 
-        assertThatThrownBy(() -> diagramService.saveLayout(SLUG, diagramId(), layout))
+        assertThatThrownBy(() -> diagramService.saveLayout(SLUG, diagramId, layout))
                 .as("placing a foreign concept is allowed; staging an edit ON one never is")
                 .isInstanceOf(ConceptValidationException.class);
 
-        assertThat(pendingEditRepo.findByDiagramId(diagramId()))
+        assertThat(pendingEditRepo.findByDiagramId(diagramId))
                 .as("and nothing is staged")
                 .isEmpty();
     }
@@ -355,15 +320,15 @@ class DiagramForeignNodeIntegrationTest extends PostgresIntegrationTestBase {
         stubGraph(GRAPH, concept(MY_CLASS, "Zaměstnanec"), concept(MY_VZTAH, "má osobu"));
 
         DiagramLayoutDto layout = new DiagramLayoutDto(
-                storedVersion(), null,
+                data.diagramVersion(diagramId), null,
                 List.of(node(MY_CLASS, 0, 0), node(FOREIGN_CLASS, 300, 0)),
                 List.of(),
                 List.of(new DiagramLayoutDto.Overlay(
                         MY_VZTAH, MY_CLASS, FOREIGN_CLASS, null, null, null)));
 
-        diagramService.saveLayout(SLUG, diagramId(), layout);
+        diagramService.saveLayout(SLUG, diagramId, layout);
 
-        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(diagramId(), MY_VZTAH))
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(diagramId, MY_VZTAH))
                 .as("our vztah may point at another ontology's concept")
                 .isPresent();
     }
@@ -378,17 +343,17 @@ class DiagramForeignNodeIntegrationTest extends PostgresIntegrationTestBase {
         stubGraph(GRAPH, concept(MY_CLASS, "Zaměstnanec"), concept(MY_VZTAH, "má osobu"));
 
         DiagramLayoutDto layout = new DiagramLayoutDto(
-                storedVersion(), null,
+                data.diagramVersion(diagramId), null,
                 List.of(node(MY_CLASS, 0, 0), node(FOREIGN_CLASS, 300, 0)),
                 List.of(),
                 List.of(new DiagramLayoutDto.Overlay(
                         MY_VZTAH, FOREIGN_CLASS, MY_CLASS, null, null, null)));
 
-        assertThatThrownBy(() -> diagramService.saveLayout(SLUG, diagramId(), layout))
+        assertThatThrownBy(() -> diagramService.saveLayout(SLUG, diagramId, layout))
                 .as("the origin of the link must be ours")
                 .isInstanceOf(ConceptValidationException.class);
 
-        assertThat(pendingEditRepo.findByDiagramId(diagramId())).isEmpty();
+        assertThat(pendingEditRepo.findByDiagramId(diagramId)).isEmpty();
     }
 
     /** A hierarchy target is referenced, not written — our class may be a subclass of a foreign one. */
@@ -397,15 +362,15 @@ class DiagramForeignNodeIntegrationTest extends PostgresIntegrationTestBase {
         stubGraph(GRAPH, concept(MY_CLASS, "Zaměstnanec"));
 
         DiagramLayoutDto layout = new DiagramLayoutDto(
-                storedVersion(), null,
+                data.diagramVersion(diagramId), null,
                 List.of(node(MY_CLASS, 0, 0), node(FOREIGN_CLASS, 300, 0)),
                 List.of(),
                 List.of(new DiagramLayoutDto.Overlay(
                         MY_CLASS, null, null, List.of(FOREIGN_CLASS), null, null)));
 
-        diagramService.saveLayout(SLUG, diagramId(), layout);
+        diagramService.saveLayout(SLUG, diagramId, layout);
 
-        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(diagramId(), MY_CLASS))
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(diagramId, MY_CLASS))
                 .as("subClassOf a foreign class writes only our own graph")
                 .isPresent();
     }
@@ -446,24 +411,24 @@ class DiagramForeignNodeIntegrationTest extends PostgresIntegrationTestBase {
                 new PositionDto(x, y), null, false, List.of());
     }
 
+    /** The projector's composite key for a hierarchy edge; DiagramContentResolver itself is package-private. */
+    private static String subclassEdgeId(String source, String target) {
+        return "edge|SUBCLASS_OF|" + source + "|" + target;
+    }
+
     /**
      * Save with every hierarchy edge these fixtures could project already placed on the canvas, so the
      * assertions test PROJECTION (is this edge ours to draw?) and not membership. Placing an edge that
      * never projects is harmless — the row simply matches nothing — but omitting one would make
      * "not drawn" vacuously true and hide a projection regression.
      */
-    /** The projector's composite key for a hierarchy edge; DiagramContentResolver itself is package-private. */
-    private static String subclassEdgeId(String source, String target) {
-        return "edge|SUBCLASS_OF|" + source + "|" + target;
-    }
-
     private DiagramDto save(DiagramLayoutDto.Node... nodes) {
         List<DiagramLayoutDto.Edge> placed = List.of(
                 new DiagramLayoutDto.Edge(subclassEdgeId(MY_CLASS, FOREIGN_CLASS), null),
                 new DiagramLayoutDto.Edge(subclassEdgeId(FOREIGN_CLASS, MY_CLASS), null),
                 new DiagramLayoutDto.Edge(subclassEdgeId(FOREIGN_CLASS, FOREIGN_PARENT), null));
-        return diagramService.saveLayout(SLUG, diagramId(),
-                new DiagramLayoutDto(storedVersion(), null, List.of(nodes), placed, null));
+        return diagramService.saveLayout(SLUG, diagramId,
+                new DiagramLayoutDto(data.diagramVersion(diagramId), null, List.of(nodes), placed, null));
     }
 
     private DiagramDto.Node nodeFor(DiagramDto diagram, String conceptIri) {
@@ -473,80 +438,7 @@ class DiagramForeignNodeIntegrationTest extends PostgresIntegrationTestBase {
                 .orElse(null);
     }
 
-    private OntologyMetadataEntity ontology(String slug, String graphName, String userId) {
-        OntologyMetadataEntity o = new OntologyMetadataEntity();
-        o.setSlug(slug);
-        o.setGraphName(graphName);
-        o.setUserId(userId);
-        o.setIsPublished(false);
-        o.setCreatedAt(LocalDateTime.now());
-        return ontologyRepo.save(o);
-    }
-
-    private void seedConcept(OntologyMetadataEntity ontology, String iri, String name,
-                             ConceptType type, String graphName) {
-        ConceptMetadataEntity c = new ConceptMetadataEntity();
-        c.setConceptIri(iri);
-        c.setConceptName(name);
-        c.setConceptType(type);
-        c.setGraphName(graphName);
-        c.setUserId(ontology.getUserId());
-        c.setOntologyMetadata(ontology);
-        c.setSlug(iri.substring(iri.lastIndexOf('/') + 1));
-        c.setCreatedAt(LocalDateTime.now());
-        c.setUpdatedAt(LocalDateTime.now());
-        conceptRepo.save(c);
-    }
-
     private Long ontologyId() {
         return ontologyRepo.findBySlug(SLUG).orElseThrow().getId();
-    }
-
-    private Long storedVersion() {
-        return diagramRepo.findById(diagramId()).map(DiagramEntity::getVersion).orElse(null);
-    }
-
-    private Long diagramId() {
-        return diagramRepo.findByOntologyMetadataIdOrderByIdAsc(ontologyId()).stream()
-                .findFirst()
-                .map(DiagramEntity::getId)
-                .orElseGet(() -> txTemplate.execute(tx -> {
-                    DiagramEntity d = new DiagramEntity();
-                    d.setOntologyMetadata(ontologyRepo.findBySlug(SLUG).orElseThrow());
-                    d.setName("Test diagram");
-                    return diagramRepo.saveAndFlush(d).getId();
-                }));
-    }
-
-    @TestConfiguration
-    static class Beans {
-
-        @Bean JenaTDB2Repository jenaTDB2Repository() {
-            return mock(JenaTDB2Repository.class);
-        }
-
-        @Bean OntologyDetailExtractor ontologyDetailExtractor() {
-            return mock(OntologyDetailExtractor.class);
-        }
-
-        @Bean DiagramMapper diagramMapper() {
-            return new DiagramMapper();
-        }
-
-        @Bean DiagramLayoutReconciler diagramLayoutReconciler(DiagramMapper mapper,
-                                                              ConceptMetadataRepository conceptRepo,
-                                                              DiagramPendingEditRepository pendingEditRepo) {
-            return new DiagramLayoutReconciler(mapper, conceptRepo, pendingEditRepo);
-        }
-
-        @Bean OntologyLabelLookup ontologyLabelLookup() {
-
-            return mock(OntologyLabelLookup.class);
-
-        }
-
-        @Bean DiagramMaterializeService diagramMaterializeService() {
-            return mock(DiagramMaterializeService.class);
-        }
     }
 }

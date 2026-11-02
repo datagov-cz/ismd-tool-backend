@@ -13,8 +13,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * One rule set, both verbs. The parity tests are the point of this class: the same
@@ -66,7 +65,7 @@ class ConceptInputValidatorTest {
             m.setPrivacyProvisions(List.of(VALID_FRAGMENT));
             m.setIsPublic(false);
 
-            assertTrue(ConceptInputValidator.validate(m).isEmpty());
+            assertThat(ConceptInputValidator.validate(m)).isEmpty();
         }
 
         @Test
@@ -74,8 +73,9 @@ class ConceptInputValidatorTest {
             ClassConceptModel m = createModel();
             m.setDefiningLegalSource(List.of(LEGACY_HOST));
 
-            assertTrue(ConceptInputValidator.validate(m).isEmpty(),
-                    "legacy e-Sbírka host must canonicalize and be accepted");
+            assertThat(ConceptInputValidator.validate(m))
+                    .as("legacy e-Sbírka host must canonicalize and be accepted")
+                    .isEmpty();
         }
 
         @Test
@@ -85,10 +85,10 @@ class ConceptInputValidatorTest {
 
             List<InvalidInput> problems = ConceptInputValidator.validate(m);
 
-            assertEquals(1, problems.size());
-            assertEquals("definingLegalSource", problems.get(0).field());
-            assertEquals(BAD_ELI, problems.get(0).value());
-            assertEquals(ConceptInputValidator.REASON_ELI, problems.get(0).reason());
+            assertThat(problems).hasSize(1);
+            assertThat(problems.get(0).field()).isEqualTo("definingLegalSource");
+            assertThat(problems.get(0).value()).isEqualTo(BAD_ELI);
+            assertThat(problems.get(0).reason()).isEqualTo(ConceptInputValidator.REASON_ELI);
         }
 
         @Test
@@ -96,7 +96,7 @@ class ConceptInputValidatorTest {
             ClassConceptModel m = createModel();
             m.setDefiningLegalSource(List.of(VALID_LAW + ";" + VALID_LAW));
 
-            assertEquals(List.of("definingLegalSource"), fields(ConceptInputValidator.validate(m)));
+            assertThat(fields(ConceptInputValidator.validate(m))).isEqualTo(List.of("definingLegalSource"));
         }
 
         @Test
@@ -106,7 +106,7 @@ class ConceptInputValidatorTest {
             m.setRelatedLegalSource(Arrays.asList("   ", null));
             m.setPrivacyProvisions(List.of());
 
-            assertTrue(ConceptInputValidator.validate(m).isEmpty());
+            assertThat(ConceptInputValidator.validate(m)).isEmpty();
         }
     }
 
@@ -119,8 +119,9 @@ class ConceptInputValidatorTest {
             m.setIsPublic(true);
             m.setPrivacyProvisions(List.of(VALID_FRAGMENT));
 
-            assertTrue(fields(ConceptInputValidator.validate(m)).contains("isPublic"),
-                    "a concept cannot be public and carry non-public provisions");
+            assertThat(fields(ConceptInputValidator.validate(m)))
+                    .as("a concept cannot be public and carry non-public provisions")
+                    .contains("isPublic");
         }
 
         @Test
@@ -128,8 +129,9 @@ class ConceptInputValidatorTest {
             ClassConceptModel m = createModel();
             m.setContentType("naprosto vymyšlený typ");
 
-            assertTrue(fields(ConceptInputValidator.validate(m)).contains("governance"),
-                    "off-allowlist governance values used to be minted into codelist IRIs");
+            assertThat(fields(ConceptInputValidator.validate(m)))
+                    .as("off-allowlist governance values used to be minted into codelist IRIs")
+                    .contains("governance");
         }
 
         @Test
@@ -139,7 +141,7 @@ class ConceptInputValidatorTest {
             m.setAcquisitionMethod("vlastní");
             m.setSharingMethod(List.of("veřejně přístupné"));
 
-            assertTrue(ConceptInputValidator.validate(m).isEmpty());
+            assertThat(ConceptInputValidator.validate(m)).isEmpty();
         }
 
         @Test
@@ -152,20 +154,17 @@ class ConceptInputValidatorTest {
             for (String s : sharing) {
                 ClassConceptModel m = createModel();
                 m.setSharingMethod(List.of(s));
-                assertTrue(ConceptInputValidator.validate(m).isEmpty(),
-                        "sharing method rejected: " + s);
+                assertThat(ConceptInputValidator.validate(m)).as("sharing method rejected: " + s).isEmpty();
             }
             for (String a : acquisition) {
                 ClassConceptModel m = createModel();
                 m.setAcquisitionMethod(a);
-                assertTrue(ConceptInputValidator.validate(m).isEmpty(),
-                        "acquisition method rejected: " + a);
+                assertThat(ConceptInputValidator.validate(m)).as("acquisition method rejected: " + a).isEmpty();
             }
             for (String c : content) {
                 ClassConceptModel m = createModel();
                 m.setContentType(c);
-                assertTrue(ConceptInputValidator.validate(m).isEmpty(),
-                        "content type rejected: " + c);
+                assertThat(ConceptInputValidator.validate(m)).as("content type rejected: " + c).isEmpty();
             }
         }
 
@@ -176,8 +175,8 @@ class ConceptInputValidatorTest {
             m.setAgendaSystemCode("not-an-ais");
 
             List<String> f = fields(ConceptInputValidator.validate(m));
-            assertTrue(f.contains("agendaCode"));
-            assertTrue(f.contains("agendaSystemCode"));
+            assertThat(f).contains("agendaCode");
+            assertThat(f).contains("agendaSystemCode");
         }
 
         @Test
@@ -185,7 +184,7 @@ class ConceptInputValidatorTest {
             ClassConceptModel m = createModel();
             m.setExactMatch(List.of("not-a-valid-iri"));
 
-            assertEquals(List.of("exactMatch"), fields(ConceptInputValidator.validate(m)));
+            assertThat(fields(ConceptInputValidator.validate(m))).isEqualTo(List.of("exactMatch"));
         }
 
         @Test
@@ -193,7 +192,7 @@ class ConceptInputValidatorTest {
             ClassConceptModel m = createModel();
             m.setDefiningNonLegalSource(List.of(doc("   ")));
 
-            assertEquals(List.of("definingNonLegalSource"), fields(ConceptInputValidator.validate(m)));
+            assertThat(fields(ConceptInputValidator.validate(m))).isEqualTo(List.of("definingNonLegalSource"));
         }
     }
 
@@ -207,8 +206,7 @@ class ConceptInputValidatorTest {
             ClassConceptEditModel e = editModel();
             e.setDefiningLegalSource(List.of(BAD_ELI));
 
-            assertEquals(fields(ConceptInputValidator.validate(e)),
-                    fields(ConceptInputValidator.validate(c)));
+            assertThat(fields(ConceptInputValidator.validate(c))).isEqualTo(fields(ConceptInputValidator.validate(e)));
         }
 
         @Test
@@ -220,8 +218,7 @@ class ConceptInputValidatorTest {
             e.setIsPublic(true);
             e.setPrivacyProvisions(List.of(VALID_FRAGMENT));
 
-            assertEquals(fields(ConceptInputValidator.validate(e)),
-                    fields(ConceptInputValidator.validate(c)));
+            assertThat(fields(ConceptInputValidator.validate(c))).isEqualTo(fields(ConceptInputValidator.validate(e)));
         }
 
         @Test
@@ -231,8 +228,7 @@ class ConceptInputValidatorTest {
             ClassConceptEditModel e = editModel();
             e.setAcquisitionMethod("vymyšlený způsob");
 
-            assertEquals(fields(ConceptInputValidator.validate(e)),
-                    fields(ConceptInputValidator.validate(c)));
+            assertThat(fields(ConceptInputValidator.validate(c))).isEqualTo(fields(ConceptInputValidator.validate(e)));
         }
 
         @Test
@@ -244,8 +240,8 @@ class ConceptInputValidatorTest {
             e.setDefiningLegalSource(List.of(VALID_LAW));
             e.setContentType("provozní");
 
-            assertTrue(ConceptInputValidator.validate(c).isEmpty());
-            assertTrue(ConceptInputValidator.validate(e).isEmpty());
+            assertThat(ConceptInputValidator.validate(c)).isEmpty();
+            assertThat(ConceptInputValidator.validate(e)).isEmpty();
         }
     }
 
@@ -258,7 +254,7 @@ class ConceptInputValidatorTest {
             m.setConceptType("VLASTNOST");
             m.setPrivacyProvisions(List.of(BAD_ELI));
 
-            assertEquals(List.of("privacyProvisions"), fields(ConceptInputValidator.validate(m)));
+            assertThat(fields(ConceptInputValidator.validate(m))).isEqualTo(List.of("privacyProvisions"));
         }
 
         @Test
@@ -267,7 +263,7 @@ class ConceptInputValidatorTest {
             m.setConceptType("VZTAH");
             m.setPrivacyProvisions(List.of(BAD_ELI));
 
-            assertEquals(List.of("privacyProvisions"), fields(ConceptInputValidator.validate(m)));
+            assertThat(fields(ConceptInputValidator.validate(m))).isEqualTo(List.of("privacyProvisions"));
         }
 
         @Test
@@ -276,7 +272,7 @@ class ConceptInputValidatorTest {
             PropertyConceptModel p = new PropertyConceptModel();
             p.setConceptType("VLASTNOST");
 
-            assertTrue(ConceptInputValidator.validate(p).isEmpty());
+            assertThat(ConceptInputValidator.validate(p)).isEmpty();
         }
 
         @Test
@@ -284,8 +280,9 @@ class ConceptInputValidatorTest {
             ClassConceptModel m = createModel();
             m.setCodeListIri("https://data.gov.cz/zdroj/číselník/x");
 
-            assertTrue(fields(ConceptInputValidator.validate(m)).contains("codeListIri"),
-                    "code-list IRI and dataset are mandatory together");
+            assertThat(fields(ConceptInputValidator.validate(m)))
+                    .as("code-list IRI and dataset are mandatory together")
+                    .contains("codeListIri");
         }
     }
 
@@ -303,27 +300,27 @@ class ConceptInputValidatorTest {
 
             List<InvalidInput> problems = ConceptInputValidator.validate(m);
 
-            assertTrue(problems.size() >= 5, "expected every offender, got: " + problems);
+            assertThat(problems).as("expected every offender, got: " + problems).hasSizeGreaterThanOrEqualTo(5);
             List<String> f = fields(problems);
-            assertTrue(f.contains("definingLegalSource"));
-            assertTrue(f.contains("relatedLegalSource"));
-            assertTrue(f.contains("privacyProvisions"));
-            assertTrue(f.contains("exactMatch"));
-            assertTrue(f.contains("agendaCode"));
+            assertThat(f).contains("definingLegalSource");
+            assertThat(f).contains("relatedLegalSource");
+            assertThat(f).contains("privacyProvisions");
+            assertThat(f).contains("exactMatch");
+            assertThat(f).contains("agendaCode");
         }
 
         @Test
         void nullModelYieldsNoProblems() {
-            assertTrue(ConceptInputValidator.validate((ClassConceptModel) null).isEmpty());
-            assertTrue(ConceptInputValidator.validate((ClassConceptEditModel) null).isEmpty());
+            assertThat(ConceptInputValidator.validate((ClassConceptModel) null)).isEmpty();
+            assertThat(ConceptInputValidator.validate((ClassConceptEditModel) null)).isEmpty();
         }
     }
 
     @Test
     void invalidInputWithoutAValuePrintsOnlyItsReason() {
-        assertEquals("Třída nemůže být současně veřejná",
-                new InvalidInput("isPublic", null, "Třída nemůže být současně veřejná").toString());
-        assertEquals("exactMatch='x' (neplatné IRI)",
-                new InvalidInput("exactMatch", "x", "neplatné IRI").toString());
+        assertThat(new InvalidInput("isPublic", null, "Třída nemůže být současně veřejná").toString())
+                .isEqualTo("Třída nemůže být současně veřejná");
+        assertThat(new InvalidInput("exactMatch", "x", "neplatné IRI").toString())
+                .isEqualTo("exactMatch='x' (neplatné IRI)");
     }
 }

@@ -9,8 +9,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -32,8 +32,8 @@ class PgMetadataSnapshotTest {
         when(conceptMetadataRepository.count()).thenReturn(101L);
         PgMetadataSnapshot snapshot = snapshotWithCap(100);
 
-        IllegalStateException ex = assertThrows(IllegalStateException.class, snapshot::load);
-        assertEquals(true, ex.getMessage().contains("max-concepts"));
+        IllegalStateException ex = assertThatExceptionOfType(IllegalStateException.class).isThrownBy(snapshot::load).actual();
+        assertThat(ex).hasMessageContaining("max-concepts");
         // The whole table must NOT be loaded once the cap is tripped.
         verify(conceptMetadataRepository, never()).findAll();
     }
@@ -47,7 +47,7 @@ class PgMetadataSnapshotTest {
 
         PgMetadataSnapshot.Snapshot snap = snapshot.load();
 
-        assertEquals(0, snap.concepts().size());
+        assertThat(snap.concepts()).isEmpty();
         verify(conceptMetadataRepository).findAll();
     }
 
