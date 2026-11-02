@@ -12,11 +12,14 @@ on a laptop.
 | CPUs | N                              | **4** vCPUs |
 | ForkJoin common pool | N workers                      | **3** workers |
 | Command | `mvn test`                     | `./mvnw clean verify` (JaCoCo agent attached) |
-| Test class order | filesystem order on APFS       | filesystem order on ext4, a **different** sequence |
+| Test class order | alphabetical (`surefire.runOrder` in `pom.xml`) | same |
 | JVMs | one Surefire fork, reused      | same: every test class shares one JVM |
 
 The last two rows mean that any state one test class leaves behind (rows in a shared database, a
-mutated singleton, a busy thread pool) reaches different classes in CI than it does locally.
+mutated singleton, a busy thread pool) reaches the classes that run after it in the same JVM. The fixed
+order makes such a leak hit the same classes locally and in CI, so it reproduces on a laptop; it does
+not remove the leak. Each test still has to start from a known state (see §3, §4). Without the
+setting, Surefire follows filesystem order, which differs between APFS and ext4.
 
 ## 2. Never block on the common pool around an HTTP client
 
@@ -110,6 +113,10 @@ JAVA_HOME=$(/usr/libexec/java_home -v 17) \
 
 # The full CI command
 JAVA_HOME=$(/usr/libexec/java_home -v 17) ./mvnw clean verify
+
+# Shuffle the class order to find state leaking between classes; the log prints the seed.
+# Re-run a failing order with -Dsurefire.runOrder.random.seed=<seed>.
+JAVA_HOME=$(/usr/libexec/java_home -v 17) ./mvnw clean verify -Dsurefire.runOrder=random
 ```
 
 `-DargLine` replaces the JaCoCo agent argument, so use it only to reproduce failures, not for

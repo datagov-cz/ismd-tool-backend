@@ -31,6 +31,9 @@
         <ismd-validator-common.version>1.0.20</ismd-validator-common.version>
         <jena.version>5.4.0</jena.version>
         <jacoco.version>0.8.15</jacoco.version>
+        <!-- Same test class order on macOS and CI (the default follows the filesystem).
+             Override with -Dsurefire.runOrder=random to look for state leaking between classes. -->
+        <surefire.runOrder>alphabetical</surefire.runOrder>
         <!-- Coverage gate, the only place it is set. Raise it as coverage grows; never lower it.
              Targets: line 95, instruction 96, branch 87, complexity 85, method 97. -->
         <jacoco.line.minimum>0.95</jacoco.line.minimum>
