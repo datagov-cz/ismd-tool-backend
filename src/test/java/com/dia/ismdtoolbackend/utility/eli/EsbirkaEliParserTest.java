@@ -91,6 +91,18 @@ class EsbirkaEliParserTest {
         assertThat(p.lawIri()).isEqualTo(CANONICAL_LAW);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {CANONICAL_LAW, CANONICAL_VERSION, CANONICAL_FRAGMENT})
+    void lawWebUrl_pointsToLawTextPageAtEveryLevel(String iri) {
+        assertThat(EsbirkaEliParser.parse(iri).lawWebUrl())
+                .isEqualTo("https://e-sbirka.gov.cz/sb/2000/361?zalozka=text");
+    }
+
+    @Test
+    void lawWebUrl_invalidIri_isNull() {
+        assertThat(EsbirkaEliParser.parse("not-a-url").lawWebUrl()).isNull();
+    }
+
     @Test
     void parse_null_returnsInvalid() {
         ParsedEli p = EsbirkaEliParser.parse(null);

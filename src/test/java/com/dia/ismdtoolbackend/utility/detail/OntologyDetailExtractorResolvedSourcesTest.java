@@ -107,6 +107,7 @@ class OntologyDetailExtractorResolvedSourcesTest {
         assertThat(dto.getEnrichmentStatus()).isEqualTo(EnrichmentStatus.PENDING);
         assertThat(dto.getOriginalUrl()).isEqualTo(LEGACY_FRAGMENT);
         assertThat(dto.getLawIri()).startsWith("https://opendata.eselpoint.gov.cz/esel-esb/");
+        assertThat(dto.getLawWebUrl()).startsWith("https://e-sbirka.gov.cz/sb/").endsWith("?zalozka=text");
         assertThat(dto.getFragmentIri()).startsWith("https://opendata.eselpoint.gov.cz/esel-esb/");
     }
 }

@@ -98,6 +98,7 @@ class EsbirkaLegalSourceResolver {
                 .eliPath(p.eliPath())
                 .level(p.level())
                 .lawIri(p.lawIri())
+                .lawWebUrl(p.lawWebUrl())
                 .versionIri(p.versionIri())
                 .fragmentIri(p.fragmentIri())
                 .lawNumber(p.lawNumber())

@@ -110,6 +110,7 @@ final class DetailDtoBuilders {
                 .eliPath(parsed.eliPath())
                 .level(parsed.level())
                 .lawIri(parsed.lawIri())
+                .lawWebUrl(parsed.lawWebUrl())
                 .versionIri(parsed.versionIri())
                 .fragmentIri(parsed.fragmentIri())
                 .lawNumber(parsed.lawNumber())

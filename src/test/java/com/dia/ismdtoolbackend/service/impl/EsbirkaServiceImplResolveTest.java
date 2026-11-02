@@ -218,6 +218,10 @@ class EsbirkaServiceImplResolveTest {
         assertThat(dto.getLawIri())
                 .as("lawIri must use canonical host")
                 .startsWith("https://opendata.eselpoint.gov.cz/esel-esb/");
+        assertThat(dto.getLawWebUrl())
+                .as("lawWebUrl links the e-Sbírka website")
+                .startsWith("https://e-sbirka.gov.cz/sb/")
+                .endsWith("?zalozka=text");
         assertThat(dto.getFragmentIri())
                 .as("fragmentIri must use canonical host")
                 .startsWith("https://opendata.eselpoint.gov.cz/esel-esb/");
