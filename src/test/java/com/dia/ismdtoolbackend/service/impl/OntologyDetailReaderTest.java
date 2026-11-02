@@ -39,9 +39,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static com.dia.constants.VocabularyConstants.POJEM_JSON_LD;
-import static com.dia.constants.VocabularyConstants.TRIDA_JSON_LD;
-import static com.dia.constants.VocabularyConstants.VZTAH_JSON_LD;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.POJEM_JSON_LD;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TRIDA_JSON_LD;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VZTAH_JSON_LD;
 import static com.dia.ismdtoolbackend.service.impl.OntologyTestData.GRAPH;
 import static com.dia.ismdtoolbackend.service.impl.OntologyTestData.ONTOLOGY_ID;
 import static com.dia.ismdtoolbackend.service.impl.OntologyTestData.SLUG;

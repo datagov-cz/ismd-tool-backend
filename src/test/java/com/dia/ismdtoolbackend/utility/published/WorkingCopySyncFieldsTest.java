@@ -18,10 +18,10 @@ import java.util.Map;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-import static com.dia.constants.VocabularyConstants.NEVEREJNY_UDAJ_JSON_LD;
-import static com.dia.constants.VocabularyConstants.TOP_JSON_LD;
-import static com.dia.constants.VocabularyConstants.TSP_JSON_LD;
-import static com.dia.constants.VocabularyConstants.VEREJNY_UDAJ_JSON_LD;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.NEVEREJNY_UDAJ_JSON_LD;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TOP_JSON_LD;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TSP_JSON_LD;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VEREJNY_UDAJ_JSON_LD;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** The working-copy sync field vocabulary: what deviates, what may be accepted, how it applies. */

@@ -161,22 +161,16 @@ public class UtilityMethods {
         return value;
     }
 
+    private static final String SCHEME = "^[a-zA-Z][a-zA-Z0-9+.-]*:";
+    /** Characters not allowed after {@code ://}; whitespace is rejected earlier. */
+    private static final String FORBIDDEN_AFTER_SCHEME = "<>\"{}|\\^`";
+
     public static boolean isValidIRI(String iri) {
         if (iri == null || iri.trim().isEmpty()) {
             return false;
         }
-
         String trimmed = iri.trim();
-
-        if (containsInvalidPatterns(trimmed)) {
-            return false;
-        }
-
-        if (!hasValidIRIStructure(trimmed)) {
-            return false;
-        }
-
-        return isValidIRIPattern(trimmed);
+        return !containsInvalidPatterns(trimmed) && hasValidIRIStructure(trimmed);
     }
 
     private static boolean containsInvalidPatterns(String iri) {
@@ -195,54 +189,15 @@ public class UtilityMethods {
     }
 
     private static boolean hasValidIRIStructure(String iri) {
-        if (!iri.matches("^[a-zA-Z][a-zA-Z0-9+.-]*:.*")) {
+        if (!iri.matches(SCHEME + ".*")) {
             return false;
         }
-
-        if (iri.matches("^[a-zA-Z][a-zA-Z0-9+.-]*://.*")) {
-            String afterScheme = iri.substring(iri.indexOf("://") + 3);
-            return !afterScheme.isEmpty();
+        if (!iri.matches(SCHEME + "//.*")) {
+            return true;
         }
-
-        return true;
-    }
-
-    private static boolean isValidIRIPattern(String iri) {
-        if (!iri.matches("^[a-zA-Z][a-zA-Z0-9+.-]*:.*")) {
-            return false;
-        }
-
-        if (iri.matches("^[a-zA-Z][a-zA-Z0-9+.-]*://.*")) {
-            String afterScheme = iri.substring(iri.indexOf("://") + 3);
-
-            if (afterScheme.isEmpty()) {
-                return false;
-            }
-
-            return !afterScheme.contains(" ") &&
-                    !afterScheme.contains("\t") &&
-                    !afterScheme.contains("\n") &&
-                    !afterScheme.contains("\r") &&
-                    !afterScheme.contains("<") &&
-                    !afterScheme.contains(">") &&
-                    !afterScheme.contains("\"") &&
-                    !afterScheme.contains("{") &&
-                    !afterScheme.contains("}") &&
-                    !afterScheme.contains("|") &&
-                    !afterScheme.contains("\\") &&
-                    !afterScheme.contains("^") &&
-                    !afterScheme.contains("`");
-        }
-
-        return true;
-    }
-
-    public boolean isBooleanValue(String value) {
-        if (value == null) return false;
-        String normalized = value.trim().toLowerCase();
-        return normalized.equals("true") || normalized.equals("false") ||
-                normalized.equals("ano") || normalized.equals("ne") ||
-                normalized.equals("yes") || normalized.equals("no");
+        String afterScheme = iri.substring(iri.indexOf("://") + 3);
+        return !afterScheme.isEmpty()
+                && afterScheme.chars().noneMatch(c -> FORBIDDEN_AFTER_SCHEME.indexOf(c) >= 0);
     }
 
     public String extractNameFromIRI(String iri) {
@@ -257,19 +212,5 @@ public class UtilityMethods {
         }
 
         return iri;
-    }
-
-    public boolean isValidSource(String source) {
-        if (source == null || source.trim().isEmpty()) {
-            return false;
-        }
-
-        source = source.trim();
-
-        if (source.length() < 3) {
-            return false;
-        }
-
-        return !source.matches("^[^a-zA-Z0-9]*$");
     }
 }

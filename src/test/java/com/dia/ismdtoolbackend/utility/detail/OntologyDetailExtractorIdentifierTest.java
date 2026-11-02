@@ -8,7 +8,7 @@ import org.apache.jena.riot.Lang;
 import org.apache.jena.riot.RDFParser;
 import org.junit.jupiter.api.Test;
 
-import static com.dia.constants.VocabularyConstants.OFN_NAMESPACE;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OFN_NAMESPACE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 

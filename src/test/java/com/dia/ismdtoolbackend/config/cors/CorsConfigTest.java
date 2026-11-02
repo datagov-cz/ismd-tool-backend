@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.config.cors;
 
-import com.dia.exceptions.DomainException;
+import com.dia.ismdtoolbackend.exception.DomainException;
 import jakarta.servlet.ServletException;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;

@@ -15,7 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static com.dia.constants.VocabularyConstants.DEFAULT_NS;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.DEFAULT_NS;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Edits of names, descriptions, definitions and alternative names through {@link ConceptEditor}. */

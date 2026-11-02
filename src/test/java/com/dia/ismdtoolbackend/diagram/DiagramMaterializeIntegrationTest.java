@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.diagram;
 
-import com.dia.constants.VocabularyConstants;
+import com.dia.ismdtoolbackend.constants.VocabularyConstants;
 import com.dia.ismdtoolbackend.config.security.SecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.diagram.MaterializeResultDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
