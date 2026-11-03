@@ -64,7 +64,7 @@ TDB2 dataset /ismd-tool-dataset
 
 - **Ownership**: a concept belongs to a vocabulary when its IRI starts with `<vocabulary IRI>/` (the `/`
   boundary matters: `…/doprava-2/pojem/x` is not owned by `…/doprava`). Java: `OfnIris.isOwnedBy`; SPARQL:
-  `JenaTDB2Repository.OWNED_CONCEPT_PATTERN`. The RDF migrations use the same rule.
+  `JenaTDB2Repository.OWNED_CONCEPT_PATTERN`. RDF changesets must use the same rule.
 - **Membership**: an owned concept is in the vocabulary when it has `skos:inScheme <graph>`. Only owned,
   in-scheme concepts are part of the vocabulary's OFN document (`pojmy`).
 - **PostgreSQL link**: `ontologies.graph_name` = graph IRI; `concepts.graph_name` = the parent's graph IRI;
@@ -75,7 +75,7 @@ a PostgreSQL row:
 
 | Subject | Why it is there |
 |---|---|
-| Foreign concept described in place (IRI outside `<graph>/`, e.g. an NKD class with its labels) | Uploaded files describe referenced concepts. They are references only: the upload does not put them in the scheme, and changeset 012 removed the `skos:inScheme` older uploads added. Their triples stay. |
+| Foreign concept described in place (IRI outside `<graph>/`, e.g. an NKD class with its labels) | Uploaded files describe referenced concepts. They are references only: the upload does not put them in the scheme. Their triples stay. |
 | Owned concept without `skos:inScheme` | An upload concept the user excluded or the OFN gate rejected, kept by `ExcludedConceptPruning` because another concept references it. Unreferenced ones are deleted. |
 
 ---
@@ -124,7 +124,7 @@ Java constants for every IRI below: `com.dia.ismdtoolbackend.ofn.OfnIris`.
 - All three types, always: ISMD supports only the Konceptuální model, which includes Slovník and Tezaurus.
 - `název` (`skos:prefLabel`) needs a `cs` value; a `dcterms:description` needs one too when present.
 - `vytvořeno` is a **blank** `čas:časový-okamžik` with an `xsd:dateTimeStamp` (with zone). New vocabularies get
-  Europe/Prague time (`OfnDates`); values migrated from zone-less strings were read as UTC (changeset 011).
+  Europe/Prague time (`OfnDates`).
 - `aktualizováno` (`slovníky:okamžik-poslední-změny`) has the same shape. It is optional and not maintained yet.
 
 ---
@@ -173,8 +173,7 @@ A Číselník is an IRI node: `<codelist> a l111:číselník ; l111:má-v-nkod-z
 
 The range comes from `PropertyDataType.rangeIri` on create and edit: the FE sends a code from
 `GET /property-datatypes`; an `xsd:`/`rdfs:` CURIE or a full IRI is also accepted; blank or unknown →
-`rdfs:Literal`. Concepts created before this fix all have `rdfs:Literal`; the original datatype cannot be
-recovered.
+`rdfs:Literal`.
 
 ### Vztah
 
@@ -215,7 +214,10 @@ blocked until both are filled in.
 "Text" means a literal with a language tag. A single-valued key (no list in the schema) holds one value; two
 values would make the export an array the schema rejects.
 
-### Not stored in RDF
+### Pre-OFN shapes
+
+Earlier versions wrote these. Nothing writes them now, the write gate refuses them, and the pre-production
+data that held them was wiped (2026-11).
 
 | Was stored | Now |
 |---|---|
@@ -228,9 +230,9 @@ values would make the export an array the schema rejects.
 | `<https://slovník.gov.cz/pojem>` (junk class from the common library base model) | not written |
 | named `<vocabulary>/casovy-okamzik-vytvoreni` node with a zone-less string | blank instant, `xsd:dateTimeStamp` |
 | Třída marked only by `slovníky:třída` | `owl:Class` + marker |
-
-The editors still remove a pre-OFN copy of a field they edit. Those guards go once the migration has run in every
-environment (list in `.planning/ofn-conformity/FIX-PROGRESS.md`).
+| legal provisions under `dct:conformsTo` / `dct:relation` (older uploads) | `slovníky:definující-ustanovení` / `slovníky:související-ustanovení` |
+| misspelled `l111:je-vymezen-ustanovení-stanovujícím-jeho-neveřejnost` (ISMD export 2025-12 – 2026-07) | correct spelling `…ustanovením…` |
+| `rdfs:range` pointing to an empty blank node | an IRI, `rdfs:Literal` by default for a Vlastnost |
 
 ---
 
@@ -255,7 +257,7 @@ triple is an issue, never repaired); `OfnConformanceGate` checks the document ag
 | NKD download | not gated (ISMD does not own NKD content) | — |
 
 The write checks are a safety net: the writers produce OFN by construction, so a refusal means a writer bug or
-stored data no changeset covers.
+stored data written before the gate existed.
 
 ---
 
@@ -267,23 +269,10 @@ per vocabulary graph with `?graph` bound; applied changesets are recorded with a
 `ismd_schema.rdf_migration_log`. Any failure stops startup. Conventions, preconditions and the deploy rule: the
 changelog's `README.md`.
 
-| Id | Change |
-|---|---|
-| 001 | `owl:Class` on owned Třída marked only by `slovníky:třída` |
-| 002 | drop `owl:ObjectProperty` + `slovníky:vztah` from a Vlastnost typed both DTP and OP |
-| 003 | `slovníky:typ-*` → `vsgov:typ-*` |
-| 004 | provisions: old predicates → OFN predicate on a Neveřejný údaj, dropped elsewhere |
-| 005 | source links → `slovníky:` predicates |
-| 006 | `schema:url` → `xsd:anyURI` literal |
-| 007 | `nadřazená-třída` → `rdfs:subClassOf` (added if missing), copy removed |
-| 008 | `inTezaurus` removed |
-| 009 | PPDF text → `xsd:boolean` |
-| 010 | junk `<https://slovník.gov.cz/pojem>` removed |
-| 011 | named date node / zone-less string → blank instant with `xsd:dateTimeStamp` |
-| 012 | `skos:inScheme` removed from foreign concepts |
-| 013 | markers re-derived from the single OWL kind |
+The changelog is empty: the pre-production data holding pre-OFN shapes was wiped (2026-11) instead of
+migrated, and every write path goes through the OFN write gate.
 
-Read-only check queries for any environment (which triples are not OFN, and which changeset covers them):
+Read-only check queries for any environment (which triples are not OFN; `NOT COVERED` = no changeset handles it):
 `.planning/ofn-conformity/migration/sparql/`.
 
 ---

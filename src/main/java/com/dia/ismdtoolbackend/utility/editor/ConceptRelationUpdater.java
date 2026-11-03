@@ -1,7 +1,6 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
 import com.dia.ismdtoolbackend.enums.PropertyDataType;
-import com.dia.ismdtoolbackend.ofn.OfnIris;
 import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import org.apache.jena.rdf.model.*;
 import org.apache.jena.vocabulary.RDFS;
@@ -52,10 +51,6 @@ class ConceptRelationUpdater {
                                        Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
         if (broaderConcept == null) return;
 
-        // rdfs:subClassOf is the OFN term; drop the nadřazená-třída duplicate older writes stored.
-        removeLegacyPredicates(newConcept, oldConcept, property -> !RDFS.subClassOf.equals(property)
-                && OfnIris.LEGACY_NADRAZENA_TRIDA_LOCAL_NAME.equals(OfnIris.localName(property.getURI())),
-                toRemove, toAdd);
         Set<String> oldBroader = getResourceURIs(oldConcept, RDFS.subClassOf);
         Set<String> newBroader = parseBroaderConcepts(broaderConcept);
 

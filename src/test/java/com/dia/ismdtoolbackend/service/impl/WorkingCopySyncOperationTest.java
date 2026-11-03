@@ -90,9 +90,10 @@ class WorkingCopySyncOperationTest {
     @Test
     void privateProperty_carriesItsFlagAndBothIriAndLiteralProvisions() {
         concept.addProperty(RDF.type, graph.createResource(OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ));
-        concept.addProperty(graph.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST),
+        concept.addProperty(graph.createProperty(com.dia.ismdtoolbackend.ofn.OfnIris.USTANOVENI_NEVEREJNOST),
                 graph.createResource(PROVISION_IRI));
-        concept.addProperty(graph.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST), "§ 11 odst. 1");
+        concept.addProperty(graph.createProperty(com.dia.ismdtoolbackend.ofn.OfnIris.USTANOVENI_NEVEREJNOST),
+                "§ 11 odst. 1");
 
         ConceptEditModel edit = build(ConceptType.VLASTNOST);
 
@@ -189,15 +190,15 @@ class WorkingCopySyncOperationTest {
     }
 
     @Test
-    void currentPrivacyProvisionsReadTheOfnAndThePreOfnPredicateOnce() {
-        String ofn = "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2006/187";
-        String legacy = "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2005/348";
-        concept.addProperty(graph.createProperty(com.dia.ismdtoolbackend.ofn.OfnIris.USTANOVENI_NEVEREJNOST),
-                graph.createResource(ofn));
-        concept.addProperty(graph.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST), graph.createResource(ofn));
-        concept.addProperty(graph.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST),
-                graph.createResource(legacy));
+    void currentPrivacyProvisionsReadEveryProvision() {
+        String first = "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2006/187";
+        String second = "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2005/348";
+        var provision = graph.createProperty(com.dia.ismdtoolbackend.ofn.OfnIris.USTANOVENI_NEVEREJNOST);
+        concept.addProperty(provision, graph.createResource(first));
+        concept.addProperty(provision, graph.createResource(second));
+        concept.addProperty(graph.createProperty(OFN_NAMESPACE_LEGAL + "ustanovení-dokládající-neveřejnost-údaje"),
+                graph.createResource("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2000/1"));
 
-        assertThat(operation.currentPrivacyProvisions(graph, concept)).containsExactly(ofn, legacy);
+        assertThat(operation.currentPrivacyProvisions(graph, concept)).containsExactlyInAnyOrder(first, second);
     }
 }

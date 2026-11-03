@@ -10,21 +10,16 @@ import org.apache.jena.vocabulary.RDF;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.function.Predicate;
 
 import static com.dia.ismdtoolbackend.utility.editor.ConceptEditStatements.*;
 import static com.dia.ismdtoolbackend.utility.editor.RdfLangValues.removeAllByPredicate;
 
 /**
  * Edits the rdf:type classification of a concept (subjekt/objekt, veřejný/neveřejný) and its privacy
- * provisions. Writes the OFN shapes only; the pre-OFN copies of an edited field are removed.
+ * provisions, in the OFN shapes.
  */
 @Slf4j
 class ConceptDataClassificationUpdater {
-
-    /** Pre-OFN provision predicates: either local name, in any namespace but the OFN term's. */
-    private static final Predicate<Property> LEGACY_PROVISION = legacyCopyOf(OfnIris.USTANOVENI_NEVEREJNOST,
-            OfnIris.LEGACY_USTANOVENI_LOCAL_NAME, OfnIris.localName(OfnIris.USTANOVENI_NEVEREJNOST));
 
     void updateClassType(Resource newConcept, String newType, Resource oldConcept,
                           Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
@@ -32,19 +27,15 @@ class ConceptDataClassificationUpdater {
 
         String type = newType.toLowerCase();
         updateLegalType(newConcept, oldConcept, type.contains("subjekt"), OfnIris.TYP_SUBJEKTU_PRAVA,
-                OfnIris.LEGACY_TYP_SUBJEKTU_PRAVA, model, toRemove, toAdd);
+                model, toRemove, toAdd);
         updateLegalType(newConcept, oldConcept, type.contains("objekt"), OfnIris.TYP_OBJEKTU_PRAVA,
-                OfnIris.LEGACY_TYP_OBJEKTU_PRAVA, model, toRemove, toAdd);
+                model, toRemove, toAdd);
     }
 
-    /** Stages the OFN {@code vsgov:} type when wanted and drops the legacy {@code slovníky:} one. */
+    /** Stages the {@code vsgov:} type when wanted, removes it when not. */
     private void updateLegalType(Resource newConcept, Resource oldConcept, boolean wanted, String ofnType,
-                                 String legacyType, Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
+                                 Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
         Resource ofn = model.getResource(ofnType);
-        Resource legacy = model.getResource(legacyType);
-        if (oldConcept.hasProperty(RDF.type, legacy)) {
-            removeTypeStatement(newConcept, oldConcept, legacy, model, toRemove, toAdd);
-        }
         boolean has = oldConcept.hasProperty(RDF.type, ofn);
         if (has && !wanted) {
             removeTypeStatement(newConcept, oldConcept, ofn, model, toRemove, toAdd);
@@ -69,11 +60,10 @@ class ConceptDataClassificationUpdater {
         Resource neverejnyLegal = model.getResource(OfnIris.NEVEREJNY_UDAJ);
 
         // Non-public needs a provision the concept ends up with: a valid one in this edit, or,
-        // when the edit leaves the provisions alone, one it already carries (in any stored shape).
+        // when the edit leaves the provisions alone, one it already carries.
         Property provisionProperty = model.createProperty(OfnIris.USTANOVENI_NEVEREJNOST);
         boolean endsUpWithProvisions = privacyProvisions == null
-                ? oldConcept.listProperties().toList().stream().map(Statement::getPredicate)
-                        .anyMatch(p -> p.equals(provisionProperty) || LEGACY_PROVISION.test(p))
+                ? oldConcept.hasProperty(provisionProperty)
                 : privacyProvisions.stream().anyMatch(p -> p != null && !p.trim().isEmpty()
                         && SparqlIriValidator.isEsbirkaEliIri(EsbirkaEliParser.canonicalizeHost(p.trim())));
 
@@ -87,7 +77,6 @@ class ConceptDataClassificationUpdater {
         // A Veřejný údaj carries no provision: a public edit that leaves the provisions out clears them.
         if (Boolean.TRUE.equals(isPublic) && privacyProvisions == null) {
             removeAllByPredicate(newConcept, provisionProperty, toRemove, toAdd);
-            removeLegacyPredicates(newConcept, oldConcept, LEGACY_PROVISION, toRemove, toAdd);
         }
 
         // Only the difference is staged, so an edit that keeps the classification changes nothing.
@@ -126,6 +115,5 @@ class ConceptDataClassificationUpdater {
                 toAdd.add(model.createStatement(newConcept, provisionProperty, model.createResource(provisionURI)));
             }
         }
-        removeLegacyPredicates(newConcept, oldConcept, LEGACY_PROVISION, toRemove, toAdd);
     }
 }
