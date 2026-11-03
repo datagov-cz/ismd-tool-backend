@@ -25,10 +25,11 @@ class OntologyDetailExtractorIdentifierTest {
         Model model = ModelFactory.createDefaultModel();
         RDFParser.fromString("""
                 @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+                @prefix owl:  <http://www.w3.org/2002/07/owl#> .
                 @prefix dct:  <http://purl.org/dc/terms/> .
                 @prefix ofn:  <%s> .
                 <%s> a <http://www.w3.org/2002/07/owl#Ontology> ; skos:prefLabel "Slovník"@cs .
-                <%s> a ofn:třída ; skos:inScheme <%s> ; skos:prefLabel "Osoba"@cs ; dct:identifier %s .
+                <%s> a ofn:třída, owl:Class ; skos:inScheme <%s> ; skos:prefLabel "Osoba"@cs ; dct:identifier %s .
                 """.formatted(OFN_NAMESPACE, ONTOLOGY, PERSON, ONTOLOGY, identifierTurtle), Lang.TURTLE).parse(model);
         return model;
     }

@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.Collections;
 import java.util.List;
@@ -34,9 +35,6 @@ class ConceptTypeDetectionTest {
 
     static Stream<Arguments> ofnTypeProvider() {
         return Stream.of(
-                Arguments.of(TRIDA, TRIDA_JSON_LD, "třída"),
-                Arguments.of(VZTAH, VZTAH_JSON_LD, "vztah"),
-                Arguments.of(VLASTNOST, VLASTNOST_JSON_LD, "vlastnost"),
                 Arguments.of(TSP, TSP_JSON_LD, "typ-subjektu-práva"),
                 Arguments.of(TOP, TOP_JSON_LD, "typ-objektu-práva")
         );
@@ -161,12 +159,27 @@ class ConceptTypeDetectionTest {
         assertThat(types).contains(VLASTNOST_JSON_LD);
     }
 
+    @ParameterizedTest(name = "marker {0} alone")
+    @ValueSource(strings = {TRIDA, VLASTNOST, VZTAH})
+    @DisplayName("A role marker alone names no kind: the kind comes from the OWL type")
+    void roleMarkerAlone_isNotAKind(String marker) {
+        OntModel model = createDefaultModel();
+        Resource concept = addConceptWithType(model, "marker-only", "Marker only", marker);
+        ModelStructure structure = createModelStructure(model);
+
+        Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
+
+        @SuppressWarnings("unchecked")
+        List<String> types = (List<String>) result.get("typ");
+        assertThat(types).doesNotContain(TRIDA_JSON_LD, VLASTNOST_JSON_LD, VZTAH_JSON_LD);
+    }
+
     @Test
-    @DisplayName("Multiple OFN types on same concept are all detected")
+    @DisplayName("Multiple types on same concept are all detected")
     void multipleTypes_allDetected() {
         OntModel model = createDefaultModel();
         Resource concept = addSkosConcept(model, "multi", "Multi");
-        concept.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + TRIDA));
+        concept.addProperty(RDF.type, OWL2.Class);
         concept.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + TSP));
         ModelStructure structure = createModelStructure(model);
 

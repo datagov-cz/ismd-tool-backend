@@ -18,11 +18,29 @@ class ConceptTypeTest {
     private static final String OWL_OBJECT_PROPERTY = "http://www.w3.org/2002/07/owl#ObjectProperty";
     private static final String OWL_DATATYPE_PROPERTY = "http://www.w3.org/2002/07/owl#DatatypeProperty";
 
+    /** The role marker is derived from the OWL kind: on its own it names no role. */
     @Test
-    void fromRdfTypes_resolvesOfnRoleTags() {
-        assertThat(ConceptType.fromRdfTypes(List.of(OFN_TRIDA))).isEqualTo(ConceptType.TRIDA);
-        assertThat(ConceptType.fromRdfTypes(List.of(OFN_VLASTNOST))).isEqualTo(ConceptType.VLASTNOST);
-        assertThat(ConceptType.fromRdfTypes(List.of(OFN_VZTAH))).isEqualTo(ConceptType.VZTAH);
+    void fromRdfTypes_doesNotReadTheRoleMarker() {
+        assertThat(ConceptType.fromRdfTypes(List.of(OFN_TRIDA))).isEqualTo(ConceptType.KONCEPT);
+        assertThat(ConceptType.fromRdfTypes(List.of(OFN_VLASTNOST))).isEqualTo(ConceptType.KONCEPT);
+        assertThat(ConceptType.fromRdfTypes(List.of(OFN_VZTAH))).isEqualTo(ConceptType.KONCEPT);
+    }
+
+    /** ISMD data carries the OWL kind and the marker, NKD data only the OWL kind: both resolve the same. */
+    @Test
+    void fromRdfTypes_ismdAndNkdShapesResolveAlike() {
+        assertThat(ConceptType.fromRdfTypes(List.of(OFN_TRIDA, OWL_CLASS))).isEqualTo(ConceptType.TRIDA);
+        assertThat(ConceptType.fromRdfTypes(List.of(OWL_CLASS))).isEqualTo(ConceptType.TRIDA);
+        assertThat(ConceptType.fromRdfTypes(List.of(OFN_VLASTNOST, OWL_DATATYPE_PROPERTY))).isEqualTo(ConceptType.VLASTNOST);
+        assertThat(ConceptType.fromRdfTypes(List.of(OWL_DATATYPE_PROPERTY))).isEqualTo(ConceptType.VLASTNOST);
+        assertThat(ConceptType.fromRdfTypes(List.of(OFN_VZTAH, OWL_OBJECT_PROPERTY))).isEqualTo(ConceptType.VZTAH);
+        assertThat(ConceptType.fromRdfTypes(List.of(OWL_OBJECT_PROPERTY))).isEqualTo(ConceptType.VZTAH);
+    }
+
+    /** A marker that disagrees with the OWL kind is a write-gate (T2) failure; the reader follows OWL. */
+    @Test
+    void fromRdfTypes_owlKindWinsOverAContradictingMarker() {
+        assertThat(ConceptType.fromRdfTypes(List.of(OFN_VLASTNOST, OWL_OBJECT_PROPERTY))).isEqualTo(ConceptType.VZTAH);
     }
 
     @Test
@@ -56,8 +74,8 @@ class ConceptTypeTest {
 
     @Test
     void fromRdfTypes_twoRoles_throwInEitherOrder() {
-        for (List<String> types : List.of(List.of(OFN_VLASTNOST, OWL_OBJECT_PROPERTY),
-                List.of(OWL_OBJECT_PROPERTY, OFN_VLASTNOST),
+        for (List<String> types : List.of(List.of(OWL_DATATYPE_PROPERTY, OWL_OBJECT_PROPERTY),
+                List.of(OWL_OBJECT_PROPERTY, OWL_DATATYPE_PROPERTY),
                 List.of(VocabularyConstants.TRIDA_JSON_LD, VocabularyConstants.VZTAH_JSON_LD))) {
             ConflictingConceptTypeException e = assertThatExceptionOfType(ConflictingConceptTypeException.class)
                     .as(types::toString)

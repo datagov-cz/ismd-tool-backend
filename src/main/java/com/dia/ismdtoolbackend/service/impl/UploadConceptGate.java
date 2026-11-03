@@ -159,7 +159,7 @@ class UploadConceptGate {
     }
 
     private Map<String, OntologyDetailModel.ConceptDetailModel> readDetails(Model model) {
-        Model ofnModel = detailExtractor.applyOFNTransformations(model);
+        Model ofnModel = detailExtractor.applyOFNTransformationsForUpload(model);
         try {
             return detailExtractor.extractOntologyDetail(ofnModel, iri -> null).getConcepts().stream()
                     .filter(detail -> detail.getIri() != null)

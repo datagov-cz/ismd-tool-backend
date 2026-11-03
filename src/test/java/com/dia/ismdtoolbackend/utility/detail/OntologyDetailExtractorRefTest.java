@@ -9,6 +9,7 @@ import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.vocabulary.OWL;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
 import org.apache.jena.vocabulary.SKOS;
@@ -174,18 +175,18 @@ class OntologyDetailExtractorRefTest {
         ontology.addProperty(SKOS.prefLabel, "Testovací slovník", "cs");
 
         Resource classConcept = model.createResource(CLASS_IRI);
-        classConcept.addProperty(RDF.type, tridaType);
+        classConcept.addProperty(RDF.type, tridaType).addProperty(RDF.type, OWL.Class);
         classConcept.addProperty(inScheme, ontology);
         classConcept.addProperty(SKOS.prefLabel, "Osoba", "cs");
 
         Resource property = model.createResource(PROPERTY_IRI);
-        property.addProperty(RDF.type, vlastnostType);
+        property.addProperty(RDF.type, vlastnostType).addProperty(RDF.type, OWL.DatatypeProperty);
         property.addProperty(inScheme, ontology);
         property.addProperty(SKOS.prefLabel, "věk", "cs");
         property.addProperty(RDFS.domain, classConcept);
 
         Resource relationship = model.createResource(RELATIONSHIP_IRI);
-        relationship.addProperty(RDF.type, vztahType);
+        relationship.addProperty(RDF.type, vztahType).addProperty(RDF.type, OWL.ObjectProperty);
         relationship.addProperty(inScheme, ontology);
         relationship.addProperty(SKOS.prefLabel, "bydlí v", "cs");
         relationship.addProperty(RDFS.domain, classConcept);

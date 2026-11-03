@@ -6,6 +6,7 @@ import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.system.Txn;
+import org.apache.jena.vocabulary.OWL;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
 import org.apache.jena.vocabulary.SKOS;
@@ -43,6 +44,26 @@ class ForeignMemberCountTest {
     @BeforeEach
     void setUp() {
         repository = new InMemoryTdb2();
+    }
+
+    @Test
+    void ownKindDecides_membersWithoutAMarkerCount() {
+        Model graphA = ModelFactory.createDefaultModel();
+        klass(graphA, CLASS_IRI);
+        Model graphB = ModelFactory.createDefaultModel();
+        graphB.createResource(GRAPH_B + "/pojem/věk").addProperty(RDF.type, OWL.DatatypeProperty)
+                .addProperty(RDFS.domain, graphB.createResource(CLASS_IRI));
+        graphB.createResource(GRAPH_B + "/pojem/bydlí-v").addProperty(RDF.type, OWL.ObjectProperty)
+                .addProperty(RDFS.domain, graphB.createResource(CLASS_IRI));
+        graphB.createResource(GRAPH_B + "/pojem/jen-značka").addProperty(RDF.type, graphB.createResource(OFN_NAMESPACE + VLASTNOST))
+                .addProperty(RDFS.domain, graphB.createResource(CLASS_IRI));
+        store(GRAPH_A, graphA);
+        store(GRAPH_B, graphB);
+
+        ForeignMemberCount count = counts().get(CLASS_IRI);
+
+        assertThat(count.properties()).as("the OWL kind counts, a marker alone does not").isEqualTo(1);
+        assertThat(count.relationships()).isEqualTo(1);
     }
 
     @Test
@@ -177,15 +198,25 @@ class ForeignMemberCountTest {
 
     private static Resource klass(Model model, String iri) {
         Resource r = model.createResource(iri);
-        r.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + TRIDA));
+        r.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + TRIDA)).addProperty(RDF.type, OWL.Class);
         r.addProperty(SKOS.prefLabel, "Osoba", "cs");
         return r;
     }
 
     private static Resource member(Model model, String iri, String ofnType) {
         Resource r = model.createResource(iri);
-        r.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + ofnType));
+        r.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + ofnType)).addProperty(RDF.type, owlKind(ofnType));
         return r;
+    }
+
+    /** The OWL kind that goes with an ISMD role marker; a stored concept always carries both. */
+    private static Resource owlKind(String ofnType) {
+        return switch (ofnType) {
+            case TRIDA -> OWL.Class;
+            case VLASTNOST -> OWL.DatatypeProperty;
+            case VZTAH -> OWL.ObjectProperty;
+            default -> throw new IllegalArgumentException(ofnType);
+        };
     }
 
     private void store(String graphName, Model model) {

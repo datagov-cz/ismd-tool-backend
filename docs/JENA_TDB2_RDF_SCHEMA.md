@@ -222,7 +222,7 @@ data that held them was wiped (2026-11).
 | Was stored | Now |
 |---|---|
 | `inTezaurus` flag | PostgreSQL `concepts.in_tezaurus` only |
-| `<ns>nadřazená-třída` copy of `rdfs:subClassOf` | not written; the detail view still adds it in memory until the readers are OWL-first |
+| `<ns>nadřazená-třída` copy of `rdfs:subClassOf` | not written, not added in memory either; readers use `rdfs:subClassOf` |
 | `slovníky:typ-subjektu-práva` / `-objektu-práva` | `vsgov:` types |
 | provision under `l111:ustanovení-dokládající-neveřejnost-údaje` or a `<ns>` copy | `l111:je-vymezen-ustanovením-stanovujícím-jeho-neveřejnost` |
 | sources under `<ns>` or `https://slovník.gov.cz/` predicates; `schema:url` as IRI or plain string | `slovníky:` predicates; `xsd:anyURI` literal |
@@ -311,16 +311,24 @@ Vocabulary create is the same with `requireWritableVocabulary` and `enqueueCreat
 edited graph with `requireWritableVocabulary` and saves it directly. Upload writes the whole graph with
 `putOntologyModel` after its own OFN check.
 
-### Ontology detail (read)
+### Detail reads (ontology, concept, diagram, working copy, NKD)
 
 ```
-OntologyDetailReader → JenaTDB2Repository.fetchGraph
-  → OntologyDetailExtractor: DetailModelNormalizer → TurtleFilterUtil / TurtleFormatterUtil
+JenaTDB2Repository.fetchGraph | NKD CONSTRUCT | upload input
+  → OntologyDetailExtractor.applyOFNTransformations / …ForNkd / …ForUpload
+       (OutsideDataNormalizer for NKD and upload input only) → TurtleFilterUtil / TurtleFormatterUtil
   → ModelAnalyzer + ConceptJsonMapper → OntologyDetailModel
 ```
 
-`DetailModelNormalizer` is temporary: it accepts pre-OFN shapes for the detail view. It goes when the readers
-read the OWL kind first; the GET payloads must stay the same.
+Two read paths by data owner:
+- **Stored ISMD data** is read as it is: the write gate keeps it OFN-shaped.
+- **Outside data** (NKD responses, upload input) goes through `OutsideDataNormalizer` first. It adds the
+  `skos:Concept`, role markers and `skos:prefLabel` that NKD often lacks, in memory only. NKD has no role
+  markers at all, and 4 of the 10 production vocabularies have no `skos:Concept` on their concepts.
+
+Every reader takes a concept's kind from its OWL type (`owl:Class` / `owl:DatatypeProperty` /
+`owl:ObjectProperty`); the role markers are written (derived from the OWL kind) but not read. A single
+OFN reader for both paths, with an NKD adapter in front of `OfnRdfReader`, is a planned follow-up.
 
 ### Download
 

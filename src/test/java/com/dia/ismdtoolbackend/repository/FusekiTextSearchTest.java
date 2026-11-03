@@ -92,7 +92,7 @@ class FusekiTextSearchTest {
                     skos:altLabel "auto řidiče"@cs .
                 pojem:řídí a skos:Concept, owl:ObjectProperty ;
                     skos:prefLabel "řídí řidič"@cs .
-                pojem:jméno-řidiče a skos:Concept, slovníky:vlastnost ;
+                pojem:jméno-řidiče a skos:Concept, slovníky:vlastnost, owl:DatatypeProperty ;
                     skos:prefLabel "jméno řidiče"@cs .
                 """);
         store(HIDDEN_GRAPH, """

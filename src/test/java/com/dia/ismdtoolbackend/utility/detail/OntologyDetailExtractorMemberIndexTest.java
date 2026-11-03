@@ -5,6 +5,7 @@ import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.vocabulary.OWL;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
 import org.apache.jena.vocabulary.SKOS;
@@ -84,6 +85,23 @@ class OntologyDetailExtractorMemberIndexTest {
      * A vlastnost attaches by domain only. Its {@code obor-hodnot} is a datatype, not a class,
      * so it must never surface as a member of whatever its range points at.
      */
+    /** NKD members carry only the OWL kind: they attach the same as ISMD ones. */
+    @Test
+    void membersAttachByOwlKindWithoutAMarker() {
+        Model model = ontologyWithClasses();
+        Resource prop = model.createResource(ONTOLOGY_IRI + "/pojem/věk").addProperty(RDF.type, OWL.DatatypeProperty)
+                .addProperty(SKOS.prefLabel, "věk", "cs").addProperty(SKOS.inScheme, model.createResource(ONTOLOGY_IRI));
+        prop.addProperty(RDFS.domain, model.createResource(CLASS_IRI));
+        Resource rel = model.createResource(ONTOLOGY_IRI + "/pojem/bydlí-v").addProperty(RDF.type, OWL.ObjectProperty)
+                .addProperty(SKOS.prefLabel, "bydlí v", "cs").addProperty(SKOS.inScheme, model.createResource(ONTOLOGY_IRI));
+        rel.addProperty(RDFS.domain, model.createResource(CLASS_IRI));
+
+        OntologyDetailModel.ConceptDetailModel klass = classDetail(model);
+
+        assertThat(klass.getConceptProperties()).extracting("iri").containsExactly(ONTOLOGY_IRI + "/pojem/věk");
+        assertThat(klass.getConceptRelationships()).extracting("iri").containsExactly(ONTOLOGY_IRI + "/pojem/bydlí-v");
+    }
+
     @Test
     void propertyAttachesByDomainOnly() {
         Model model = ontologyWithClasses();
@@ -146,6 +164,16 @@ class OntologyDetailExtractorMemberIndexTest {
                 .orElseThrow(() -> new AssertionError("concept not in detail: " + iri));
     }
 
+    /** The OWL kind that goes with an ISMD role marker; a stored concept always carries both. */
+    private static Resource owlKind(String ofnType) {
+        return switch (ofnType) {
+            case TRIDA -> OWL.Class;
+            case VLASTNOST -> OWL.DatatypeProperty;
+            case VZTAH -> OWL.ObjectProperty;
+            default -> throw new IllegalArgumentException(ofnType);
+        };
+    }
+
     private static Model ontologyWithClasses() {
         Model model = ModelFactory.createDefaultModel();
         Resource ontology = model.createResource(ONTOLOGY_IRI);
@@ -153,7 +181,7 @@ class OntologyDetailExtractorMemberIndexTest {
 
         for (String iri : new String[]{CLASS_IRI, OTHER_CLASS_IRI}) {
             Resource klass = model.createResource(iri);
-            klass.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + TRIDA));
+            klass.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + TRIDA)).addProperty(RDF.type, OWL.Class);
             klass.addProperty(SKOS.prefLabel, iri.substring(iri.lastIndexOf('/') + 1), "cs");
             klass.addProperty(SKOS.inScheme, ontology);
         }
@@ -162,7 +190,7 @@ class OntologyDetailExtractorMemberIndexTest {
 
     private static Resource member(Model model, String iri, String ofnType, String label) {
         Resource r = model.createResource(iri);
-        r.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + ofnType));
+        r.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + ofnType)).addProperty(RDF.type, owlKind(ofnType));
         r.addProperty(SKOS.prefLabel, label, "cs");
         r.addProperty(SKOS.inScheme, model.createResource(ONTOLOGY_IRI));
         return r;
