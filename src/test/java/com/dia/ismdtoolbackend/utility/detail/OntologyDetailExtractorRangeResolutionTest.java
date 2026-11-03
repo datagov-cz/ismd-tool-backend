@@ -9,6 +9,7 @@ import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.ResourceFactory;
+import org.apache.jena.vocabulary.OWL;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
 import org.apache.jena.vocabulary.SKOS;
@@ -290,17 +291,17 @@ class OntologyDetailExtractorRangeResolutionTest {
         ontology.addProperty(SKOS.prefLabel, "Testovací slovník", "cs");
 
         Resource classConcept = model.createResource(CLASS_IRI);
-        classConcept.addProperty(RDF.type, tridaType);
+        classConcept.addProperty(RDF.type, tridaType).addProperty(RDF.type, OWL.Class);
         classConcept.addProperty(inScheme, ontology);
         classConcept.addProperty(SKOS.prefLabel, "Osoba", "cs");
 
         Resource otherClass = model.createResource(OTHER_CLASS_IRI);
-        otherClass.addProperty(RDF.type, tridaType);
+        otherClass.addProperty(RDF.type, tridaType).addProperty(RDF.type, OWL.Class);
         otherClass.addProperty(inScheme, ontology);
         otherClass.addProperty(SKOS.prefLabel, "Adresa", "cs");
 
         Resource relationship = model.createResource(REL_IRI);
-        relationship.addProperty(RDF.type, vztahType);
+        relationship.addProperty(RDF.type, vztahType).addProperty(RDF.type, OWL.ObjectProperty);
         relationship.addProperty(inScheme, ontology);
         relationship.addProperty(SKOS.prefLabel, "bydlí na", "cs");
         relationship.addProperty(RDFS.domain, classConcept);
@@ -329,7 +330,7 @@ class OntologyDetailExtractorRangeResolutionTest {
                              Resource ontology, Resource domain,
                              String iri, String label, Resource range) {
         Resource property = model.createResource(iri);
-        property.addProperty(RDF.type, vlastnostType);
+        property.addProperty(RDF.type, vlastnostType).addProperty(RDF.type, OWL.DatatypeProperty);
         property.addProperty(inScheme, ontology);
         property.addProperty(SKOS.prefLabel, label, "cs");
         property.addProperty(RDFS.domain, domain);

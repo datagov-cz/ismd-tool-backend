@@ -13,29 +13,26 @@ import java.util.Set;
 import static com.dia.constants.VocabularyConstants.*;
 
 /**
- * Detail-read only, temporary: adds the role markers, {@code skos:Concept} and {@code skos:prefLabel}
- * the detail readers and {@code TurtleFilterUtil} recognise concepts by, to models that lack them (NKD
- * data, legacy local data). Remove once the readers take the role from the OWL kind (plan step 5).
- * Never used on a write path: upload stores data as uploaded.
+ * Read-side tolerance for data ISMD does not own: NKD responses and upload input. Adds the
+ * {@code skos:Concept}, role markers and {@code skos:prefLabel} that {@code TurtleFilterUtil} and the
+ * detail mappers recognise concepts by, where that data lacks them (NKD has no role markers and often no
+ * {@code skos:Concept}). Stored ISMD data never goes through here: the write gate keeps it OFN-shaped.
+ * It changes only the in-memory copy being read; nothing is written.
  */
 @Slf4j
-final class DetailModelNormalizer {
+final class OutsideDataNormalizer {
 
     private static final String POJEM_GENERIC = OFN_NAMESPACE + POJEM;
 
-    private DetailModelNormalizer() {
+    private OutsideDataNormalizer() {
     }
 
     /**
-     * Local-detail-path normalization. Infers the OFN role tags
-     * ({@code skos:Concept}, {@code slovníky:třída/vztah/vlastnost}) and converts
-     * labels so real concepts survive {@code TurtleFilterUtil}, but does NOT touch
-     * {@code skos:inScheme}: local vocabularies are written via the authoritative
-     * upload path, which guarantees every owned concept carries an explicit
-     * {@code inScheme}. Deriving it here would be redundant and risks the
-     * {@code /pojem/} string heuristic diverging from the real scheme.
+     * Upload input. Infers {@code skos:Concept} and the role markers and converts labels so the concepts
+     * survive {@code TurtleFilterUtil}, but does NOT touch {@code skos:inScheme}: the upload decides scheme
+     * membership itself ({@code InSchemeStamping}).
      */
-    public static int normalizeForLocalDetail(Model model) {
+    public static int normalizeUploadInput(Model model) {
         int count = 0;
         count += ensureConceptsHaveSkosType(model);
         count += normalizeOwlClassConcepts(model);
@@ -45,16 +42,15 @@ final class DetailModelNormalizer {
     }
 
     /**
-     * NKD-path normalization. Same role-tag/label inference as
-     * {@link #normalizeForLocalDetail} PLUS {@code skos:inScheme} derivation: NKD data
+     * NKD responses. Same inference as {@link #normalizeUploadInput} PLUS {@code skos:inScheme} derivation: NKD data
      * is out of our control and often arrives without an explicit scheme, so we infer
      * it per-concept by stripping {@code /pojem/} from the concept IRI
      * ({@link #extractOntologyIRIFromConcept}) — a reasonable inference given OFN's IRI
      * structure. There is no single authoritative graph IRI here (the detail model can
      * mix vocabularies), hence the per-concept derivation rather than a fixed graphName.
      */
-    public static int normalizeForNkd(Model model) {
-        int count = normalizeForLocalDetail(model);
+    public static int normalizeNkd(Model model) {
+        int count = normalizeUploadInput(model);
         count += ensureConceptsHaveDerivedInScheme(model);
         return count;
     }

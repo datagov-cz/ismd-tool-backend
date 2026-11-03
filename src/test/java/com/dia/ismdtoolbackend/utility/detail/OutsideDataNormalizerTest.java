@@ -12,18 +12,18 @@ import org.junit.jupiter.params.provider.ValueSource;
 import static com.dia.ismdtoolbackend.testsupport.rdf.RdfAssert.assertIsomorphic;
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Role-tag, label and inScheme inference of {@link DetailModelNormalizer}, checked as whole-model output. */
-@DisplayName("DetailModelNormalizer - role tags, labels, NKD inScheme")
-class DetailModelNormalizerTest {
+/** Role-tag, label and inScheme inference of {@link OutsideDataNormalizer}, checked as whole-model output. */
+@DisplayName("OutsideDataNormalizer - role tags, labels, NKD inScheme")
+class OutsideDataNormalizerTest {
 
     private static Model normalizedForLocalDetail(String turtle) {
         Model model = Ttl.parse(turtle);
-        DetailModelNormalizer.normalizeForLocalDetail(model);
+        OutsideDataNormalizer.normalizeUploadInput(model);
         return model;
     }
 
     @Nested
-    @DisplayName("normalizeForLocalDetail")
+    @DisplayName("normalizeUploadInput")
     class LocalDetail {
 
         @Test
@@ -31,7 +31,7 @@ class DetailModelNormalizerTest {
         void owlClassTagged() {
             Model model = Ttl.parse("pojem:osoba a owl:Class .");
 
-            int count = DetailModelNormalizer.normalizeForLocalDetail(model);
+            int count = OutsideDataNormalizer.normalizeUploadInput(model);
 
             assertIsomorphic("pojem:osoba a owl:Class, skos:Concept, slovníky:pojem, slovníky:třída .", model);
             assertThat(count).isEqualTo(1);
@@ -43,7 +43,7 @@ class DetailModelNormalizerTest {
             String input = "pojem:osoba a owl:Class, skos:Concept, slovníky:pojem, slovníky:třída .";
             Model model = Ttl.parse(input);
 
-            int count = DetailModelNormalizer.normalizeForLocalDetail(model);
+            int count = OutsideDataNormalizer.normalizeUploadInput(model);
 
             assertIsomorphic(input, model);
             assertThat(count).isZero();
@@ -113,7 +113,7 @@ class DetailModelNormalizerTest {
     }
 
     @Test
-    @DisplayName("normalizeForLocalDetail never derives skos:inScheme; normalizeForNkd does, for every OWL kind")
+    @DisplayName("normalizeUploadInput never derives skos:inScheme; normalizeNkd does, for every OWL kind")
     void inSchemeDerivedOnlyForNkd() {
         String input = """
                 pojem:třída a owl:Class, slovníky:pojem .
@@ -122,14 +122,14 @@ class DetailModelNormalizerTest {
                 """;
         Model local = normalizedForLocalDetail(input);
         Model nkd = Ttl.parse(input);
-        DetailModelNormalizer.normalizeForNkd(nkd);
+        OutsideDataNormalizer.normalizeNkd(nkd);
 
         assertThat(local.listSubjectsWithProperty(SKOS.inScheme).toList()).isEmpty();
         assertThat(nkd.listSubjectsWithProperty(SKOS.inScheme).toList()).hasSize(3);
     }
 
     @Nested
-    @DisplayName("normalizeForNkd")
+    @DisplayName("normalizeNkd")
     class Nkd {
 
         @Test
@@ -142,7 +142,7 @@ class DetailModelNormalizerTest {
                     [ a skos:Concept ] .
                     """);
 
-            DetailModelNormalizer.normalizeForNkd(model);
+            OutsideDataNormalizer.normalizeNkd(model);
 
             assertIsomorphic("""
                     pojem:osoba a skos:Concept ; skos:inScheme <https://slovník.gov.cz/datový/test-slovník> .

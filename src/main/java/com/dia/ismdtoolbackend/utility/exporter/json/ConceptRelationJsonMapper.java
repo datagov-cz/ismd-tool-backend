@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.utility.exporter.json;
 
+import com.dia.ismdtoolbackend.ofn.OfnIris;
+
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.rdf.model.*;
 import org.apache.jena.vocabulary.RDF;
@@ -114,9 +116,9 @@ final class ConceptRelationJsonMapper {
     }
 
     String determinePropertyKey(Resource concept, OntModel ontModel) {
-        if (concept.hasProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + VZTAH))) {
+        if (concept.hasProperty(RDF.type, ontModel.getResource(OfnIris.OWL_OBJECT_PROPERTY))) {
             return NADRAZENY_VZTAH;
-        } else if (concept.hasProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + VLASTNOST))) {
+        } else if (concept.hasProperty(RDF.type, ontModel.getResource(OfnIris.OWL_DATATYPE_PROPERTY))) {
             return NADRAZENA_VLASTNOST;
         }
         return null;

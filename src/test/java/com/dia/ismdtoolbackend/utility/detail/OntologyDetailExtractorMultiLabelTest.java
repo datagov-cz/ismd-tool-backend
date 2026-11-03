@@ -7,6 +7,7 @@ import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.vocabulary.OWL;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.SKOS;
 import org.junit.jupiter.api.BeforeEach;
@@ -86,7 +87,7 @@ class OntologyDetailExtractorMultiLabelTest {
         ontology.addProperty(SKOS.prefLabel, "Testovací slovník", "cs");
 
         Resource classConcept = model.createResource(CLASS_IRI);
-        classConcept.addProperty(RDF.type, tridaType);
+        classConcept.addProperty(RDF.type, tridaType).addProperty(RDF.type, OWL.Class);
         classConcept.addProperty(inScheme, ontology);
         // Two cs prefLabels — the exact upstream shape that triggered the bug.
         classConcept.addProperty(SKOS.prefLabel, "Fyzická osoba", "cs");
