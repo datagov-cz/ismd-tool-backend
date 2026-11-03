@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.service;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.models.NameModel;
+import com.dia.ismdtoolbackend.ofn.OfnIris;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
@@ -17,6 +18,7 @@ import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.Statement;
+import org.apache.jena.vocabulary.OWL2;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.SKOS;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,7 +32,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-import static com.dia.constants.VocabularyConstants.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.mockito.ArgumentMatchers.*;
@@ -51,8 +52,8 @@ class ConceptEditFlowIntegrationTest {
     private ConceptServiceImpl conceptService;
 
     private static final Long CONCEPT_ID = 1L;
-    private static final String CONCEPT_IRI = "http://example.org/pojem/test-concept";
     private static final String GRAPH_NAME = "http://example.org/test-ontology";
+    private static final String CONCEPT_IRI = GRAPH_NAME + "/pojem/test-concept";
     private static final String VALID_ELI =
             "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2006/187";
 
@@ -68,8 +69,13 @@ class ConceptEditFlowIntegrationTest {
 
         Model model = ModelFactory.createDefaultModel();
         Resource concept = model.createResource(CONCEPT_IRI);
+        // An OFN-shaped Třída as the create path writes it: the write gate checks the edited concept.
         concept.addProperty(SKOS.prefLabel, model.createLiteral("Test Concept", "cs"));
-        concept.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
+        concept.addProperty(SKOS.inScheme, model.createResource(GRAPH_NAME));
+        concept.addProperty(RDF.type, SKOS.Concept);
+        concept.addProperty(RDF.type, model.createResource(OfnIris.POJEM));
+        concept.addProperty(RDF.type, OWL2.Class);
+        concept.addProperty(RDF.type, model.createResource(OfnIris.MARKER_TRIDA));
 
         ConceptMetadataEntity entity = new ConceptMetadataEntity();
         entity.setId(CONCEPT_ID);

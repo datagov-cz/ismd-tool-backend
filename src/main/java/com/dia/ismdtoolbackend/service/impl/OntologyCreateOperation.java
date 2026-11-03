@@ -18,6 +18,7 @@ import java.util.Set;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
+import com.dia.ismdtoolbackend.ofn.OfnWriteGate;
 import com.dia.ismdtoolbackend.outbox.OutboxEntryRepository;
 import com.dia.ismdtoolbackend.outbox.OutboxOperation;
 import com.dia.ismdtoolbackend.outbox.OutboxStatus;
@@ -55,6 +56,7 @@ class OntologyCreateOperation {
     private final OutboxEntryRepository outboxRepository;
     private final OutboxRelayTrigger outboxRelayTrigger;
     private final OntologyMetadataEnricher metadataEnricher;
+    private final OfnWriteGate ofnWriteGate;
 
     OntologyMetadataModel createOntology(OntologyCreateModel ontologyCreateModel, String userId) {
         validateOntologyCreateModel(ontologyCreateModel);
@@ -91,6 +93,7 @@ class OntologyCreateOperation {
         }
         Model graphModel = OntologyModelFactory.create(ontologyIRI, ontologyCreateModel);
         try {
+            ofnWriteGate.requireWritableVocabulary(graphModel, ontologyIRI);
             OntologyMetadataEntity metadataEntity;
             try {
                 metadataEntity = createOntologyMetadata(ontologyIRI, userId);
@@ -132,6 +135,7 @@ class OntologyCreateOperation {
                 graphModel.add(resource.getModel());
                 resource.getModel().close();
             }
+            ofnWriteGate.requireWritableVocabulary(graphModel, graph);
             // Metadata and the serialized graph task commit together. The unique slug arbitrates concurrent creates.
             OntologyMetadataEntity ontology;
             try {

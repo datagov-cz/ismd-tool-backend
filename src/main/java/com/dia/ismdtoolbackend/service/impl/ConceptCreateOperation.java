@@ -5,6 +5,7 @@ import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
+import com.dia.ismdtoolbackend.ofn.OfnWriteGate;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
@@ -20,6 +21,7 @@ import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.vocabulary.RDF;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import org.springframework.stereotype.Component;
 
@@ -37,6 +39,7 @@ class ConceptCreateOperation {
     private final OutboxWriter outboxWriter;
     private final OutboxRelayTrigger outboxRelayTrigger;
     private final InitialGraphGuard initialGraphGuard;
+    private final OfnWriteGate ofnWriteGate;
 
     ConceptMetadataModel createConcept(ConceptCreateModel createModel, String userId) {
         log.info("Creating concept: type={}, name={}, namespace={}, userId={}",
@@ -53,6 +56,7 @@ class ConceptCreateOperation {
 
         String ontologyGraphName = createModel.getOntologyGraphName();
         initialGraphGuard.requireInitialGraphApplied(ontologyGraphName);
+        ofnWriteGate.requireWritableConcepts(conceptResource.getModel(), ontologyGraphName, List.of(conceptUri));
 
         // Enqueue the concept's triples (empty remove set), committed atomically with the metadata
         // below. If the PG tx fails, the outbox row rolls back with it, so nothing reaches TDB2.

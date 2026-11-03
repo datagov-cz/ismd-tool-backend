@@ -4,6 +4,7 @@ import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
+import com.dia.ismdtoolbackend.ofn.OfnWriteGate;
 import com.dia.ismdtoolbackend.repository.*;
 import com.dia.ismdtoolbackend.utility.editor.OntologyEditor;
 import com.dia.utility.URIGenerator;
@@ -31,6 +32,7 @@ class OntologyEditOperation {
     private final OntologyMetadataMapper ontologyMetadataMapper;
     private final OntologyMetadataEnricher metadataEnricher;
     private final InitialGraphGuard initialGraphGuard;
+    private final OfnWriteGate ofnWriteGate;
 
     OntologyMetadataModel editOntology(Long id, OntologyEditModel ontologyEditModel) {
         if (ontologyEditModel == null) {
@@ -45,6 +47,7 @@ class OntologyEditOperation {
         OntologyEditor.EditResult editResult = performOntologyEdit(ontologyEditModel, model, oldNamespace, metadataEntity.getGraphName());
 
         log.info("Ontology edit completed: IRI changed={}", editResult.iriChanged);
+        ofnWriteGate.requireWritableVocabulary(model, editResult.iriChanged ? editResult.newOntologyIRI : oldOntologyIRI);
 
         if (editResult.iriChanged) {
             metadataEntity = handleOntologyIRIChange(oldOntologyIRI, editResult.newOntologyIRI, model, metadataEntity);

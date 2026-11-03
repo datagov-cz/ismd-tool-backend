@@ -4,6 +4,7 @@ import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
+import com.dia.ismdtoolbackend.ofn.OfnWriteGate;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
@@ -17,10 +18,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.vocabulary.RDF;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import org.springframework.stereotype.Component;
 
@@ -40,6 +43,7 @@ class ConceptEditOperation {
     private final ConceptAccessGuard accessGuard;
     private final InitialGraphGuard initialGraphGuard;
     private final NkdLinkReconciler nkdLinkReconciler;
+    private final OfnWriteGate ofnWriteGate;
 
     ConceptMetadataModel editConcept(Long conceptId, ConceptEditModel conceptEditModel) {
         accessGuard.assertCanModify(conceptId);
@@ -93,6 +97,8 @@ class ConceptEditOperation {
         Set<Statement> toAdd = new HashSet<>(editResult.statementsToAdd);
         toAdd.addAll(snapshotDelta.toAdd);
 
+        requireWritable(model, graphName, editResult.newConceptIRI, toRemove, toAdd);
+
         // Enqueue the merged change set (editor delta ∪ NKD copy delta), NOT a whole-graph PUT,
         // committed atomically with the metadata update below.
         outboxWriter.enqueueUpsert(graphName, aggregateIri, toRemove, toAdd);
@@ -100,6 +106,22 @@ class ConceptEditOperation {
         outboxRelayTrigger.nudgeAfterCommit();
         return saveAndReturnMetadata(metadata, editResult.newConceptIRI,
                 contentChanged(toRemove, toAdd));
+    }
+
+    /**
+     * OFN safety net (T1/T2) on the concept as it will be stored. The editor has applied its own delta to
+     * {@code model}, the NKD link delta is not applied yet, so the check runs on a copy with the merged delta.
+     */
+    void requireWritable(Model model, String graphName, String conceptIri,
+                         Set<Statement> toRemove, Set<Statement> toAdd) {
+        Model written = ModelFactory.createDefaultModel().add(model);
+        try {
+            written.remove(List.copyOf(toRemove));
+            written.add(List.copyOf(toAdd));
+            ofnWriteGate.requireWritableConcepts(written, graphName, List.of(conceptIri));
+        } finally {
+            written.close();
+        }
     }
 
     boolean contentChanged(Set<Statement> toRemove, Set<Statement> toAdd) {
