@@ -384,10 +384,11 @@ public class OntologyController {
     @PostMapping("{slug}/validate")
     @PreAuthorize("@ontologySecurityService.belongsToUserBySlug(#slug)")
     public ResponseEntity<ApiResponseDto<ValidationReport>> validateOntology(
-            @RequestBody OntologyMetadataModel ontologyMetadata,
             @PathVariable String slug,
             @AuthenticationPrincipal SecurityUser securityUser
     ) {
+        // Resolved from the slug the ownership check ran on; the client never names the target.
+        OntologyMetadataModel ontologyMetadata = ontologyService.getOntologyMetadataBySlug(slug);
         log.info("Ontology validation requested, slug: {}, ontologyIRI: {}", slug, ontologyMetadata.getGraphName());
 
         String ttlContent = ontologyService.getTtlContentFromOntology(ontologyMetadata);
