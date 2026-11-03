@@ -4,6 +4,7 @@ import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.config.NkdConfig;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapperImpl;
+import com.dia.ismdtoolbackend.ofn.OfnWriteGate;
 import com.dia.ismdtoolbackend.outbox.OutboxEntryRepository;
 import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
@@ -63,6 +64,8 @@ public final class ConceptServiceFixture {
     private NkdLinkDetector nkdLinkDetector = new NkdLinkDetector();
     private WorkingCopySyncFields syncFields = new WorkingCopySyncFields();
     private NkdConfig nkdConfig = new NkdConfig();
+    /** Real: pure, so every create and edit test also passes the OFN safety net. */
+    private OfnWriteGate ofnWriteGate = OntologyUploadServiceFixture.ofnWriteGate();
 
     public ConceptServiceImpl build() {
         ConceptEditOperation editOperation = buildEditOperation();
@@ -78,13 +81,13 @@ public final class ConceptServiceFixture {
 
     ConceptCreateOperation buildCreateOperation() {
         return new ConceptCreateOperation(conceptMetadataRepository, ontologyMetadataRepository, metadataTouchService,
-                conceptMetadataMapper, conceptCreator, outboxWriter, outboxRelayTrigger, initialGraphGuard());
+                conceptMetadataMapper, conceptCreator, outboxWriter, outboxRelayTrigger, initialGraphGuard(), ofnWriteGate);
     }
 
     ConceptEditOperation buildEditOperation() {
         return new ConceptEditOperation(conceptMetadataRepository, jenaTDB2Repository,
                 metadataTouchService, conceptMetadataMapper, conceptEditor, outboxWriter, outboxRelayTrigger,
-                accessGuard(), initialGraphGuard(), buildNkdLinkReconciler());
+                accessGuard(), initialGraphGuard(), buildNkdLinkReconciler(), ofnWriteGate);
     }
 
     ConceptDeleteOperation buildDeleteOperation() {
