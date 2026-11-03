@@ -121,21 +121,6 @@ class ConceptEditorFieldEdgeCasesTest {
     }
 
     @Test
-    void classType_legacyTypeIsReplacedByTheOfnOne() {
-        String iri = DEFAULT_NS + "ct-legacy";
-        Resource r = seedClass(iri);
-        r.addProperty(RDF.type, model.getResource(OfnIris.LEGACY_TYP_SUBJEKTU_PRAVA));
-        ClassConceptEditModel m = classModel();
-        m.setType("Typ subjektu práva");
-
-        editor.editConcept(iri, m, model, null);
-
-        Resource updated = model.getResource(iri);
-        assertThat(updated.hasProperty(RDF.type, model.getResource(OfnIris.TYP_SUBJEKTU_PRAVA))).isTrue();
-        assertThat(updated.hasProperty(RDF.type, model.getResource(OfnIris.LEGACY_TYP_SUBJEKTU_PRAVA))).isFalse();
-    }
-
-    @Test
     void classType_nullType_isNoOp() {
         String iri = DEFAULT_NS + "ct-null";
         seedClass(iri);

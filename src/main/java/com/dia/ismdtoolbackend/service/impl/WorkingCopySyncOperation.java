@@ -19,7 +19,6 @@ import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.rdf.model.Model;
-import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.StmtIterator;
@@ -245,23 +244,20 @@ class WorkingCopySyncOperation {
         return null;
     }
 
-    /** The concept's provisions under the OFN predicate or the pre-OFN one (until the migration has run). */
+    /** The concept's privacy provisions. */
     List<String> currentPrivacyProvisions(Model model, Resource concept) {
         List<String> provisions = new ArrayList<>();
-        for (Property provisionProperty : List.of(model.createProperty(OfnIris.USTANOVENI_NEVEREJNOST),
-                model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST))) {
-            StmtIterator it = model.listStatements(concept, provisionProperty, (RDFNode) null);
-            try {
-                while (it.hasNext()) {
-                    RDFNode object = it.next().getObject();
-                    String value = object.isURIResource() ? object.asResource().getURI() : object.toString();
-                    if (!provisions.contains(value)) {
-                        provisions.add(value);
-                    }
+        StmtIterator it = model.listStatements(concept, model.createProperty(OfnIris.USTANOVENI_NEVEREJNOST), (RDFNode) null);
+        try {
+            while (it.hasNext()) {
+                RDFNode object = it.next().getObject();
+                String value = object.isURIResource() ? object.asResource().getURI() : object.toString();
+                if (!provisions.contains(value)) {
+                    provisions.add(value);
                 }
-            } finally {
-                it.close();
             }
+        } finally {
+            it.close();
         }
         return provisions;
     }

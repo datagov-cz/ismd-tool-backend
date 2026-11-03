@@ -132,7 +132,7 @@ class OfnRdfReaderTest {
     @Test
     void legacyBusinessTypeNamespace_isReported() {
         Model model = vocabularyModel();
-        třída(model, "a").addProperty(RDF.type, model.createResource(OfnIris.LEGACY_TYP_OBJEKTU_PRAVA));
+        třída(model, "a").addProperty(RDF.type, model.createResource(OfnIris.SLOVNIKY + "typ-objektu-práva"));
 
         OfnRdfReader.Result result = reader.readVocabulary(model, V);
 

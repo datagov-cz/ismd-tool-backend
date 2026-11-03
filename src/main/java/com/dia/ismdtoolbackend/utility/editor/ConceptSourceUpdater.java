@@ -84,11 +84,6 @@ class ConceptSourceUpdater {
                                            Set<Statement> toAdd) {
         if (newSources == null) return;
 
-        // Sources stored under a pre-OFN predicate (vocabulary namespace or https://slovník.gov.cz/…)
-        // are dropped and rewritten under the OFN one.
-        boolean hadLegacy = removeLegacyPredicates(newConcept, oldConcept,
-                legacyCopyOf(property.getURI(), OfnIris.localName(property.getURI())), toRemove, toAdd);
-
         List<DigitalObjectModel> validSources = newSources.stream()
                 .filter(this::isValidDigitalObject)
                 .toList();
@@ -106,7 +101,7 @@ class ConceptSourceUpdater {
         validSources.forEach(source -> wanted.add(SourceRecord.of(source)));
         Set<SourceRecord> current = currentSources(oldConcept, property, schemaUrlProperty, dctermsTitle,
                 dctermsDescription);
-        if (!hadLegacy && wanted.equals(current)) {
+        if (wanted.equals(current)) {
             return;
         }
 
@@ -159,13 +154,9 @@ class ConceptSourceUpdater {
                                              Property title, Property description) {
         Set<SourceRecord> sources = new HashSet<>();
         for (Statement link : concept.listProperties(property).toList()) {
-            if (!link.getObject().isAnon()) {
-                return null;
-            }
             Resource document = link.getObject().asResource();
             Statement urlValue = document.getProperty(url);
-            if (urlValue == null || !urlValue.getObject().isLiteral()
-                    || !XSDDatatype.XSDanyURI.getURI().equals(urlValue.getLiteral().getDatatypeURI())) {
+            if (urlValue == null) {
                 return null;
             }
             sources.add(new SourceRecord(lexical(urlValue), text(document, title), text(document, description)));

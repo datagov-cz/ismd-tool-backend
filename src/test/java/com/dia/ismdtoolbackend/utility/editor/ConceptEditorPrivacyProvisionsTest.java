@@ -27,11 +27,6 @@ class ConceptEditorPrivacyProvisionsTest extends ConceptEditorTestBase {
         return model.createProperty(OfnIris.USTANOVENI_NEVEREJNOST);
     }
 
-    /** The pre-OFN predicate create used to write. */
-    private Property legacyProp() {
-        return model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
-    }
-
     private Resource seedProperty(String iri) {
         Resource r = model.createResource(iri);
         r.addProperty(org.apache.jena.vocabulary.SKOS.prefLabel, model.createLiteral("Vlastnost", "cs"));
@@ -110,15 +105,8 @@ class ConceptEditorPrivacyProvisionsTest extends ConceptEditorTestBase {
         assertThat(model.size()).as("rejected edit must not mutate the model").isEqualTo(sizeBefore);
     }
 
-    // --- Pre-OFN copies of the provisions -----------------------------------
-
     private static final String OTHER_ELI =
             "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2005/348";
-
-    /** The copy create used to write under the vocabulary's own namespace. */
-    private Property namespaceCopy() {
-        return model.createProperty(DEFAULT_NS + USTANOVENI_NEVEREJNOST);
-    }
 
     private java.util.Set<String> objects(Resource subject, Property property) {
         return subject.listProperties(property).mapWith(s -> s.getObject().asResource().getURI()).toSet();
@@ -133,53 +121,15 @@ class ConceptEditorPrivacyProvisionsTest extends ConceptEditorTestBase {
     private ConceptEditor.EditResult lastResult;
 
     @Test
-    void edit_dropsTheNamespaceCopy() {
-        String iri = DEFAULT_NS + "prop-copy";
-        Resource concept = seedProperty(iri);
-        concept.addProperty(provisionProp(), model.createResource(VALID_ELI));
-        concept.addProperty(namespaceCopy(), model.createResource(VALID_ELI));
-
-        editProvisions(iri, List.of(OTHER_ELI));
-
-        Resource updated = model.getResource(iri);
-        assertThat(objects(updated, provisionProp())).isEqualTo(java.util.Set.of(OTHER_ELI));
-        assertThat(objects(updated, namespaceCopy()))
-                .as("no provision is written under the vocabulary-namespace property")
-                .isEmpty();
-    }
-
-    @Test
-    void edit_clearingTheProvisionsClearsEveryCopy() {
+    void edit_clearingTheProvisionsClearsThem() {
         String iri = DEFAULT_NS + "prop-clear";
         Resource concept = seedProperty(iri);
         concept.addProperty(provisionProp(), model.createResource(VALID_ELI));
-        concept.addProperty(namespaceCopy(), model.createResource(VALID_ELI));
 
         editProvisions(iri, List.of());
 
         Resource updated = model.getResource(iri);
         assertThat(objects(updated, provisionProp())).isEmpty();
-        assertThat(objects(updated, namespaceCopy())).isEmpty();
-    }
-
-    @Test
-    void edit_dropsCopiesUploadedUnderOtherPropertyNames() {
-        String iri = DEFAULT_NS + "prop-uploaded";
-        Resource concept = seedProperty(iri);
-        Property foreignNamespace = model.createProperty(
-                "https://slovník.gov.cz/jiný-slovník/" + USTANOVENI_NEVEREJNOST);
-        Property longNameElsewhere = model.createProperty("https://slovník.gov.cz/jiný-slovník/" + USTANOVENI_LONG);
-        concept.addProperty(foreignNamespace, model.createResource(VALID_ELI));
-        concept.addProperty(longNameElsewhere, model.createResource(VALID_ELI));
-        concept.addProperty(legacyProp(), model.createResource(VALID_ELI));
-
-        editProvisions(iri, List.of(OTHER_ELI));
-
-        Resource updated = model.getResource(iri);
-        assertThat(updated.hasProperty(foreignNamespace)).isFalse();
-        assertThat(updated.hasProperty(longNameElsewhere)).isFalse();
-        assertThat(updated.hasProperty(legacyProp())).isFalse();
-        assertThat(objects(updated, provisionProp())).isEqualTo(java.util.Set.of(OTHER_ELI));
     }
 
     /** An unchanged edit must stage nothing: a staged change bumps updatedAt. */
@@ -198,31 +148,6 @@ class ConceptEditorPrivacyProvisionsTest extends ConceptEditorTestBase {
         assertThat(lastResult.statementsToAdd.stream().noneMatch(aboutProvisions)).isTrue();
     }
 
-    @Test
-    void edit_movesUnchangedProvisionsFromTheLegacyPredicateToTheOfnOne() {
-        String iri = DEFAULT_NS + "prop-legacy";
-        Resource concept = seedProperty(iri);
-        concept.addProperty(legacyProp(), model.createResource(VALID_ELI));
-
-        editProvisions(iri, List.of(VALID_ELI));
-
-        Resource updated = model.getResource(iri);
-        assertThat(objects(updated, provisionProp())).isEqualTo(java.util.Set.of(VALID_ELI));
-        assertThat(updated.hasProperty(legacyProp())).isFalse();
-    }
-
-    @Test
-    void edit_isPublicFalseKeepsTheNonPublicTypeWhenTheOnlyProvisionIsLegacy() {
-        String iri = DEFAULT_NS + "prop-legacy-flag";
-        Resource concept = seedProperty(iri);
-        concept.addProperty(type, nonPublicType());
-        concept.addProperty(legacyProp(), model.createResource(VALID_ELI));
-
-        editProvisions(iri, null);
-
-        assertThat(model.getResource(iri).hasProperty(type, nonPublicType())).isTrue();
-    }
-
     // --- Non-public classification ------------------------------------------
 
     private Resource nonPublicType() {
@@ -236,7 +161,6 @@ class ConceptEditorPrivacyProvisionsTest extends ConceptEditorTestBase {
         Resource concept = seedProperty(iri);
         concept.addProperty(type, nonPublicType());
         concept.addProperty(provisionProp(), model.createResource(VALID_ELI));
-        concept.addProperty(namespaceCopy(), model.createResource(VALID_ELI));
 
         editProvisions(iri, List.of(VALID_ELI));
 
@@ -281,19 +205,18 @@ class ConceptEditorPrivacyProvisionsTest extends ConceptEditorTestBase {
     }
 
     @Test
-    void edit_publicWithoutProvisionsClearsEveryStoredProvision() {
+    void edit_publicWithoutProvisionsClearsTheStoredProvisions() {
         String iri = DEFAULT_NS + "prop-goes-public";
         Resource concept = seedProperty(iri);
         concept.addProperty(type, nonPublicType());
         concept.addProperty(provisionProp(), model.createResource(VALID_ELI));
-        concept.addProperty(legacyProp(), model.createResource(OTHER_ELI));
+        concept.addProperty(provisionProp(), model.createResource(OTHER_ELI));
         propertyConceptEditModel.setIsPublic(Boolean.TRUE);
 
         conceptEditor.editConcept(iri, propertyConceptEditModel, model, null);
 
         Resource updated = model.getResource(iri);
         assertThat(updated.hasProperty(provisionProp())).isFalse();
-        assertThat(updated.hasProperty(legacyProp())).isFalse();
         assertThat(updated.hasProperty(type, model.getResource(OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ))).isTrue();
     }
 

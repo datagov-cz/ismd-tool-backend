@@ -68,19 +68,6 @@ public final class OfnIris {
             OWL_OBJECT_PROPERTY, MARKER_VZTAH);
     public static final java.util.Set<String> MARKERS = java.util.Set.of(MARKER_TRIDA, MARKER_VLASTNOST, MARKER_VZTAH);
 
-    // legacy shapes, read until the migration has run, never written
-    public static final String LEGACY_TYP_SUBJEKTU_PRAVA = SLOVNIKY + "typ-subjektu-práva";
-    public static final String LEGACY_TYP_OBJEKTU_PRAVA = SLOVNIKY + "typ-objektu-práva";
-    /** Local name of the pre-OFN provision predicate (any namespace). */
-    public static final String LEGACY_USTANOVENI_LOCAL_NAME = "ustanovení-dokládající-neveřejnost-údaje";
-    /** Local name of the vocabulary-namespace hierarchy duplicate (any namespace but rdfs). */
-    public static final String LEGACY_NADRAZENA_TRIDA_LOCAL_NAME = "nadřazená-třída";
-    /** Local name of the internal thesaurus flag (any namespace); the flag lives in PostgreSQL only. */
-    public static final String LEGACY_IN_TEZAURUS_LOCAL_NAME = "inTezaurus";
-    /** The junk class the common library's base model added to every created vocabulary. */
-    public static final String LEGACY_JUNK_POJEM = "https://slovník.gov.cz/pojem";
-    public static final String DCT_CONFORMS_TO = DCTERMS + "conformsTo";
-
     private OfnIris() {
     }
 

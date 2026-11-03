@@ -34,13 +34,11 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
     private static final String CONTENT_TYPE_ITEMS = "https://data.dia.gov.cz/zdroj/číselníky/typy-obsahu-údajů/položky/";
 
     private static final Property DESCRIPTION = Ttl.property(DCT_NS + "description");
-    private static final Property HIERARCHY = Ttl.property(DEFAULT_NS + "nadřazená-třída");
     private static final Property DEFINING_LEGAL = Ttl.property(OFN_NAMESPACE + DEFINUJICI_USTANOVENI);
     private static final Property RELATED_LEGAL = Ttl.property(OFN_NAMESPACE + SOUVISEJICI_USTANOVENI);
     private static final Property DEFINING_NON_LEGAL = Ttl.property(OfnIris.DEFINUJICI_NELEGISLATIVNI_ZDROJ);
     private static final Property RELATED_NON_LEGAL = Ttl.property(OfnIris.SOUVISEJICI_NELEGISLATIVNI_ZDROJ);
     private static final Property PROVISION = Ttl.property(OfnIris.USTANOVENI_NEVEREJNOST);
-    private static final Property LEGACY_PROVISION = Ttl.property(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
     private static final Property SHARING = Ttl.property(OFN_NAMESPACE + ZPUSOB_SDILENI);
     private static final Property ACQUISITION = Ttl.property(OFN_NAMESPACE + ZPUSOB_ZISKANI);
     private static final Property CONTENT_TYPE = Ttl.property(OFN_NAMESPACE + TYP_OBSAHU);
@@ -101,7 +99,7 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         void fieldsEditedInTheSameRequestReplaceTheCopiedValues() {
             String oldIri = DEFAULT_NS + "pojem/stará-třída";
             Ttl.add(model, """
-                    <%s> a ofn:třída, ofn:typ-objektu-práva, l111:veřejný-údaj ;
+                    <%s> a ofn:třída, vsgov:typ-objektu-práva, l111:veřejný-údaj ;
                         skos:prefLabel "Stará třída"@cs ;
                         rdfs:subClassOf <https://example.com/old-broader> .
                     """.formatted(oldIri));
@@ -115,7 +113,6 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
             String newIri = result.newConceptIRI;
             assertThat(types(model, newIri)).containsExactlyInAnyOrder(OFN_NAMESPACE + TRIDA, OfnIris.TYP_SUBJEKTU_PRAVA);
             assertThat(iris(model, newIri, RDFS.subClassOf)).containsExactly("https://example.com/new-broader");
-            assertThat(iris(model, newIri, HIERARCHY)).isEmpty();
             assertThat(model.containsResource(model.getResource(oldIri))).isFalse();
         }
 
@@ -138,11 +135,10 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         @Test
         void typeGovernanceAndHierarchyAreReplaced() {
             seedClass("""
-                    ; a ofn:typ-objektu-práva
+                    ; a vsgov:typ-objektu-práva
                     ; a104:%s "old-agenda"
                     ; ofn:%s <%sold>
                     ; rdfs:subClassOf <https://example.com/old-broader>
-                    ; sl:nadřazená-třída <https://example.com/old-broader>
                     """.formatted(AGENDA_LONG, ZPUSOB_SDILENI, SHARING_ITEMS));
             classConceptEditModel.setType("subjekt");
             classConceptEditModel.setAgendaCode("");
@@ -160,7 +156,6 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
             assertThat(iris(model, CONCEPT, ACQUISITION)).containsExactly(ACQUISITION_ITEMS + "vlastní");
             assertThat(iris(model, CONCEPT, CONTENT_TYPE)).containsExactly(CONTENT_TYPE_ITEMS + "provozní");
             assertThat(iris(model, CONCEPT, RDFS.subClassOf)).containsExactly("https://example.com/new-broader");
-            assertThat(iris(model, CONCEPT, HIERARCHY)).isEmpty();
         }
 
         @Test
@@ -175,8 +170,8 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         }
 
         @Test
-        void inTezaurusIsNotWrittenToRdfAndAnOlderCopyIsRemoved() {
-            seedClass("; sl:inTezaurus \"false\"");
+        void inTezaurusIsNotWrittenToRdf() {
+            seedClass("");
             classConceptEditModel.setInTezaurus(Boolean.TRUE);
 
             edit();
@@ -264,9 +259,10 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         @Test
         void replacedNonLegalSourceLeavesNothingOfTheOldDocument() {
             seedClass("""
-                    ; sl:%s [ a <%s> ; <%s> <https://example.com/doc1> ;
+                    ; slovníky:definující-nelegislativní-zdroj [ a do:digitální-objekt ;
+                              schema:url "https://example.com/doc1"^^xsd:anyURI ;
                               dct:title "Doc 1"@cs ; dct:description "Popis 1"@cs ]
-                    """.formatted(DEFINUJICI_NELEGISLATIVNI_ZDROJ, DIGITALNI_OBJEKT, SCHEMA_URL));
+                    """);
             classConceptEditModel.setDefiningNonLegalSource(
                     List.of(new DigitalObjectModel("Doc 2", null, "https://example.com/doc2")));
 
@@ -278,25 +274,6 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
                                 schema:url "https://example.com/doc2"^^xsd:anyURI ; dct:title "Doc 2"@cs ] .
                     """.formatted(CONCEPT));
             assertThat(model.isIsomorphicWith(expected)).isTrue();
-        }
-
-        @Test
-        void unchangedSourceStoredInAnOlderShapeIsRewrittenInTheOfnShape() {
-            seedClass("""
-                    ; sl:%s [ a <%s> ; <%s> <https://example.com/doc1> ; dct:title "Doc 1"@cs ]
-                    """.formatted(DEFINUJICI_NELEGISLATIVNI_ZDROJ, DIGITALNI_OBJEKT, SCHEMA_URL));
-            classConceptEditModel.setDefiningNonLegalSource(
-                    List.of(new DigitalObjectModel("Doc 1", null, "https://example.com/doc1")));
-
-            edit();
-
-            Model expected = Ttl.parse("""
-                    <%s> a ofn:třída ; skos:prefLabel "Třída"@cs ;
-                        slovníky:definující-nelegislativní-zdroj [ a do:digitální-objekt ;
-                                schema:url "https://example.com/doc1"^^xsd:anyURI ; dct:title "Doc 1"@cs ] .
-                    """.formatted(CONCEPT));
-            assertThat(model.isIsomorphicWith(expected))
-                    .as("missing: %s%nextra: %s", expected.difference(model), model.difference(expected)).isTrue();
         }
 
         @Test
@@ -404,13 +381,12 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
 
         @Test
         void blankProvisionClearsTheProvisions() {
-            seedClass("; l111:%s <%s>".formatted(USTANOVENI_NEVEREJNOST, ELI_2023_50));
+            seedClass("; <%s> <%s>".formatted(OfnIris.USTANOVENI_NEVEREJNOST, ELI_2023_50));
             classConceptEditModel.setPrivacyProvisions(List.of(" "));
 
             edit();
 
             assertThat(model.getResource(CONCEPT).hasProperty(PROVISION)).isFalse();
-            assertThat(model.getResource(CONCEPT).hasProperty(LEGACY_PROVISION)).isFalse();
         }
 
         @Test
@@ -463,7 +439,7 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         void renameWithTypeChangeAndNonPublicDropsTheOldClassification() {
             String oldIri = DEFAULT_NS + "pojem/stará";
             Ttl.add(model, """
-                    <%s> a ofn:třída, ofn:typ-objektu-práva, l111:veřejný-údaj ; skos:prefLabel "Stará"@cs .
+                    <%s> a ofn:třída, vsgov:typ-objektu-práva, l111:veřejný-údaj ; skos:prefLabel "Stará"@cs .
                     """.formatted(oldIri));
             classConceptEditModel.setNameModel(Texts.name("cs", "Nová"));
             classConceptEditModel.setType("subjekt");

@@ -1,7 +1,6 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
-import com.dia.ismdtoolbackend.ofn.OfnIris;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
@@ -10,7 +9,6 @@ import org.apache.jena.rdf.model.Statement;
 import java.util.List;
 import java.util.Set;
 
-import static com.dia.ismdtoolbackend.utility.editor.ConceptEditStatements.removeLegacyPredicates;
 
 /** The field updaters of the concept editor, shared by the three concept-type editors. */
 class ConceptFieldUpdaters {
@@ -40,10 +38,6 @@ class ConceptFieldUpdaters {
         sources.updateLegalSources(context.newConcept, editModel, context.oldConcept, model, toRemove, toAdd);
         sources.updateNonLegalSources(context.newConcept, editModel, context.oldConcept, model, toRemove, toAdd);
         relations.updateExactMatch(context.newConcept, editModel.getExactMatch(), context.oldConcept, model, toRemove, toAdd);
-        // The thesaurus flag lives in PostgreSQL only; drop the RDF copy older edits wrote.
-        removeLegacyPredicates(context.newConcept, context.oldConcept,
-                property -> OfnIris.LEGACY_IN_TEZAURUS_LOCAL_NAME.equals(OfnIris.localName(property.getURI())),
-                toRemove, toAdd);
     }
 
     /** Applies the class {@code type} value (TSP/TOP rdf:type transitions). */
