@@ -1272,15 +1272,14 @@ class OntologyControllerTest {
 
         com.dia.validation.ValidationReportDto validationReport = new com.dia.validation.ValidationReportDto();
 
+        when(ontologyService.getOntologyMetadataBySlug(slug)).thenReturn(ontologyMetadata);
         when(ontologyService.getTtlContentFromOntology(any()))
                 .thenReturn("@prefix owl: <http://www.w3.org/2002/07/owl#> .");
         when(validationClient.requestValidation(anyString(), anyString()))
                 .thenReturn(java.util.Optional.of(validationReport));
         doNothing().when(validationService).saveValidationReport(any(), any(), eq(userId));
 
-        mockMvc.perform(post("/api/ontology/{slug}/validate", slug)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(ontologyMetadata)))
+        mockMvc.perform(post("/api/ontology/{slug}/validate", slug))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").exists())
@@ -1299,14 +1298,13 @@ class OntologyControllerTest {
 
         com.dia.validation.ValidationReportDto validationReport = new com.dia.validation.ValidationReportDto();
 
+        when(ontologyService.getOntologyMetadataBySlug(slug)).thenReturn(ontologyMetadata);
         when(ontologyService.getTtlContentFromOntology(any()))
                 .thenReturn("@prefix owl: <http://www.w3.org/2002/07/owl#> .");
         when(validationClient.requestValidation(anyString(), anyString()))
                 .thenReturn(java.util.Optional.of(validationReport));
 
-        mockMvc.perform(post("/api/ontology/{slug}/validate", slug)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(ontologyMetadata)))
+        mockMvc.perform(post("/api/ontology/{slug}/validate", slug))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").exists())
@@ -1323,6 +1321,7 @@ class OntologyControllerTest {
         ontologyMetadata.setGraphName("http://example.org/test-ontology");
         ontologyMetadata.setSlug(slug);
 
+        when(ontologyService.getOntologyMetadataBySlug(slug)).thenReturn(ontologyMetadata);
         when(ontologyService.getTtlContentFromOntology(any()))
                 .thenReturn("@prefix owl: <http://www.w3.org/2002/07/owl#> .");
         // Validator down → client throws the unavailable exception → 503.
@@ -1330,9 +1329,7 @@ class OntologyControllerTest {
                 .thenThrow(new com.dia.ismdtoolbackend.exception.ValidationServiceUnavailableException(
                         "Validační služba", "validator unreachable"));
 
-        mockMvc.perform(post("/api/ontology/{slug}/validate", slug)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(ontologyMetadata)))
+        mockMvc.perform(post("/api/ontology/{slug}/validate", slug))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
@@ -1349,6 +1346,7 @@ class OntologyControllerTest {
         ontologyMetadata.setGraphName("http://example.org/test-ontology");
         ontologyMetadata.setSlug(slug);
 
+        when(ontologyService.getOntologyMetadataBySlug(slug)).thenReturn(ontologyMetadata);
         when(ontologyService.getTtlContentFromOntology(any()))
                 .thenReturn("bad ttl");
         // Validator answered with a 4xx → client throws a rejection carrying the validator's message → 400.
@@ -1356,9 +1354,7 @@ class OntologyControllerTest {
                 .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyValidationException(
                         "Invalid TTL syntax: line 3"));
 
-        mockMvc.perform(post("/api/ontology/{slug}/validate", slug)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(ontologyMetadata)))
+        mockMvc.perform(post("/api/ontology/{slug}/validate", slug))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
@@ -1376,13 +1372,33 @@ class OntologyControllerTest {
 
         ontologySecurity.denyModify();
 
-        mockMvc.perform(post("/api/ontology/{slug}/validate", slug)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(ontologyMetadata)))
+        mockMvc.perform(post("/api/ontology/{slug}/validate", slug))
                 .andExpect(status().isForbidden())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
                 .andExpect(jsonPath("$.message").value("Přístup odepřen: nemáte oprávnění k této operaci."));
+    }
+
+    /** The target comes from the path slug; a body naming another ontology is ignored. */
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testValidateOntology_bodyCannotRedirectTarget() throws Exception {
+        OntologyMetadataModel owned = new OntologyMetadataModel();
+        owned.setId(1L);
+        owned.setSlug("test-ontology");
+        owned.setGraphName("http://example.org/test-ontology");
+        when(ontologyService.getOntologyMetadataBySlug("test-ontology")).thenReturn(owned);
+        when(ontologyService.getTtlContentFromOntology(owned)).thenReturn("ttl");
+        when(validationClient.requestValidation("ttl", "http://example.org/test-ontology"))
+                .thenReturn(java.util.Optional.of(new com.dia.validation.ValidationReportDto()));
+
+        mockMvc.perform(post("/api/ontology/{slug}/validate", "test-ontology")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"id\":2,\"graphName\":\"http://example.org/other-users-ontology\"}"))
+                .andExpect(status().isOk());
+
+        verify(ontologyService).getTtlContentFromOntology(owned);
+        verify(validationService).saveValidationReport(any(), eq(owned), eq("user123"));
     }
 
     // ========== Get Concepts By IRI Tests ==========
@@ -1538,13 +1554,12 @@ class OntologyControllerTest {
     void testValidateOntology_NoReportReceived_returns503AndSavesNothing() throws Exception {
         OntologyMetadataModel ontologyMetadata = new OntologyMetadataModel();
         ontologyMetadata.setGraphName("http://example.org/test-ontology");
+        when(ontologyService.getOntologyMetadataBySlug("test-ontology")).thenReturn(ontologyMetadata);
         when(ontologyService.getTtlContentFromOntology(any())).thenReturn("ttl");
         when(validationClient.requestValidation("ttl", "http://example.org/test-ontology"))
                 .thenReturn(java.util.Optional.empty());
 
-        mockMvc.perform(post("/api/ontology/{slug}/validate", "test-ontology")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(ontologyMetadata)))
+        mockMvc.perform(post("/api/ontology/{slug}/validate", "test-ontology"))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_SERVICE_UNAVAILABLE"))
                 .andExpect(jsonPath("$.message").value("Validační služba není momentálně dostupná."));
