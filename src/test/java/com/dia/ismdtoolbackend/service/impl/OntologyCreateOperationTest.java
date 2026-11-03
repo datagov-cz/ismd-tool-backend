@@ -8,7 +8,7 @@ import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.DescriptionModel;
 import com.dia.ismdtoolbackend.models.NameModel;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
-import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
+import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
@@ -43,6 +43,7 @@ import static com.dia.ismdtoolbackend.testsupport.fixtures.Texts.name;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
@@ -170,23 +171,25 @@ class OntologyCreateOperationTest {
             when(ontologyMetadataRepository.findByGraphName(anyString())).thenReturn(Optional.empty());
             when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(ontologyEntity());
 
-            OntologyMetadataModel result = operation.createOntology(createModel(), USER_ID);
+            OntologySummaryDto result = operation.createOntology(createModel(), USER_ID);
 
             assertThat(result.getId()).isEqualTo(ONTOLOGY_ID);
             assertThat(result.getGraphName()).isEqualTo(GRAPH);
-            assertThat(result.getUser().getUserId()).isEqualTo(USER_ID);
+            assertThat(result.getConceptCount()).isZero();
             verify(outboxWriter).enqueueCreateGraph(eq(GRAPH), any(Model.class));
-            verify(ontologyMetadataRepository).save(any(OntologyMetadataEntity.class));
+            verify(ontologyMetadataRepository).save(argThat(saved -> USER_ID.equals(saved.getUserId())));
         }
 
         @Test
         void existingIri_returnsTheExistingVocabularyUnchanged() {
             when(ontologyMetadataRepository.findByGraphName(anyString())).thenReturn(Optional.of(ontologyEntity()));
+            when(conceptMetadataRepository.countByGraphName(GRAPH)).thenReturn(3L);
 
-            OntologyMetadataModel result = operation.createOntology(createModel(), USER_ID);
+            OntologySummaryDto result = operation.createOntology(createModel(), USER_ID);
 
             assertThat(result.getId()).isEqualTo(ONTOLOGY_ID);
             assertThat(result.getSlug()).isEqualTo(SLUG);
+            assertThat(result.getConceptCount()).isEqualTo(3);
             verify(ontologyMetadataRepository, never()).save(any(OntologyMetadataEntity.class));
             verifyNoInteractions(outboxWriter);
         }

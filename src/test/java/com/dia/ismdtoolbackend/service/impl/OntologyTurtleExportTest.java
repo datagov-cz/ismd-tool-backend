@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
+import com.dia.ismdtoolbackend.models.OntologyRef;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
@@ -87,10 +87,7 @@ class OntologyTurtleExportTest {
                 .hasMessage("Failed to retrieve TTL content: TDB2 locked");
     }
 
-    private static OntologyMetadataModel metadata(String graphName) {
-        OntologyMetadataModel metadata = new OntologyMetadataModel();
-        metadata.setSlug("muj-slovnik");
-        metadata.setGraphName(graphName);
-        return metadata;
+    private static OntologyRef metadata(String graphName) {
+        return new OntologyRef(null, "muj-slovnik", graphName, null);
     }
 }

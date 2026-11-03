@@ -1,5 +1,8 @@
 package com.dia.ismdtoolbackend.controller;
 
+import com.dia.ismdtoolbackend.models.OntologyRef;
+import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
+import com.dia.ismdtoolbackend.controller.dto.OntologyUploadResultDto;
 import com.dia.ismdtoolbackend.config.security.SecurityUser;
 import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.config.ValidationConfig;
@@ -20,7 +23,6 @@ import com.dia.ismdtoolbackend.exception.OntologyDownloadBlockedException;
 import com.dia.ismdtoolbackend.exception.ValidationServiceUnavailableException;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
-import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
@@ -78,7 +80,7 @@ public class OntologyController {
             description = "Umožňuje nahrát a importovat slovník z RDF souboru (Turtle, JSON-LD). Soubor je validován a uložen do RDF úložiště. Vyžaduje autentizaci."
     )
     @PostMapping(path="/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> uploadFromFile(
+    public ResponseEntity<ApiResponseDto<OntologyUploadResultDto>> uploadFromFile(
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "normalizeMode", required = false) NormalizeMode normalizeMode,
             @RequestParam(value = "conceptsToNormalize", required = false) List<String> conceptsToNormalize,
@@ -91,9 +93,10 @@ public class OntologyController {
                 securityUser.getUserId()
         );
 
-        OntologyMetadataModel savedOntology = ontologyUploadService.uploadFromFile(
+        OntologyUploadResultDto uploaded = ontologyUploadService.uploadFromFile(
                 file, securityUser.getUserId(), normalizeMode, conceptsToNormalize);
-        log.info("Ontology upload successful: {}", savedOntology.getGraphName());
+        String graphName = uploaded.ontology().getGraphName();
+        log.info("Ontology upload successful: {}", graphName);
 
         // Post-commit, NKD-independent: warm NKD local-copy snapshots for any published-concept links
         // off the request thread. If NKD is down the graph stays cold and first detail-view heals it.
@@ -101,23 +104,23 @@ public class OntologyController {
         // warmGraphNow, not warmGraph: the graph just changed, so the read-path scan throttle must not
         // suppress this scan.
         try {
-            nkdSnapshotWarmer.warmGraphNow(savedOntology.getGraphName());
+            nkdSnapshotWarmer.warmGraphNow(graphName);
         } catch (Exception e) {
             log.warn("Could not trigger NKD snapshot warming for uploaded graph {}: {}",
-                    savedOntology.getGraphName(), e.getMessage());
+                    graphName, e.getMessage());
         }
 
-        return ResponseEntity.ok().body(ApiResponseDto.success(savedOntology, uploadMessage(savedOntology)));
+        return ResponseEntity.ok().body(ApiResponseDto.success(uploaded, uploadMessage(uploaded)));
     }
 
     /** Names what the import left out or corrected, so a partial import does not read as a full one. */
-    static String uploadMessage(OntologyMetadataModel uploaded) {
-        StringBuilder message = new StringBuilder("Slovník úspěšně nahrán: ").append(uploaded.getGraphName());
-        int rejected = uploaded.getRejectedConcepts() == null ? 0 : uploaded.getRejectedConcepts().size();
+    static String uploadMessage(OntologyUploadResultDto uploaded) {
+        StringBuilder message = new StringBuilder("Slovník úspěšně nahrán: ").append(uploaded.ontology().getGraphName());
+        int rejected = uploaded.rejectedConcepts().size();
         if (rejected > 0) {
             message.append(". Neimportované pojmy: ").append(rejected);
         }
-        int corrected = uploaded.getCorrectedIris() == null ? 0 : uploaded.getCorrectedIris().size();
+        int corrected = uploaded.correctedIris().size();
         if (corrected > 0) {
             message.append(". IRI opravená o koncové lomítko: ").append(corrected);
         }
@@ -162,7 +165,7 @@ public class OntologyController {
             description = "Vytvoří nový prázdný slovník s definovaným jmenným prostorem, názvem a popisem. Slovník je uložen do RDF úložiště. Vyžaduje autentizaci."
     )
     @PostMapping("/create")
-    public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> createOntology(
+    public ResponseEntity<ApiResponseDto<OntologySummaryDto>> createOntology(
             @Valid @RequestBody OntologyCreateModel ontologyCreateModel,
             @AuthenticationPrincipal SecurityUser securityUser) {
 
@@ -175,7 +178,7 @@ public class OntologyController {
                 securityUser.getUserId()
         );
 
-        OntologyMetadataModel createdOntology = ontologyService.createOntology(ontologyCreateModel, securityUser.getUserId());
+        OntologySummaryDto createdOntology = ontologyService.createOntology(ontologyCreateModel, securityUser.getUserId());
         log.info("Ontology create successful: {}", createdOntology);
 
         return ResponseEntity.ok().body(ApiResponseDto.success(createdOntology, "Slovník úspěšně vytvořen: " + createdOntology.getGraphName()));
@@ -201,7 +204,7 @@ public class OntologyController {
     )
     @PatchMapping("/{ontologyId}/edit")
     @PreAuthorize("@ontologySecurityService.canModify(#ontologyId)")
-    public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> editOntology(
+    public ResponseEntity<ApiResponseDto<OntologySummaryDto>> editOntology(
             @RequestBody OntologyEditModel ontologyEditModel,
             @AuthenticationPrincipal SecurityUser securityUser,
             @PathVariable Long ontologyId
@@ -214,7 +217,7 @@ public class OntologyController {
         );
 
 
-        OntologyMetadataModel updatedOntology = ontologyService.editOntology(ontologyId, ontologyEditModel);
+        OntologySummaryDto updatedOntology = ontologyService.editOntology(ontologyId, ontologyEditModel);
         log.info("Ontology edit successful: {}", updatedOntology);
 
         return ResponseEntity.ok().body(ApiResponseDto.success(updatedOntology, "Slovník úspěšně upraven: " + updatedOntology.getGraphName()));
@@ -240,7 +243,7 @@ public class OntologyController {
         }
 
         if (!validationConfig.isEnableOntologyViolationDownload()) {
-            OntologyMetadataModel metadata = ontologyService.getOntologyMetadata(ontologyId);
+            OntologyRef metadata = ontologyService.getOntologyMetadata(ontologyId);
             ValidationReportDto validationReport = validationService.getValidationReport(metadata);
             if (validationReport != null) {
                 List<ValidationResult> errors = validationReport.getResults().stream()
@@ -248,7 +251,7 @@ public class OntologyController {
                         .toList();
                 if (!errors.isEmpty()) {
                     throw new OntologyDownloadBlockedException(
-                            metadata.getGraphName(),
+                            metadata.graphName(),
                             errors.size(),
                             errors.stream()
                                     .limit(OntologyDownloadBlockedException.MAX_LISTED_ERRORS)
@@ -290,7 +293,7 @@ public class OntologyController {
     public ResponseEntity<ApiResponseDto<ValidationReportDto>> getValidationReport(@PathVariable String slug) {
         log.info("Ontology validation report requested, slug: {}", slug);
 
-        OntologyMetadataModel ontologyMetadata = ontologyService.getOntologyMetadataBySlug(slug);
+        OntologyRef ontologyMetadata = ontologyService.getOntologyMetadataBySlug(slug);
         ValidationReportDto report = validationService.getValidationReportOrEmpty(ontologyMetadata);
 
         return ResponseEntity.ok().body(ApiResponseDto.success(report, "Zpráva z kontroly slovníku byla úspěšně načtena."));
@@ -360,7 +363,7 @@ public class OntologyController {
             description = "Vrací seznam slovníků s možností filtrování podle uživatele, stavu publikace nebo konkrétních slugů. Veřejný endpoint."
     )
     @GetMapping("/list")
-    public ResponseEntity<ApiResponseDto<List<OntologyMetadataModel>>> getOntologyList(
+    public ResponseEntity<ApiResponseDto<List<OntologySummaryDto>>> getOntologyList(
             @RequestParam(required = false) String userId,
             @RequestParam(required = false) Boolean isPublished,
             @RequestParam(required = false) List<String> slugs
@@ -368,12 +371,12 @@ public class OntologyController {
 
         if (slugs != null && !slugs.isEmpty()) {
             log.info("Ontology list by slugs requested, slugs: {}", slugs);
-            List<OntologyMetadataModel> ontologies = ontologyService.getBySlugs(slugs);
+            List<OntologySummaryDto> ontologies = ontologyService.getBySlugs(slugs);
             return ResponseEntity.ok().body(ApiResponseDto.success(ontologies, "Žádost o seznam slovníků proběhla úspěšně."));
         }
 
         log.info("Ontology list requested, userId: {}, isPublished: {}", userId, isPublished);
-        List<OntologyMetadataModel> ontologies = ontologyService.getAll(userId, isPublished);
+        List<OntologySummaryDto> ontologies = ontologyService.getAll(userId, isPublished);
         return ResponseEntity.ok().body(ApiResponseDto.success(ontologies, "Žádost o seznam slovníků proběhla úspěšně."));
     }
 
@@ -388,15 +391,15 @@ public class OntologyController {
             @AuthenticationPrincipal SecurityUser securityUser
     ) {
         // Resolved from the slug the ownership check ran on; the client never names the target.
-        OntologyMetadataModel ontologyMetadata = ontologyService.getOntologyMetadataBySlug(slug);
-        log.info("Ontology validation requested, slug: {}, ontologyIRI: {}", slug, ontologyMetadata.getGraphName());
+        OntologyRef ontologyMetadata = ontologyService.getOntologyMetadataBySlug(slug);
+        log.info("Ontology validation requested, slug: {}, ontologyIRI: {}", slug, ontologyMetadata.graphName());
 
         String ttlContent = ontologyService.getTtlContentFromOntology(ontologyMetadata);
 
-        Optional<ValidationReport> validationReport = validationClient.requestValidation(ttlContent, ontologyMetadata.getGraphName());
+        Optional<ValidationReport> validationReport = validationClient.requestValidation(ttlContent, ontologyMetadata.graphName());
 
         ValidationReport report = validationReport.orElseThrow(() -> {
-            log.warn("Validation report not received for ontology: {}", ontologyMetadata.getGraphName());
+            log.warn("Validation report not received for ontology: {}", ontologyMetadata.graphName());
             return new ValidationServiceUnavailableException("Validační služba",
                     "Validační služba nevrátila odpověď.");
         });

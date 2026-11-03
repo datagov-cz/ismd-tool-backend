@@ -1,5 +1,9 @@
 package com.dia.ismdtoolbackend.controller;
 
+import com.dia.ismdtoolbackend.models.OntologyRef;
+import com.dia.ismdtoolbackend.controller.dto.OntologyUploadResultDto;
+import com.dia.ismdtoolbackend.controller.dto.OntologyDetailMetadataDto;
+import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
 import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.config.ValidationConfig;
 import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
@@ -95,7 +99,7 @@ class OntologyControllerTest {
     @Test
     @WithMockSecurityUser(userId = "user123")
     void createWithConcepts_ReturnsCreatedAndRefMapping() throws Exception {
-        var response = new OntologyCreateWithConceptsResponseDto(new OntologyMetadataModel(), java.util.Map.of("driver", "https://example.org/driver"));
+        var response = new OntologyCreateWithConceptsResponseDto(new OntologySummaryDto(), java.util.Map.of("driver", "https://example.org/driver"));
         when(ontologyService.createWithConcepts(any(), eq("user123"))).thenReturn(response);
         mockMvc.perform(post("/api/ontology/create-with-concepts").contentType(MediaType.APPLICATION_JSON)
                         .content(new ObjectMapper().writeValueAsString(sample())))
@@ -182,19 +186,19 @@ class OntologyControllerTest {
                 "@prefix owl: <http://www.w3.org/2002/07/owl#> . <http://example.org/test> a owl:Ontology .".getBytes()
         );
 
-        OntologyMetadataModel expectedMetadata = new OntologyMetadataModel();
+        OntologySummaryDto expectedMetadata = new OntologySummaryDto();
         expectedMetadata.setGraphName("file");
-        expectedMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
-                .thenReturn(expectedMetadata);
+                .thenReturn(new OntologyUploadResultDto(expectedMetadata, List.of(), List.of()));
 
         mockMvc.perform(multipart("/api/ontology/upload")
                         .file(file))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data.graphName").value("file"))
-                .andExpect(jsonPath("$.data.user.userId").value(userId))
+                .andExpect(jsonPath("$.data.ontology.graphName").value("file"))
+                .andExpect(jsonPath("$.data.rejectedConcepts").isArray())
+                .andExpect(jsonPath("$.data.correctedIris").isArray())
                 .andExpect(jsonPath("$.message").value("Slovník úspěšně nahrán: file"));
 
         verify(nkdSnapshotWarmer).warmGraphNow("file");
@@ -206,16 +210,16 @@ class OntologyControllerTest {
     void testUploadFromFile_warmerFailure_stillReturnsOk() throws Exception {
         MockMultipartFile file = new MockMultipartFile("file", "test.ttl", "text/turtle",
                 "<http://example.org/test> a <http://www.w3.org/2002/07/owl#Ontology> .".getBytes());
-        OntologyMetadataModel saved = new OntologyMetadataModel();
+        OntologySummaryDto saved = new OntologySummaryDto();
         saved.setGraphName("https://example.org/graph");
-        when(ontologyUploadService.uploadFromFile(any(), eq("user123"), isNull(), isNull())).thenReturn(saved);
+        when(ontologyUploadService.uploadFromFile(any(), eq("user123"), isNull(), isNull())).thenReturn(new OntologyUploadResultDto(saved, List.of(), List.of()));
         doThrow(new org.springframework.core.task.TaskRejectedException("executor saturated"))
                 .when(nkdSnapshotWarmer).warmGraphNow("https://example.org/graph");
 
         mockMvc.perform(multipart("/api/ontology/upload").file(file))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.graphName").value("https://example.org/graph"));
+                .andExpect(jsonPath("$.data.ontology.graphName").value("https://example.org/graph"));
 
         verify(nkdSnapshotWarmer).warmGraphNow("https://example.org/graph");
     }
@@ -231,19 +235,17 @@ class OntologyControllerTest {
                 "@prefix owl: <http://www.w3.org/2002/07/owl#> . <http://example.org/test> a owl:Ontology .".getBytes()
         );
 
-        OntologyMetadataModel expectedMetadata = new OntologyMetadataModel();
+        OntologySummaryDto expectedMetadata = new OntologySummaryDto();
         expectedMetadata.setGraphName("generated-graph-name");
-        expectedMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
-                .thenReturn(expectedMetadata);
+                .thenReturn(new OntologyUploadResultDto(expectedMetadata, List.of(), List.of()));
 
         mockMvc.perform(multipart("/api/ontology/upload")
                         .file(file))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data.graphName").value("generated-graph-name"))
-                .andExpect(jsonPath("$.data.user.userId").value(userId))
+                .andExpect(jsonPath("$.data.ontology.graphName").value("generated-graph-name"))
                 .andExpect(jsonPath("$.message").isString());
     }
 
@@ -364,19 +366,17 @@ class OntologyControllerTest {
                 "{\"@context\":{\"owl\":\"http://www.w3.org/2002/07/owl#\"},\"@type\":\"owl:Ontology\"}".getBytes()
         );
 
-        OntologyMetadataModel expectedMetadata = new OntologyMetadataModel();
+        OntologySummaryDto expectedMetadata = new OntologySummaryDto();
         expectedMetadata.setGraphName("file");
-        expectedMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
-                .thenReturn(expectedMetadata);
+                .thenReturn(new OntologyUploadResultDto(expectedMetadata, List.of(), List.of()));
 
         mockMvc.perform(multipart("/api/ontology/upload")
                         .file(file))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data.graphName").value("file"))
-                .andExpect(jsonPath("$.data.user.userId").value(userId));
+                .andExpect(jsonPath("$.data.ontology.graphName").value("file"));
     }
 
     @Test
@@ -415,12 +415,11 @@ class OntologyControllerTest {
                 "@prefix owl: <http://www.w3.org/2002/07/owl#> . <http://example.org/test> a owl:Ontology .".getBytes()
         );
 
-        OntologyMetadataModel expected = new OntologyMetadataModel();
+        OntologySummaryDto expected = new OntologySummaryDto();
         expected.setGraphName("file");
-        expected.setUser(new UserModel(userId));
 
         when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
-                .thenReturn(expected);
+                .thenReturn(new OntologyUploadResultDto(expected, List.of(), List.of()));
 
         mockMvc.perform(multipart("/api/ontology/upload")
                         .file(file)
@@ -428,7 +427,7 @@ class OntologyControllerTest {
                         .param("conceptsToNormalize", "https://slovník.gov.cz/a3791/pojem/x")
                         .param("conceptsToNormalize", "https://slovník.gov.cz/a3791/pojem/y"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.graphName").value("file"));
+                .andExpect(jsonPath("$.data.ontology.graphName").value("file"));
 
         verify(ontologyUploadService).uploadFromFile(
                 any(),
@@ -443,19 +442,17 @@ class OntologyControllerTest {
         String userId = "user123";
         MockMultipartFile largeFile = getMockMultipartFile();
 
-        OntologyMetadataModel expectedMetadata = new OntologyMetadataModel();
+        OntologySummaryDto expectedMetadata = new OntologySummaryDto();
         expectedMetadata.setGraphName("large-ontology");
-        expectedMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
-                .thenReturn(expectedMetadata);
+                .thenReturn(new OntologyUploadResultDto(expectedMetadata, List.of(), List.of()));
 
         mockMvc.perform(multipart("/api/ontology/upload")
                         .file(largeFile))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data.graphName").value("large-ontology"))
-                .andExpect(jsonPath("$.data.user.userId").value(userId));
+                .andExpect(jsonPath("$.data.ontology.graphName").value("large-ontology"));
     }
 
     private static MockMultipartFile getMockMultipartFile() {
@@ -486,21 +483,19 @@ class OntologyControllerTest {
                 "@prefix owl: <http://www.w3.org/2002/07/owl#> . <http://example.org/test> a owl:Ontology .".getBytes()
         );
 
-        OntologyMetadataModel existingMetadata = new OntologyMetadataModel();
+        OntologySummaryDto existingMetadata = new OntologySummaryDto();
         existingMetadata.setId(1L);
         existingMetadata.setGraphName("file");
-        existingMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
-                .thenReturn(existingMetadata);
+                .thenReturn(new OntologyUploadResultDto(existingMetadata, List.of(), List.of()));
 
         mockMvc.perform(multipart("/api/ontology/upload")
                         .file(file))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data.id").value(1))
-                .andExpect(jsonPath("$.data.graphName").value("file"))
-                .andExpect(jsonPath("$.data.user.userId").value(userId))
+                .andExpect(jsonPath("$.data.ontology.id").value(1))
+                .andExpect(jsonPath("$.data.ontology.graphName").value("file"))
                 .andExpect(jsonPath("$.message").value("Slovník úspěšně nahrán: " + "file"));
     }
 
@@ -632,7 +627,7 @@ class OntologyControllerTest {
         MockMultipartFile file = new MockMultipartFile("file", "test.ttl", "text/turtle", "x".getBytes());
 
         when(ontologyUploadService.uploadFromFile(any(), eq("user123"), any(), any()))
-                .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyAlreadyExistsException("Slovník se stejným IRI již v Nástroji existuje: http://example.org/test", new OntologyMetadataModel()));
+                .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyAlreadyExistsException("Slovník se stejným IRI již v Nástroji existuje: http://example.org/test"));
 
         mockMvc.perform(multipart("/api/ontology/upload").file(file))
                 .andExpect(status().isConflict())
@@ -722,7 +717,7 @@ class OntologyControllerTest {
         String userId = "user123";
         OntologyCreateModel createModel = getOntologyCreateModel();
 
-        OntologyMetadataModel expectedMetadata = new OntologyMetadataModel();
+        OntologySummaryDto expectedMetadata = new OntologySummaryDto();
         expectedMetadata.setGraphName("http://example.org/test-ontology");
 
         when(ontologyService.createOntology(any(OntologyCreateModel.class), eq(userId)))
@@ -779,7 +774,7 @@ class OntologyControllerTest {
         Long ontologyId = 1L;
         OntologyEditModel editModel = new OntologyEditModel();
 
-        OntologyMetadataModel expectedMetadata = new OntologyMetadataModel();
+        OntologySummaryDto expectedMetadata = new OntologySummaryDto();
         expectedMetadata.setGraphName("http://example.org/test-ontology");
 
         when(ontologyService.editOntology(eq(ontologyId), any(OntologyEditModel.class)))
@@ -892,9 +887,7 @@ class OntologyControllerTest {
     @Test
     void testDownloadOntology_BlockedByValidationErrors_ReturnsErrorDetails() throws Exception {
         Long ontologyId = 21L;
-        OntologyMetadataModel metadata = new OntologyMetadataModel();
-        metadata.setId(ontologyId);
-        metadata.setGraphName("https://example.com/slovnik");
+        OntologyRef metadata = new OntologyRef(ontologyId, null, "https://example.com/slovnik", null);
 
         when(validationConfig.isEnableOntologyViolationDownload()).thenReturn(false);
         when(ontologyService.getOntologyMetadata(ontologyId)).thenReturn(metadata);
@@ -905,7 +898,7 @@ class OntologyControllerTest {
                                         "https://example.com/pojem/1", "http://www.w3.org/2004/02/skos/core#prefLabel", null),
                                 new ValidationResult(ValidationSeverity.WARNING, "Doporučujeme popis", "rule-popis",
                                         "https://example.com/pojem/2", null, null)),
-                        metadata.getGraphName(),
+                        metadata.graphName(),
                         Instant.now()));
 
         mockMvc.perform(get("/api/ontology/{ontologyId}/download", ontologyId)
@@ -929,9 +922,7 @@ class OntologyControllerTest {
     @Test
     void testDownloadOntology_BlockedWithManyErrors_TruncatesListButKeepsFullCount() throws Exception {
         Long ontologyId = 21L;
-        OntologyMetadataModel metadata = new OntologyMetadataModel();
-        metadata.setId(ontologyId);
-        metadata.setGraphName("https://example.com/slovnik");
+        OntologyRef metadata = new OntologyRef(ontologyId, null, "https://example.com/slovnik", null);
 
         List<ValidationResult> results = IntStream.range(0, 38)
                 .mapToObj(i -> new ValidationResult(ValidationSeverity.ERROR, "Chyba " + i, "rule-" + i,
@@ -941,7 +932,7 @@ class OntologyControllerTest {
         when(validationConfig.isEnableOntologyViolationDownload()).thenReturn(false);
         when(ontologyService.getOntologyMetadata(ontologyId)).thenReturn(metadata);
         when(validationService.getValidationReport(metadata)).thenReturn(
-                new ValidationReportDto(results, metadata.getGraphName(), Instant.now()));
+                new ValidationReportDto(results, metadata.graphName(), Instant.now()));
 
         mockMvc.perform(get("/api/ontology/{ontologyId}/download", ontologyId)
                         .param("format", "json-ld"))
@@ -957,9 +948,7 @@ class OntologyControllerTest {
     void testDownloadOntology_WarningsOnly_IsNotBlocked() throws Exception {
         Long ontologyId = 1L;
         String ttlContent = "@prefix owl: <http://www.w3.org/2002/07/owl#> .";
-        OntologyMetadataModel metadata = new OntologyMetadataModel();
-        metadata.setId(ontologyId);
-        metadata.setGraphName("https://example.com/slovnik");
+        OntologyRef metadata = new OntologyRef(ontologyId, null, "https://example.com/slovnik", null);
 
         when(validationConfig.isEnableOntologyViolationDownload()).thenReturn(false);
         when(ontologyService.getOntologyMetadata(ontologyId)).thenReturn(metadata);
@@ -967,7 +956,7 @@ class OntologyControllerTest {
                 new ValidationReportDto(
                         List.of(new ValidationResult(ValidationSeverity.WARNING, "Doporučujeme popis", "rule-popis",
                                 "https://example.com/pojem/2", null, null)),
-                        metadata.getGraphName(),
+                        metadata.graphName(),
                         Instant.now()));
         when(ontologyDownloadService.downloadOntology(ontologyId, "ttl")).thenReturn(ttlContent);
 
@@ -1000,7 +989,7 @@ class OntologyControllerTest {
     void testGetOntologyDetail_Success() throws Exception {
         String slug = "test-ontology";
         GetOntologyDto ontologyDto = new GetOntologyDto();
-        OntologyMetadataModel metadataModel = new OntologyMetadataModel();
+        OntologyDetailMetadataDto metadataModel = new OntologyDetailMetadataDto();
         metadataModel.setSlug(slug);
         metadataModel.setGraphName("http://example.org/test-ontology");
 
@@ -1042,9 +1031,7 @@ class OntologyControllerTest {
     @Test
     void testGetValidationReport_Success() throws Exception {
         String slug = "test-ontology";
-        OntologyMetadataModel metadataModel = new OntologyMetadataModel();
-        metadataModel.setSlug(slug);
-        metadataModel.setGraphName("http://example.org/test-ontology");
+        OntologyRef metadataModel = new OntologyRef(null, slug, "http://example.org/test-ontology", null);
 
         java.time.Instant timestamp = java.time.Instant.parse("2026-08-24T10:15:30Z");
         com.dia.validation.ValidationResult result = new com.dia.validation.ValidationResult(
@@ -1057,7 +1044,7 @@ class OntologyControllerTest {
 
         when(ontologyService.getOntologyMetadataBySlug(slug)).thenReturn(metadataModel);
         when(validationService.getValidationReportOrEmpty(metadataModel)).thenReturn(
-                new com.dia.validation.ValidationReportDto(List.of(result), metadataModel.getGraphName(), timestamp));
+                new com.dia.validation.ValidationReportDto(List.of(result), metadataModel.graphName(), timestamp));
 
         mockMvc.perform(get("/api/ontology/{slug}/validation-report", slug))
                 .andExpect(status().isOk())
@@ -1073,13 +1060,11 @@ class OntologyControllerTest {
     @Test
     void testGetValidationReport_NeverValidatedReturnsEmptyReport() throws Exception {
         String slug = "test-ontology";
-        OntologyMetadataModel metadataModel = new OntologyMetadataModel();
-        metadataModel.setSlug(slug);
-        metadataModel.setGraphName("http://example.org/test-ontology");
+        OntologyRef metadataModel = new OntologyRef(null, slug, "http://example.org/test-ontology", null);
 
         when(ontologyService.getOntologyMetadataBySlug(slug)).thenReturn(metadataModel);
         when(validationService.getValidationReportOrEmpty(metadataModel)).thenReturn(
-                new com.dia.validation.ValidationReportDto(List.of(), metadataModel.getGraphName(), null));
+                new com.dia.validation.ValidationReportDto(List.of(), metadataModel.graphName(), null));
 
         mockMvc.perform(get("/api/ontology/{slug}/validation-report", slug))
                 .andExpect(status().isOk())
@@ -1109,9 +1094,7 @@ class OntologyControllerTest {
     @Test
     void testGetValidationReport_ReportLookupFailureIsHandled() throws Exception {
         String slug = "test-ontology";
-        OntologyMetadataModel metadataModel = new OntologyMetadataModel();
-        metadataModel.setSlug(slug);
-        metadataModel.setGraphName("http://example.org/test-ontology");
+        OntologyRef metadataModel = new OntologyRef(null, slug, "http://example.org/test-ontology", null);
 
         when(ontologyService.getOntologyMetadataBySlug(slug)).thenReturn(metadataModel);
         when(validationService.getValidationReportOrEmpty(metadataModel))
@@ -1127,12 +1110,13 @@ class OntologyControllerTest {
 
     @Test
     void testGetOntologyList_AllOntologies() throws Exception {
-        OntologyMetadataModel ontology1 = new OntologyMetadataModel();
+        OntologySummaryDto ontology1 = new OntologySummaryDto();
         ontology1.setId(1L);
         ontology1.setGraphName("http://example.org/ontology1");
         ontology1.setSlug("ontology-1");
+        ontology1.setConceptCount(7);
 
-        OntologyMetadataModel ontology2 = new OntologyMetadataModel();
+        OntologySummaryDto ontology2 = new OntologySummaryDto();
         ontology2.setId(2L);
         ontology2.setGraphName("http://example.org/ontology2");
         ontology2.setSlug("ontology-2");
@@ -1147,6 +1131,10 @@ class OntologyControllerTest {
                 .andExpect(jsonPath("$.data.length()").value(2))
                 .andExpect(jsonPath("$.data[0].id").value(1))
                 .andExpect(jsonPath("$.data[0].graphName").value("http://example.org/ontology1"))
+                .andExpect(jsonPath("$.data[0].conceptCount").value(7))
+                // The public list names no owner and carries no comments.
+                .andExpect(jsonPath("$.data[0].user").doesNotExist())
+                .andExpect(jsonPath("$.data[0].comments").doesNotExist())
                 .andExpect(jsonPath("$.data[1].id").value(2))
                 .andExpect(jsonPath("$.data[1].graphName").value("http://example.org/ontology2"))
                 .andExpect(jsonPath("$.message").value("Žádost o seznam slovníků proběhla úspěšně."));
@@ -1155,10 +1143,9 @@ class OntologyControllerTest {
     @Test
     void testGetOntologyList_ByUserId() throws Exception {
         String userId = "user123";
-        OntologyMetadataModel ontology1 = new OntologyMetadataModel();
+        OntologySummaryDto ontology1 = new OntologySummaryDto();
         ontology1.setId(1L);
         ontology1.setGraphName("http://example.org/ontology1");
-        ontology1.setUser(new UserModel(userId));
 
         when(ontologyService.getAll(userId, null))
                 .thenReturn(java.util.List.of(ontology1));
@@ -1170,13 +1157,13 @@ class OntologyControllerTest {
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].id").value(1))
-                .andExpect(jsonPath("$.data[0].user.userId").value(userId))
+                .andExpect(jsonPath("$.data[0].user").doesNotExist())
                 .andExpect(jsonPath("$.message").value("Žádost o seznam slovníků proběhla úspěšně."));
     }
 
     @Test
     void testGetOntologyList_ByPublishedStatus() throws Exception {
-        OntologyMetadataModel ontology1 = new OntologyMetadataModel();
+        OntologySummaryDto ontology1 = new OntologySummaryDto();
         ontology1.setId(1L);
         ontology1.setGraphName("http://example.org/ontology1");
         ontology1.setIsPublished(true);
@@ -1196,12 +1183,12 @@ class OntologyControllerTest {
 
     @Test
     void testGetOntologyList_BySlugs() throws Exception {
-        OntologyMetadataModel ontology1 = new OntologyMetadataModel();
+        OntologySummaryDto ontology1 = new OntologySummaryDto();
         ontology1.setId(1L);
         ontology1.setSlug("ontology-1");
         ontology1.setGraphName("http://example.org/ontology1");
 
-        OntologyMetadataModel ontology2 = new OntologyMetadataModel();
+        OntologySummaryDto ontology2 = new OntologySummaryDto();
         ontology2.setId(2L);
         ontology2.setSlug("ontology-2");
         ontology2.setGraphName("http://example.org/ontology2");
@@ -1236,10 +1223,9 @@ class OntologyControllerTest {
     @Test
     void testGetOntologyList_CombinedFilters() throws Exception {
         String userId = "user123";
-        OntologyMetadataModel ontology1 = new OntologyMetadataModel();
+        OntologySummaryDto ontology1 = new OntologySummaryDto();
         ontology1.setId(1L);
         ontology1.setGraphName("http://example.org/ontology1");
-        ontology1.setUser(new UserModel(userId));
         ontology1.setIsPublished(true);
 
         when(ontologyService.getAll(userId, true))
@@ -1252,7 +1238,7 @@ class OntologyControllerTest {
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].user.userId").value(userId))
+                .andExpect(jsonPath("$.data[0].user").doesNotExist())
                 .andExpect(jsonPath("$.data[0].isPublished").value(true))
                 .andExpect(jsonPath("$.message").value("Žádost o seznam slovníků proběhla úspěšně."));
     }
@@ -1265,10 +1251,7 @@ class OntologyControllerTest {
         String slug = "test-ontology";
         String userId = "user123";
 
-        OntologyMetadataModel ontologyMetadata = new OntologyMetadataModel();
-        ontologyMetadata.setId(1L);
-        ontologyMetadata.setGraphName("http://example.org/test-ontology");
-        ontologyMetadata.setSlug(slug);
+        OntologyRef ontologyMetadata = new OntologyRef(1L, slug, "http://example.org/test-ontology", null);
 
         com.dia.validation.ValidationReportDto validationReport = new com.dia.validation.ValidationReportDto();
 
@@ -1291,10 +1274,7 @@ class OntologyControllerTest {
     void testValidateOntology_ValidationFailed() throws Exception {
         String slug = "test-ontology";
 
-        OntologyMetadataModel ontologyMetadata = new OntologyMetadataModel();
-        ontologyMetadata.setId(1L);
-        ontologyMetadata.setGraphName("http://example.org/test-ontology");
-        ontologyMetadata.setSlug(slug);
+        OntologyRef ontologyMetadata = new OntologyRef(1L, slug, "http://example.org/test-ontology", null);
 
         com.dia.validation.ValidationReportDto validationReport = new com.dia.validation.ValidationReportDto();
 
@@ -1316,10 +1296,7 @@ class OntologyControllerTest {
     void testValidateOntology_ServiceUnavailable_returns503() throws Exception {
         String slug = "test-ontology";
 
-        OntologyMetadataModel ontologyMetadata = new OntologyMetadataModel();
-        ontologyMetadata.setId(1L);
-        ontologyMetadata.setGraphName("http://example.org/test-ontology");
-        ontologyMetadata.setSlug(slug);
+        OntologyRef ontologyMetadata = new OntologyRef(1L, slug, "http://example.org/test-ontology", null);
 
         when(ontologyService.getOntologyMetadataBySlug(slug)).thenReturn(ontologyMetadata);
         when(ontologyService.getTtlContentFromOntology(any()))
@@ -1341,10 +1318,7 @@ class OntologyControllerTest {
     void testValidateOntology_ValidatorRejectedInput_returns400WithValidatorMessage() throws Exception {
         String slug = "test-ontology";
 
-        OntologyMetadataModel ontologyMetadata = new OntologyMetadataModel();
-        ontologyMetadata.setId(1L);
-        ontologyMetadata.setGraphName("http://example.org/test-ontology");
-        ontologyMetadata.setSlug(slug);
+        OntologyRef ontologyMetadata = new OntologyRef(1L, slug, "http://example.org/test-ontology", null);
 
         when(ontologyService.getOntologyMetadataBySlug(slug)).thenReturn(ontologyMetadata);
         when(ontologyService.getTtlContentFromOntology(any()))
@@ -1366,10 +1340,6 @@ class OntologyControllerTest {
     void testValidateOntology_AccessDenied() throws Exception {
         String slug = "test-ontology";
 
-        OntologyMetadataModel ontologyMetadata = new OntologyMetadataModel();
-        ontologyMetadata.setId(1L);
-        ontologyMetadata.setGraphName("http://example.org/test-ontology");
-
         ontologySecurity.denyModify();
 
         mockMvc.perform(post("/api/ontology/{slug}/validate", slug))
@@ -1383,10 +1353,7 @@ class OntologyControllerTest {
     @Test
     @WithMockSecurityUser(userId = "user123")
     void testValidateOntology_bodyCannotRedirectTarget() throws Exception {
-        OntologyMetadataModel owned = new OntologyMetadataModel();
-        owned.setId(1L);
-        owned.setSlug("test-ontology");
-        owned.setGraphName("http://example.org/test-ontology");
+        OntologyRef owned = new OntologyRef(1L, "test-ontology", "http://example.org/test-ontology", null);
         when(ontologyService.getOntologyMetadataBySlug("test-ontology")).thenReturn(owned);
         when(ontologyService.getTtlContentFromOntology(owned)).thenReturn("ttl");
         when(validationClient.requestValidation("ttl", "http://example.org/test-ontology"))
@@ -1552,8 +1519,7 @@ class OntologyControllerTest {
     @Test
     @WithMockSecurityUser(userId = "user123")
     void testValidateOntology_NoReportReceived_returns503AndSavesNothing() throws Exception {
-        OntologyMetadataModel ontologyMetadata = new OntologyMetadataModel();
-        ontologyMetadata.setGraphName("http://example.org/test-ontology");
+        OntologyRef ontologyMetadata = new OntologyRef(null, null, "http://example.org/test-ontology", null);
         when(ontologyService.getOntologyMetadataBySlug("test-ontology")).thenReturn(ontologyMetadata);
         when(ontologyService.getTtlContentFromOntology(any())).thenReturn("ttl");
         when(validationClient.requestValidation("ttl", "http://example.org/test-ontology"))

@@ -4,7 +4,7 @@ import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.enums.SnapshotOrigin;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
-import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
+import com.dia.ismdtoolbackend.models.OntologyRef;
 import com.dia.ismdtoolbackend.models.PublishedOntologyDeviationModel;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel.DeviationStatus;
@@ -241,11 +241,8 @@ class PublishedResourceUtilTest {
         }
     }
 
-    private static OntologyMetadataModel metadata(boolean published) {
-        OntologyMetadataModel metadata = new OntologyMetadataModel();
-        metadata.setGraphName(GRAPH);
-        metadata.setIsPublished(published);
-        return metadata;
+    private static OntologyRef metadata(boolean published) {
+        return new OntologyRef(null, null, GRAPH, published);
     }
 
     private static OntologyDetailModel detail(Map<String, String> name) {

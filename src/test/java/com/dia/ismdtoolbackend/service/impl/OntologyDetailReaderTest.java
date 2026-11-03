@@ -140,7 +140,7 @@ class OntologyDetailReaderTest {
                     .status(DeviationStatus.HAS_DEVIATIONS)
                     .build();
             when(deviationChecker.checkOntologyDeviation(same(detail),
-                    argThat(m -> m != null && SLUG.equals(m.getSlug()))))
+                    argThat(m -> m != null && SLUG.equals(m.slug()))))
                     .thenReturn(ontologyDeviation);
             when(deviationChecker.checkConceptsDeviation(same(graph), eq(List.of(conceptRow))))
                     .thenReturn(Map.of(conceptRow.getConceptIri(), conceptDeviation));

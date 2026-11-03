@@ -3,7 +3,7 @@ package com.dia.ismdtoolbackend.service.impl;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
 import com.dia.ismdtoolbackend.enums.OntologyValidationStatus;
 import com.dia.ismdtoolbackend.exception.ValidationException;
-import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
+import com.dia.ismdtoolbackend.models.OntologyRef;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.ValidationService;
@@ -28,8 +28,8 @@ public class ValidationServiceImpl implements ValidationService {
 
     @Override
     @Transactional
-    public void saveValidationReport(ValidationReport validationReport, OntologyMetadataModel ontologyMetadataModel, String userId) throws ValidationException {
-        Optional<ValidationReportEntity> validationReportEntityOpt = validationReportRepository.findByOntologyMetadataId(ontologyMetadataModel.getId());
+    public void saveValidationReport(ValidationReport validationReport, OntologyRef ontology, String userId) throws ValidationException {
+        Optional<ValidationReportEntity> validationReportEntityOpt = validationReportRepository.findByOntologyMetadataId(ontology.id());
         validationReportEntityOpt.ifPresent(validationReportRepository::delete);
 
         try {
@@ -37,15 +37,15 @@ public class ValidationServiceImpl implements ValidationService {
             validationReportEntity.setId(validationReport.getId());
             validationReportEntity.setUserId(userId);
             validationReportEntity.setTimestamp(validationReport.getTimestamp());
-            validationReportEntity.setOntologyMetadataId(ontologyMetadataModel.getId());
-            validationReportEntity.setGetOntologyIri(ontologyMetadataModel.getGraphName());
+            validationReportEntity.setOntologyMetadataId(ontology.id());
+            validationReportEntity.setGetOntologyIri(ontology.graphName());
             String validationResults = validationReportEntity.convertResultsToJson(validationReport.getResults());
             validationReportEntity.setResultsJson(validationResults);
             validationReportRepository.save(validationReportEntity);
 
             // A successful save means the validator evaluated the ontology — clear any prior
             // SKIPPED_UNAVAILABLE so a manual re-validation un-flags it.
-            markValidated(ontologyMetadataModel.getId());
+            markValidated(ontology.id());
         } catch (Exception e) {
             throw new ValidationException("Během ukládání zprávy z kontroly došlo k chybě", e);
         }
@@ -60,20 +60,20 @@ public class ValidationServiceImpl implements ValidationService {
     }
 
     @Override
-    public ValidationReportDto getValidationReport(OntologyMetadataModel ontologyMetadataModel) throws ValidationException {
-        Optional<ValidationReportEntity> validationReportEntityOpt = validationReportRepository.findByOntologyMetadataId(ontologyMetadataModel.getId());
+    public ValidationReportDto getValidationReport(OntologyRef ontology) throws ValidationException {
+        Optional<ValidationReportEntity> validationReportEntityOpt = validationReportRepository.findByOntologyMetadataId(ontology.id());
         return validationReportEntityOpt.map(validationReportEntity -> new ValidationReportDto(
                 validationReportEntity.getResults(),
-                ontologyMetadataModel.getGraphName(),
+                ontology.graphName(),
                 validationReportEntity.getTimestamp()))
                 .orElse(null);
     }
 
     @Override
-    public ValidationReportDto getValidationReportOrEmpty(OntologyMetadataModel ontologyMetadataModel) throws ValidationException {
-        ValidationReportDto report = getValidationReport(ontologyMetadataModel);
+    public ValidationReportDto getValidationReportOrEmpty(OntologyRef ontology) throws ValidationException {
+        ValidationReportDto report = getValidationReport(ontology);
         return report != null
                 ? report
-                : new ValidationReportDto(List.of(), ontologyMetadataModel.getGraphName(), null);
+                : new ValidationReportDto(List.of(), ontology.graphName(), null);
     }
 }

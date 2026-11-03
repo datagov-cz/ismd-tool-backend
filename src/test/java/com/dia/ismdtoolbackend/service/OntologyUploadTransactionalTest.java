@@ -11,7 +11,6 @@ import com.dia.ismdtoolbackend.exception.OntologyUploadMissingIriException;
 import com.dia.ismdtoolbackend.exception.OntologyUploadParseException;
 import com.dia.ismdtoolbackend.exception.OntologyUploadRdfStoreException;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
-import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
@@ -162,16 +161,10 @@ class OntologyUploadTransactionalTest {
         savedEntity.setSlug("test-ontology");
         savedEntity.setGraphName("https://example.com/ontology");
 
-        OntologyMetadataModel model = new OntologyMetadataModel();
-        model.setId(1L);
-        model.setSlug("test-ontology");
-        model.setGraphName("https://example.com/ontology");
-
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
         when(deviationChecker.checkPublishedResourcesInNKD(any(), any())).thenReturn(Collections.emptyList());
         doNothing().when(jenaTDB2Repository).putOntologyModel(anyString(), any());
         when(ontologyMetadataRepository.save(any())).thenReturn(savedEntity);
-        when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(model);
         when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.of(savedEntity));
         doThrow(new RuntimeException("Concept extraction error"))
                 .when(conceptMetadataRepository).saveAll(any());

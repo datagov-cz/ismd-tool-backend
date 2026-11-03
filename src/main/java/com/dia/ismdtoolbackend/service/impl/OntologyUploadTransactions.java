@@ -1,9 +1,9 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
 import com.dia.ismdtoolbackend.enums.OntologyValidationStatus;
-import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.validation.ValidationReport;
@@ -29,15 +29,15 @@ class OntologyUploadTransactions {
     private final UploadMetadataWriter metadataWriter;
 
     /** Writes the vocabulary's metadata row and the rows of its concepts. */
-    public OntologyMetadataModel saveMetadata(OntModel model, String graphName, String userId,
-                                              List<String> publishedConceptIris) {
-        OntologyMetadataModel metadata = metadataWriter.createOntologyMetadataEntity(graphName, userId);
+    public OntologySummaryDto saveMetadata(OntModel model, String graphName, String userId,
+                                           List<String> publishedConceptIris) {
+        OntologyMetadataEntity metadata = metadataWriter.createOntologyMetadataEntity(graphName, userId);
         boolean ontologyPublished = metadataWriter.extractAndSaveConceptMetadata(
                 model, graphName, userId, metadata.getId(), publishedConceptIris);
-        // extractAndSaveConceptMetadata flips is_published on a re-fetched entity; mirror it
-        // onto the returned model so the upload response matches the persisted row.
+        // extractAndSaveConceptMetadata flips is_published on a re-fetched entity; mirror it here
+        // so the response (and its sourceTag) matches the persisted row.
         metadata.setIsPublished(ontologyPublished);
-        return metadata;
+        return metadataWriter.summarize(metadata);
     }
 
     /**

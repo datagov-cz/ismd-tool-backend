@@ -2,8 +2,8 @@ package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapperImpl;
-import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
-import com.dia.ismdtoolbackend.repository.CommentRepository;
+import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
+import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
@@ -21,12 +21,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import static com.dia.ismdtoolbackend.service.impl.OntologyTestData.comment;
 import static com.dia.ismdtoolbackend.service.impl.OntologyTestData.ontologyEntity;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -41,13 +39,13 @@ class OntologyMetadataEnricherTest {
     @Mock
     private JenaTDB2Repository jenaTDB2Repository;
     @Mock
-    private CommentRepository commentRepository;
+    private ConceptMetadataRepository conceptMetadataRepository;
 
     private OntologyMetadataEnricher enricher;
 
     @BeforeEach
     void setUp() {
-        enricher = new OntologyMetadataEnricher(jenaTDB2Repository, new OntologyMetadataMapperImpl(), commentRepository);
+        enricher = new OntologyMetadataEnricher(jenaTDB2Repository, new OntologyMetadataMapperImpl(), conceptMetadataRepository);
     }
 
     private static Model metadataOf(String graphName) {
@@ -66,7 +64,7 @@ class OntologyMetadataEnricherTest {
     @Test
     void namesAndDescriptionComeFromRdf_blankAndNonLiteralSkipped_untaggedFiledUnderCzech() {
         when(jenaTDB2Repository.fetchMetadataProperties(GRAPH)).thenReturn(metadataOf(GRAPH));
-        OntologyMetadataModel model = new OntologyMetadataModel();
+        OntologySummaryDto model = new OntologySummaryDto();
 
         enricher.enrichMetadataFromRDF(model, ontologyEntity(1L, GRAPH));
 
@@ -80,7 +78,7 @@ class OntologyMetadataEnricherTest {
         Model model = ModelFactory.createDefaultModel();
         model.createResource(GRAPH).addProperty(DCTerms.title, "Jen titulek");
         when(jenaTDB2Repository.fetchMetadataProperties(GRAPH)).thenReturn(model);
-        OntologyMetadataModel result = new OntologyMetadataModel();
+        OntologySummaryDto result = new OntologySummaryDto();
 
         enricher.enrichMetadataFromRDF(result, ontologyEntity(1L, GRAPH));
 
@@ -90,7 +88,7 @@ class OntologyMetadataEnricherTest {
 
     @Test
     void missingGraphName_isNotLookedUp() {
-        OntologyMetadataModel model = new OntologyMetadataModel();
+        OntologySummaryDto model = new OntologySummaryDto();
 
         enricher.enrichMetadataFromRDF(model, ontologyEntity(1L, null));
         enricher.enrichMetadataFromRDF(model, ontologyEntity(1L, ""));
@@ -102,7 +100,7 @@ class OntologyMetadataEnricherTest {
     @Test
     void failingRdfRead_fallsBackToTheGraphName() {
         when(jenaTDB2Repository.fetchMetadataProperties(anyString())).thenThrow(new IllegalStateException("TDB2 down"));
-        OntologyMetadataModel model = new OntologyMetadataModel();
+        OntologySummaryDto model = new OntologySummaryDto();
 
         enricher.enrichMetadataFromRDF(model, ontologyEntity(1L, GRAPH));
 
@@ -112,7 +110,7 @@ class OntologyMetadataEnricherTest {
     @Test
     void failingRdfRead_keepsANameAlreadySet() {
         when(jenaTDB2Repository.fetchMetadataProperties(anyString())).thenThrow(new IllegalStateException("TDB2 down"));
-        OntologyMetadataModel model = new OntologyMetadataModel();
+        OntologySummaryDto model = new OntologySummaryDto();
         model.setName(Map.of("cs", "Z databáze"));
 
         enricher.enrichMetadataFromRDF(model, ontologyEntity(1L, GRAPH));
@@ -123,7 +121,7 @@ class OntologyMetadataEnricherTest {
     @Test
     void emptyModelName_isReplacedOnFailure() {
         when(jenaTDB2Repository.fetchMetadataProperties(anyString())).thenThrow(new IllegalStateException("TDB2 down"));
-        OntologyMetadataModel model = new OntologyMetadataModel();
+        OntologySummaryDto model = new OntologySummaryDto();
         model.setName(Map.of());
 
         enricher.enrichMetadataFromRDF(model, ontologyEntity(1L, GRAPH));
@@ -136,16 +134,16 @@ class OntologyMetadataEnricherTest {
         Model closed = metadataOf(GRAPH);
         closed.close();
 
-        OntologyMetadataModel unnamed = new OntologyMetadataModel();
+        OntologySummaryDto unnamed = new OntologySummaryDto();
         enricher.enrichMetadataFromModel(unnamed, ontologyEntity(1L, GRAPH), closed);
         assertThat(unnamed.getName()).isEqualTo(FALLBACK);
 
-        OntologyMetadataModel emptyName = new OntologyMetadataModel();
+        OntologySummaryDto emptyName = new OntologySummaryDto();
         emptyName.setName(Map.of());
         enricher.enrichMetadataFromModel(emptyName, ontologyEntity(1L, GRAPH), closed);
         assertThat(emptyName.getName()).isEqualTo(FALLBACK);
 
-        OntologyMetadataModel named = new OntologyMetadataModel();
+        OntologySummaryDto named = new OntologySummaryDto();
         named.setName(Map.of("cs", "Z databáze"));
         enricher.enrichMetadataFromModel(named, ontologyEntity(1L, GRAPH), closed);
         assertThat(named.getName()).containsExactly(Map.entry("cs", "Z databáze"));
@@ -162,7 +160,7 @@ class OntologyMetadataEnricherTest {
     // ---- page ----------------------------------------------------------------------------------------
 
     @Test
-    void pageFetchesOnlyRealGraphsInOneCall_andGroupsCommentsPerOntology() {
+    void pageFetchesOnlyRealGraphsInOneCall_andCountsConceptsInOneQuery() {
         String other = "https://slovník.gov.cz/agendový/jiny-slovnik";
         Model batch = metadataOf(GRAPH);
         batch.add(metadataOf(other).listStatements());
@@ -176,24 +174,23 @@ class OntologyMetadataEnricherTest {
         OntologyMetadataEntity second = ontologyEntity(2L, other);
         OntologyMetadataEntity noGraph = ontologyEntity(3L, null);
         OntologyMetadataEntity emptyGraph = ontologyEntity(4L, "");
-        when(commentRepository.findByOntologyMetadataIdIn(List.of(1L, 2L, 3L, 4L)))
-                .thenReturn(List.of(comment(first, "první"), comment(first, "druhý"), comment(second, "třetí")));
+        when(conceptMetadataRepository.countByGraphNameIn(List.of(GRAPH, other)))
+                .thenReturn(List.<Object[]>of(new Object[]{GRAPH, 5L}));
 
-        List<OntologyMetadataModel> page = enricher.enrichEntitiesWithBatchMetadata(
+        List<OntologySummaryDto> page = enricher.enrichEntitiesWithBatchMetadata(
                 List.of(first, second, noGraph, emptyGraph));
 
         assertThat(requested).containsExactly(GRAPH, other);
         assertThat(page).hasSize(4);
         assertThat(page.get(0).getName()).containsEntry("cs", "Testovací slovník");
-        assertThat(page.get(0).getComments()).hasSize(2);
-        assertThat(page.get(1).getComments()).hasSize(1);
+        // A graph without concept rows is absent from the grouped count and reads 0.
+        assertThat(page).extracting(OntologySummaryDto::getConceptCount).containsExactly(5, 0, 0, 0);
         assertThat(page.get(2).getName()).isEmpty();
-        assertThat(page.get(2).getComments()).isEmpty();
-        assertThat(page.get(3).getComments()).isEmpty();
+        verify(conceptMetadataRepository).countByGraphNameIn(anyList());
     }
 
     @Test
-    void pageKeepsEveryLanguage_mapsCommentIris_andQueriesCommentsOncePerPage() {
+    void pageKeepsEveryLanguage() {
         String first = "http://example.org/o/1";
         String second = "http://example.org/o/2";
         Model batch = ModelFactory.createDefaultModel();
@@ -204,25 +201,16 @@ class OntologyMetadataEnricherTest {
                 .addProperty(DCTerms.description, "Popis 2", "cs")
                 .addProperty(DCTerms.description, "Description 2", "en");
         when(jenaTDB2Repository.fetchMetadataProperties(List.of(first, second))).thenReturn(batch);
-        OntologyMetadataEntity firstEntity = ontologyEntity(1L, first);
-        when(commentRepository.findByOntologyMetadataIdIn(List.of(1L, 2L, 3L)))
-                .thenReturn(List.of(comment(firstEntity, "K o/1")));
 
-        List<OntologyMetadataModel> page = enricher.enrichEntitiesWithBatchMetadata(
-                List.of(firstEntity, ontologyEntity(2L, second), ontologyEntity(3L, null)));
+        List<OntologySummaryDto> page = enricher.enrichEntitiesWithBatchMetadata(
+                List.of(ontologyEntity(1L, first), ontologyEntity(2L, second), ontologyEntity(3L, null)));
 
         assertThat(page).hasSize(3);
-        assertThat(page.get(0).getComments()).singleElement().satisfies(c -> {
-            assertThat(c.getComment()).isEqualTo("K o/1");
-            assertThat(c.getOntologyIRI()).isEqualTo(first);
-        });
         assertThat(page.get(0).getName()).isEqualTo(Map.of("cs", "Slovník 1"));
-        assertThat(page.get(1).getComments()).isEmpty();
         assertThat(page.get(1).getName()).isEqualTo(Map.of("cs", "Slovník 2", "en", "Vocabulary 2"));
         assertThat(page.get(1).getPopis()).isEqualTo(Map.of("cs", "Popis 2", "en", "Description 2"));
         // No graph name: no IRI to derive a fallback from, so the name map stays empty.
         assertThat(page.get(2).getName()).isEmpty();
-        verify(commentRepository, never()).findByOntologyMetadataId(anyLong());
     }
 
     @Test
@@ -235,7 +223,7 @@ class OntologyMetadataEnricherTest {
                 .addProperty(SKOS.prefLabel, "Vocabulary", "en");
         when(jenaTDB2Repository.fetchMetadataProperties(List.of(graph))).thenReturn(batch);
 
-        OntologyMetadataModel model = enricher.enrichEntitiesWithBatchMetadata(List.of(ontologyEntity(1L, graph))).get(0);
+        OntologySummaryDto model = enricher.enrichEntitiesWithBatchMetadata(List.of(ontologyEntity(1L, graph))).get(0);
 
         assertThat(model.getName()).hasSize(2).containsEntry("en", "Vocabulary");
         assertThat(model.getName().get("cs")).startsWith("Slovník");
@@ -248,7 +236,7 @@ class OntologyMetadataEnricherTest {
         batch.createResource("http://example.org/other").addProperty(SKOS.prefLabel, "Jiný");
         when(jenaTDB2Repository.fetchMetadataProperties(List.of(graph))).thenReturn(batch);
 
-        OntologyMetadataModel model = enricher.enrichEntitiesWithBatchMetadata(List.of(ontologyEntity(1L, graph))).get(0);
+        OntologySummaryDto model = enricher.enrichEntitiesWithBatchMetadata(List.of(ontologyEntity(1L, graph))).get(0);
 
         assertThat(model.getName()).isEqualTo(Map.of("cs", "Muj slovnik"));
         assertThat(model.getPopis()).isNull();
@@ -257,6 +245,6 @@ class OntologyMetadataEnricherTest {
     @Test
     void emptyPage_readsNothing() {
         assertThat(enricher.enrichEntitiesWithBatchMetadata(List.of())).isEmpty();
-        verifyNoInteractions(jenaTDB2Repository, commentRepository);
+        verifyNoInteractions(jenaTDB2Repository, conceptMetadataRepository);
     }
 }

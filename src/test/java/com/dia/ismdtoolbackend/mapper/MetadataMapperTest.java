@@ -4,7 +4,8 @@ import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.models.CommentModel;
-import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
+import com.dia.ismdtoolbackend.controller.dto.OntologyDetailMetadataDto;
+import com.dia.ismdtoolbackend.models.OntologyRef;
 import com.dia.ismdtoolbackend.models.UserModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import org.junit.jupiter.api.Test;
@@ -82,27 +83,34 @@ class MetadataMapperTest {
     }
 
     @Test
-    void ontologyOwnerRoundTripsBetweenUserAndUserId() {
-        OntologyMetadataModel model = new OntologyMetadataModel();
-        model.setGraphName(GRAPH);
-        model.setUser(new UserModel("user-1"));
+    void ontologyDetailCarriesItsOwner() {
+        OntologyMetadataEntity entity = new OntologyMetadataEntity();
+        entity.setGraphName(GRAPH);
+        entity.setUserId("user-1");
 
-        OntologyMetadataEntity entity = ontologyMapper.toEntity(model);
+        OntologyDetailMetadataDto detail = ontologyMapper.toDetail(entity);
 
-        assertThat(entity.getUserId()).isEqualTo("user-1");
-        assertThat(entity.getGraphName()).isEqualTo(GRAPH);
-        assertThat(ontologyMapper.toDto(entity).getUser()).isEqualTo(new UserModel("user-1"));
+        assertThat(detail.getGraphName()).isEqualTo(GRAPH);
+        assertThat(detail.getUser()).isEqualTo(new UserModel("user-1"));
     }
 
     @Test
     void ontologyWithoutOwnerStaysWithoutOwner() {
-        OntologyMetadataModel model = new OntologyMetadataModel();
-        model.setGraphName(GRAPH);
+        OntologyMetadataEntity entity = new OntologyMetadataEntity();
+        entity.setGraphName(GRAPH);
 
-        OntologyMetadataEntity entity = ontologyMapper.toEntity(model);
+        assertThat(ontologyMapper.toDetail(entity).getUser()).isNull();
+    }
 
-        assertThat(entity.getUserId()).isNull();
-        assertThat(ontologyMapper.toDto(entity).getUser()).isNull();
+    @Test
+    void ontologyRefCarriesTheAddressingFields() {
+        OntologyMetadataEntity entity = new OntologyMetadataEntity();
+        entity.setId(7L);
+        entity.setSlug("adresy");
+        entity.setGraphName(GRAPH);
+        entity.setIsPublished(true);
+
+        assertThat(ontologyMapper.toRef(entity)).isEqualTo(new OntologyRef(7L, "adresy", GRAPH, true));
     }
 
     @Test
@@ -134,8 +142,8 @@ class MetadataMapperTest {
 
     @Test
     void nullEntitiesMapToNull() {
-        assertThat(ontologyMapper.toDto(null)).isNull();
-        assertThat(ontologyMapper.toEntity(null)).isNull();
+        assertThat(ontologyMapper.toSummary(null)).isNull();
+        assertThat(ontologyMapper.toDetail(null)).isNull();
         assertThat(conceptMapper.toDto(null)).isNull();
     }
 

@@ -16,12 +16,12 @@ class OntologyTurtleExport {
 
     private final JenaTDB2Repository jenaTDB2Repository;
 
-    String getTtlContentFromOntology(OntologyMetadataModel ontologyMetadataModel) {
+    String getTtlContentFromOntology(OntologyRef ontology) {
         try {
-            String graphName = ontologyMetadataModel.getGraphName();
+            String graphName = ontology.graphName();
 
             if (graphName == null || graphName.isEmpty()) {
-                log.error("Graph name is null or empty for ontology: {}", ontologyMetadataModel.getSlug());
+                log.error("Graph name is null or empty for ontology: {}", ontology.slug());
                 throw new OntologyException("Graph name is missing for the ontology");
             }
 

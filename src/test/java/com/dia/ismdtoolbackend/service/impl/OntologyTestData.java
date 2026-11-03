@@ -1,6 +1,5 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
@@ -56,13 +55,6 @@ final class OntologyTestData {
         entity.setConceptIri(conceptIri);
         entity.setSlug(slug);
         return entity;
-    }
-
-    static CommentEntity comment(OntologyMetadataEntity ontology, String text) {
-        CommentEntity comment = new CommentEntity();
-        comment.setOntologyMetadata(ontology);
-        comment.setComment(text);
-        return comment;
     }
 
     /** A valid create request: Czech name {@link #SLUG} and a Czech description in {@link #NAMESPACE}. */

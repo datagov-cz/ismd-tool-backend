@@ -1,7 +1,7 @@
 package com.dia.ismdtoolbackend.service;
 
 import com.dia.ismdtoolbackend.enums.NormalizeMode;
-import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
+import com.dia.ismdtoolbackend.controller.dto.OntologyUploadResultDto;
 import com.dia.ismdtoolbackend.exception.OntologyUploadException;
 import org.apache.jena.riot.Lang;
 import org.springframework.web.multipart.MultipartFile;
@@ -21,7 +21,7 @@ public interface OntologyUploadService {
      * @param normalizeMode        how to treat missing-inScheme concepts (null = require a decision)
      * @param conceptsToNormalize  for {@link NormalizeMode#PER_CONCEPT}, the IRIs to normalize
      */
-    OntologyMetadataModel uploadFromFile(MultipartFile file, String userId,
-                                         NormalizeMode normalizeMode,
-                                         List<String> conceptsToNormalize) throws IOException, OntologyUploadException;
+    OntologyUploadResultDto uploadFromFile(MultipartFile file, String userId,
+                                           NormalizeMode normalizeMode,
+                                           List<String> conceptsToNormalize) throws IOException, OntologyUploadException;
 }

@@ -3,7 +3,7 @@ package com.dia.ismdtoolbackend.service.impl;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
-import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
+import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
@@ -81,10 +81,12 @@ class OntologyEditOperationTest {
     @Test
     void sameIri_savesTheGraphInPlace_andTouchesUpdatedAt() {
         givenEditResult(GRAPH, false);
+        when(conceptMetadataRepository.countByGraphName(GRAPH)).thenReturn(4L);
 
-        OntologyMetadataModel result = operation.editOntology(ONTOLOGY_ID, editModel);
+        OntologySummaryDto result = operation.editOntology(ONTOLOGY_ID, editModel);
 
         assertThat(result.getGraphName()).isEqualTo(GRAPH);
+        assertThat(result.getConceptCount()).isEqualTo(4);
         verify(jenaTDB2Repository).saveOntologyModel(GRAPH, graph);
         verify(jenaTDB2Repository, never()).deleteGraph(anyString());
         verify(ontologyMetadataRepository, never()).save(any());
@@ -100,7 +102,7 @@ class OntologyEditOperationTest {
             when(conceptMetadataRepository.findByOntologyMetadataId(ONTOLOGY_ID)).thenReturn(List.of());
             when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).then(returnsFirstArg());
 
-            OntologyMetadataModel result = operation.editOntology(ONTOLOGY_ID, editModel);
+            OntologySummaryDto result = operation.editOntology(ONTOLOGY_ID, editModel);
 
             assertThat(result.getGraphName()).isEqualTo(NEW_GRAPH);
             verify(jenaTDB2Repository).saveOntologyModel(NEW_GRAPH, graph);
@@ -118,7 +120,7 @@ class OntologyEditOperationTest {
                     concept(GRAPH + "/pojem/concept2", "concept2")));
             when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).then(returnsFirstArg());
 
-            OntologyMetadataModel result = operation.editOntology(ONTOLOGY_ID, editModel);
+            OntologySummaryDto result = operation.editOntology(ONTOLOGY_ID, editModel);
 
             assertThat(result.getGraphName()).isEqualTo(NEW_GRAPH);
             verify(conceptMetadataRepository).saveAll(conceptsCaptor.capture());

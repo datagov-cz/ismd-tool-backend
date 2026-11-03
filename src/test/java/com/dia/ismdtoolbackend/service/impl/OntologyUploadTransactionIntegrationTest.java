@@ -156,7 +156,7 @@ class OntologyUploadTransactionIntegrationTest extends PostgresIntegrationTestBa
     void upload_failingMetadataWrite_rollsBackEveryRowAndDeletesTheGraph() {
         // Fails after the ontology row is written, so the rollback has something to undo.
         doThrow(new IllegalStateException("mapper failed")).when(ontologyMetadataMapper)
-                .toDto(any(OntologyMetadataEntity.class));
+                .toSummary(any(OntologyMetadataEntity.class));
 
         assertThatThrownBy(() -> uploadService.uploadFromFile(file(), "user", null, null))
                 .isInstanceOf(OntologyUploadMetadataException.class);
@@ -200,7 +200,7 @@ class OntologyUploadTransactionIntegrationTest extends PostgresIntegrationTestBa
     @Test
     void failedUpload_freesTheVocabularyForARetry() throws Exception {
         doThrow(new IllegalStateException("mapper failed")).doCallRealMethod().when(ontologyMetadataMapper)
-                .toDto(any(OntologyMetadataEntity.class));
+                .toSummary(any(OntologyMetadataEntity.class));
         assertThatThrownBy(() -> uploadService.uploadFromFile(file(), "user", null, null))
                 .isInstanceOf(OntologyUploadMetadataException.class);
 

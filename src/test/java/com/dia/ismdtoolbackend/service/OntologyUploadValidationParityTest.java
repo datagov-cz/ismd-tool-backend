@@ -8,7 +8,7 @@ import com.dia.ismdtoolbackend.exception.OntologyUploadConflictingTypesException
 import com.dia.ismdtoolbackend.exception.OntologyUploadIriCollisionException;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.models.NameModel;
-import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
+import com.dia.ismdtoolbackend.controller.dto.OntologyUploadResultDto;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptModel;
 import com.dia.ismdtoolbackend.models.concept.DigitalObjectModel;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
@@ -101,13 +101,7 @@ class OntologyUploadValidationParityTest {
         OntologyMetadataEntity entity = new OntologyMetadataEntity();
         entity.setId(1L);
         lenient().when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
-        lenient().when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(entity);
         lenient().when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(entity);
-        lenient().when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenAnswer(i -> {
-            OntologyMetadataModel dto = new OntologyMetadataModel();
-            dto.setId(1L);
-            return dto;
-        });
         lenient().when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.of(entity));
         lenient().when(conceptMetadataRepository.findByConceptIri(anyString())).thenReturn(Optional.empty());
         lenient().when(conceptMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
@@ -122,7 +116,7 @@ class OntologyUploadValidationParityTest {
         when(file.isEmpty()).thenReturn(false);
     }
 
-    private OntologyMetadataModel upload(String turtle) throws Exception {
+    private OntologyUploadResultDto upload(String turtle) throws Exception {
         when(file.getBytes()).thenReturn((PREFIXES + turtle).getBytes(StandardCharsets.UTF_8));
         return service.uploadFromFile(file, "user", null, null);
     }
@@ -142,15 +136,15 @@ class OntologyUploadValidationParityTest {
         return captor.getValue().stream().map(ConceptMetadataEntity::getConceptIri).toList();
     }
 
-    private static List<String> rejectedIris(OntologyMetadataModel uploaded) {
-        return uploaded.getRejectedConcepts().stream().map(RejectedConceptDto::iri).toList();
+    private static List<String> rejectedIris(OntologyUploadResultDto uploaded) {
+        return uploaded.rejectedConcepts().stream().map(RejectedConceptDto::iri).toList();
     }
 
     // --- Trailing-slash IRIs ------------------------------------------------
 
     @Test
     void trailingSlashIrisAreCorrectedBeforeAnythingIsStored() throws Exception {
-        OntologyMetadataModel uploaded = upload("<" + VOCABULARY + "/> a owl:Ontology, skos:ConceptScheme . "
+        OntologyUploadResultDto uploaded = upload("<" + VOCABULARY + "/> a owl:Ontology, skos:ConceptScheme . "
                 + "<" + GOOD + "/> a ofn:pojem, owl:Class ; skos:inScheme <" + VOCABULARY + "/> ;"
                 + " ofn:definující-ustanovení <" + ELI + "/> .");
 
@@ -158,8 +152,8 @@ class OntologyUploadValidationParityTest {
         assertThat(savedConceptIris()).isEqualTo(List.of(GOOD));
         assertThat(storedTurtle).as(storedTurtle).doesNotContain(GOOD + "/>");
         assertThat(storedTurtle).as(storedTurtle).doesNotContain(ELI + "/>");
-        assertThat(uploaded.getCorrectedIris()).isEqualTo(List.of(ELI + "/", VOCABULARY + "/", GOOD + "/"));
-        assertThat(uploaded.getRejectedConcepts()).isEmpty();
+        assertThat(uploaded.correctedIris()).isEqualTo(List.of(ELI + "/", VOCABULARY + "/", GOOD + "/"));
+        assertThat(uploaded.rejectedConcepts()).isEmpty();
         verify(ontologyMetadataRepository).findBySlug("999");
     }
 
@@ -178,13 +172,13 @@ class OntologyUploadValidationParityTest {
 
     @Test
     void conceptBreakingACreateEditRuleIsNotImportedAndIsReported() throws Exception {
-        OntologyMetadataModel uploaded = upload(vocabulary()
+        OntologyUploadResultDto uploaded = upload(vocabulary()
                 + concept(GOOD, "owl:Class", "; ofn:definující-ustanovení <" + ELI + ">")
                 + concept(BAD, "owl:Class", "; ofn:definující-ustanovení <http://example.org/not-eli>"));
 
         assertThat(savedConceptIris()).isEqualTo(List.of(GOOD));
         assertThat(rejectedIris(uploaded)).isEqualTo(List.of(BAD));
-        String reason = uploaded.getRejectedConcepts().get(0).reason();
+        String reason = uploaded.rejectedConcepts().get(0).reason();
         assertThat(reason.contains("definingLegalSource") && reason.contains("http://example.org/not-eli"))
                 .as(reason)
                 .isTrue();
@@ -195,7 +189,7 @@ class OntologyUploadValidationParityTest {
 
     @Test
     void rejectedConceptStillReferencedIsKeptWithoutOwnership() throws Exception {
-        OntologyMetadataModel uploaded = upload(vocabulary()
+        OntologyUploadResultDto uploaded = upload(vocabulary()
                 + concept(GOOD, "owl:Class", "; rdfs:subClassOf <" + BAD + ">")
                 + concept(BAD, "owl:Class", "; skos:exactMatch \"not an iri\""));
 
@@ -207,12 +201,12 @@ class OntologyUploadValidationParityTest {
 
     @Test
     void publicConceptWithAPrivacyProvisionIsRejected() throws Exception {
-        OntologyMetadataModel uploaded = upload(vocabulary()
+        OntologyUploadResultDto uploaded = upload(vocabulary()
                 + concept(BAD, "owl:Class, l111:veřejný-údaj",
                 "; <" + VOCABULARY + "/ustanovení-dokládající-neveřejnost-údaje> <" + ELI + ">"));
 
         assertThat(rejectedIris(uploaded)).isEqualTo(List.of(BAD));
-        assertThat(uploaded.getRejectedConcepts().get(0).reason()).contains("nemůže být současně");
+        assertThat(uploaded.rejectedConcepts().get(0).reason()).contains("nemůže být současně");
     }
 
     private static final String DIGITAL_OBJECT =
@@ -221,33 +215,33 @@ class OntologyUploadValidationParityTest {
     /** The validator writes a title-only digital object for a free-text source. */
     @Test
     void nonLegalSourceWithoutAUrlIsImported() throws Exception {
-        OntologyMetadataModel uploaded = upload(vocabulary()
+        OntologyUploadResultDto uploaded = upload(vocabulary()
                 + concept(GOOD, "owl:Class", "; <https://slovník.gov.cz/definující-nelegislativní-zdroj>"
                 + " [ a " + DIGITAL_OBJECT + " ; <http://purl.org/dc/terms/title> \"Směrnice EU\"@cs ]"));
 
         assertThat(savedConceptIris()).isEqualTo(List.of(GOOD));
-        assertThat(uploaded.getRejectedConcepts()).as(uploaded.getRejectedConcepts().toString()).isEmpty();
+        assertThat(uploaded.rejectedConcepts()).as(uploaded.rejectedConcepts().toString()).isEmpty();
         assertThat(storedTurtle).contains("Směrnice EU");
     }
 
     @Test
     void nonLegalSourceWithAnInvalidUrlIsRejected() throws Exception {
-        OntologyMetadataModel uploaded = upload(vocabulary()
+        OntologyUploadResultDto uploaded = upload(vocabulary()
                 + concept(BAD, "owl:Class", "; <https://slovník.gov.cz/definující-nelegislativní-zdroj>"
                 + " [ a " + DIGITAL_OBJECT + " ; <http://schema.org/url> \"not a url\" ]"));
 
         assertThat(rejectedIris(uploaded)).isEqualTo(List.of(BAD));
-        assertThat(uploaded.getRejectedConcepts().get(0).reason()).contains("definingNonLegalSource");
+        assertThat(uploaded.rejectedConcepts().get(0).reason()).contains("definingNonLegalSource");
     }
 
     @Test
     void everyViolationOfOneConceptIsListedInOneEntry() throws Exception {
-        OntologyMetadataModel uploaded = upload(vocabulary()
+        OntologyUploadResultDto uploaded = upload(vocabulary()
                 + concept(BAD, "owl:Class", "; ofn:definující-ustanovení <http://example.org/not-eli> ;"
                 + " ofn:má-typ-obsahu-údaje <https://data.dia.gov.cz/zdroj/číselníky/typy-obsahu-údajů/položky/neznámé>"));
 
-        assertThat(uploaded.getRejectedConcepts()).hasSize(1);
-        String reason = uploaded.getRejectedConcepts().get(0).reason();
+        assertThat(uploaded.rejectedConcepts()).hasSize(1);
+        String reason = uploaded.rejectedConcepts().get(0).reason();
         assertThat(reason.contains("definingLegalSource") && reason.contains("typ obsahu")).as(reason).isTrue();
     }
 
@@ -286,9 +280,9 @@ class OntologyUploadValidationParityTest {
         graph.write(turtle, "TTL");
         when(file.getBytes()).thenReturn(turtle.toString().getBytes(StandardCharsets.UTF_8));
 
-        OntologyMetadataModel uploaded = service.uploadFromFile(file, "user", null, null);
+        OntologyUploadResultDto uploaded = service.uploadFromFile(file, "user", null, null);
 
-        assertThat(uploaded.getRejectedConcepts()).as(uploaded.getRejectedConcepts().toString()).isEmpty();
+        assertThat(uploaded.rejectedConcepts()).as(uploaded.rejectedConcepts().toString()).isEmpty();
         assertThat(savedConceptIris()).isEqualTo(List.of(created.getURI()));
     }
 
@@ -302,13 +296,13 @@ class OntologyUploadValidationParityTest {
     void domainPointingAtAPublishedNkdConceptIsRejected() throws Exception {
         nkdReportsPublished(NKD_CLASS);
 
-        OntologyMetadataModel uploaded = upload(vocabulary()
+        OntologyUploadResultDto uploaded = upload(vocabulary()
                 + concept(GOOD, "owl:Class", "")
                 + concept(BAD, "owl:DatatypeProperty", "; rdfs:domain <" + NKD_CLASS + ">"));
 
         assertThat(savedConceptIris()).isEqualTo(List.of(GOOD));
         assertThat(rejectedIris(uploaded)).isEqualTo(List.of(BAD));
-        assertThat(uploaded.getRejectedConcepts().get(0).reason()).contains(NKD_CLASS);
+        assertThat(uploaded.rejectedConcepts().get(0).reason()).contains(NKD_CLASS);
     }
 
     @Test
@@ -324,22 +318,22 @@ class OntologyUploadValidationParityTest {
 
     @Test
     void domainPointingAtAnUnpublishedForeignConceptIsImported() throws Exception {
-        OntologyMetadataModel uploaded = upload(vocabulary()
+        OntologyUploadResultDto uploaded = upload(vocabulary()
                 + concept(GOOD, "owl:DatatypeProperty", "; rdfs:domain <" + NKD_CLASS + ">"));
 
         assertThat(savedConceptIris()).isEqualTo(List.of(GOOD));
-        assertThat(uploaded.getRejectedConcepts()).isEmpty();
+        assertThat(uploaded.rejectedConcepts()).isEmpty();
     }
 
     @Test
     void relationshipRangePointingAtAPublishedNkdConceptIsImported() throws Exception {
         nkdReportsPublished(NKD_CLASS);
 
-        OntologyMetadataModel uploaded = upload(vocabulary()
+        OntologyUploadResultDto uploaded = upload(vocabulary()
                 + concept(GOOD, "owl:ObjectProperty", "; rdfs:range <" + NKD_CLASS + ">"));
 
         assertThat(savedConceptIris()).isEqualTo(List.of(GOOD));
-        assertThat(uploaded.getRejectedConcepts()).isEmpty();
+        assertThat(uploaded.rejectedConcepts()).isEmpty();
     }
 
     @Test
@@ -349,11 +343,11 @@ class OntologyUploadValidationParityTest {
         workingCopy.setConceptIri(NKD_CLASS);
         when(conceptMetadataRepository.findByConceptIriIn(anyList())).thenReturn(List.of(workingCopy));
 
-        OntologyMetadataModel uploaded = upload(vocabulary()
+        OntologyUploadResultDto uploaded = upload(vocabulary()
                 + concept(GOOD, "owl:DatatypeProperty", "; rdfs:domain <" + NKD_CLASS + ">"));
 
         assertThat(savedConceptIris()).isEqualTo(List.of(GOOD));
-        assertThat(uploaded.getRejectedConcepts()).isEmpty();
+        assertThat(uploaded.rejectedConcepts()).isEmpty();
     }
 
     // --- Role guard -----------------------------------------------------------
@@ -372,7 +366,7 @@ class OntologyUploadValidationParityTest {
 
     @Test
     void conceptWithoutASingleRoleIsReportedAndLeavesNoOwnedTriples() throws Exception {
-        OntologyMetadataModel uploaded = upload(vocabulary()
+        OntologyUploadResultDto uploaded = upload(vocabulary()
                 + concept(GOOD, "owl:Class", "")
                 + concept(BAD, "owl:Class, owl:DatatypeProperty", ""));
 
