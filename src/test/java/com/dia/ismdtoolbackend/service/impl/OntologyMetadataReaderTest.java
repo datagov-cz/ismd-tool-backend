@@ -1,9 +1,9 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
-import com.dia.ismdtoolbackend.enums.ConceptSourceTag;
 import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
-import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
+import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
+import com.dia.ismdtoolbackend.models.OntologyRef;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import org.apache.jena.ontology.OntologyException;
@@ -62,16 +62,12 @@ class OntologyMetadataReaderTest {
     class SingleRow {
 
         @Test
-        void bySlug_mapsTheRowAsADraft() {
+        void bySlug_mapsTheRowToItsRef() {
             when(ontologyMetadataRepository.findBySlug(SLUG)).thenReturn(Optional.of(ontologyEntity()));
 
-            OntologyMetadataModel result = reader.getOntologyMetadataBySlug(SLUG);
+            OntologyRef result = reader.getOntologyMetadataBySlug(SLUG);
 
-            assertThat(result.getId()).isEqualTo(ONTOLOGY_ID);
-            assertThat(result.getSlug()).isEqualTo(SLUG);
-            assertThat(result.getGraphName()).isEqualTo(GRAPH);
-            assertThat(result.getUser().getUserId()).isEqualTo(USER_ID);
-            assertThat(result.getSourceTag()).isEqualTo(ConceptSourceTag.DRAFT);
+            assertThat(result).isEqualTo(new OntologyRef(ONTOLOGY_ID, SLUG, GRAPH, false));
         }
 
         @Test
@@ -87,7 +83,7 @@ class OntologyMetadataReaderTest {
         void byId_mapsTheRowWithoutReadingRdf() {
             when(ontologyMetadataRepository.findById(ONTOLOGY_ID)).thenReturn(Optional.of(ontologyEntity()));
 
-            assertThat(reader.getOntologyMetadata(ONTOLOGY_ID).getSlug()).isEqualTo(SLUG);
+            assertThat(reader.getOntologyMetadata(ONTOLOGY_ID).slug()).isEqualTo(SLUG);
             verifyNoInteractions(jenaTDB2Repository);
         }
 
@@ -158,7 +154,7 @@ class OntologyMetadataReaderTest {
             batch.add(batch.createResource(graph), SKOS.prefLabel, "Slovník 1");
             when(jenaTDB2Repository.fetchMetadataProperties(List.of(graph))).thenReturn(batch);
 
-            List<OntologyMetadataModel> out = reader.getBySlugs(List.of("slug-1"));
+            List<OntologySummaryDto> out = reader.getBySlugs(List.of("slug-1"));
 
             assertThat(out).singleElement().satisfies(model -> {
                 assertThat(model.getGraphName()).isEqualTo(graph);

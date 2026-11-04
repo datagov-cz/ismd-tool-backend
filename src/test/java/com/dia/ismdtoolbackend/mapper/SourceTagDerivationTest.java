@@ -3,7 +3,7 @@ package com.dia.ismdtoolbackend.mapper;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptSourceTag;
-import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
+import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import org.junit.jupiter.api.Test;
 
@@ -55,7 +55,7 @@ class SourceTagDerivationTest {
 
     @Test
     void ontology_published_isWorkingCopy() {
-        OntologyMetadataModel model = ontologyMapper.toDto(ontology(true));
+        OntologySummaryDto model = ontologyMapper.toSummary(ontology(true));
 
         assertThat(model.getSourceTag()).isEqualTo(ConceptSourceTag.WORKING_COPY);
         assertThat(model.getIsPublished()).isTrue();
@@ -63,19 +63,19 @@ class SourceTagDerivationTest {
 
     @Test
     void ontology_notPublished_isDraft() {
-        assertThat(ontologyMapper.toDto(ontology(false)).getSourceTag()).isEqualTo(ConceptSourceTag.DRAFT);
+        assertThat(ontologyMapper.toSummary(ontology(false)).getSourceTag()).isEqualTo(ConceptSourceTag.DRAFT);
     }
 
     @Test
     void ontology_nullPublished_tagOmitted() {
-        assertThat(ontologyMapper.toDto(ontology(null)).getSourceTag()).isNull();
+        assertThat(ontologyMapper.toSummary(ontology(null)).getSourceTag()).isNull();
     }
 
     @Test
     void workingCopyOntology_mayHoldDraftConcepts() {
         // The tag describes its own IRI, never its contents: severing one concept (Phase C) leaves the
         // ontology a working copy while that concept reads DRAFT. This mix is valid, not a desync.
-        OntologyMetadataModel ontologyModel = ontologyMapper.toDto(ontology(true));
+        OntologySummaryDto ontologyModel = ontologyMapper.toSummary(ontology(true));
         ConceptMetadataModel severedConcept = conceptMapper.toDto(concept(false));
 
         assertThat(ontologyModel.getSourceTag()).isEqualTo(ConceptSourceTag.WORKING_COPY);

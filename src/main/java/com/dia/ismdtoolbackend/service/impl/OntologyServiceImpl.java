@@ -10,7 +10,8 @@ import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
-import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
+import com.dia.ismdtoolbackend.models.OntologyRef;
+import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
@@ -46,7 +47,7 @@ public class OntologyServiceImpl implements OntologyService {
     @Transactional
     @CacheEvict(cacheNames = {ReferencedConceptResolutionEngine.CACHE_NAME,
             WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE}, allEntries = true)
-    public OntologyMetadataModel createOntology(OntologyCreateModel ontologyCreateModel, String userId) {
+    public OntologySummaryDto createOntology(OntologyCreateModel ontologyCreateModel, String userId) {
         return createOperation.createOntology(ontologyCreateModel, userId);
     }
 
@@ -86,36 +87,36 @@ public class OntologyServiceImpl implements OntologyService {
     @Transactional
     @CacheEvict(cacheNames = {ReferencedConceptResolutionEngine.CACHE_NAME,
             WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE}, allEntries = true)
-    public OntologyMetadataModel editOntology(Long id, OntologyEditModel ontologyEditModel) {
+    public OntologySummaryDto editOntology(Long id, OntologyEditModel ontologyEditModel) {
         return editOperation.editOntology(id, ontologyEditModel);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<OntologyMetadataModel> getAll(String userId, Boolean isPublished) {
+    public List<OntologySummaryDto> getAll(String userId, Boolean isPublished) {
         return metadataReader.getAll(userId, isPublished);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<OntologyMetadataModel> getBySlugs(List<String> slugs) {
+    public List<OntologySummaryDto> getBySlugs(List<String> slugs) {
         return metadataReader.getBySlugs(slugs);
     }
 
     @Override
-    public String getTtlContentFromOntology(OntologyMetadataModel ontologyMetadataModel) {
-        return turtleExport.getTtlContentFromOntology(ontologyMetadataModel);
+    public String getTtlContentFromOntology(OntologyRef ontology) {
+        return turtleExport.getTtlContentFromOntology(ontology);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public OntologyMetadataModel getOntologyMetadata(Long ontologyId) {
+    public OntologyRef getOntologyMetadata(Long ontologyId) {
         return metadataReader.getOntologyMetadata(ontologyId);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public OntologyMetadataModel getOntologyMetadataBySlug(String ontologySlug) {
+    public OntologyRef getOntologyMetadataBySlug(String ontologySlug) {
         return metadataReader.getOntologyMetadataBySlug(ontologySlug);
     }
 }

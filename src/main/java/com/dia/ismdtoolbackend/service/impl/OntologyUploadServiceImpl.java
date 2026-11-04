@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
+import com.dia.ismdtoolbackend.controller.dto.OntologyUploadResultDto;
 import com.dia.ismdtoolbackend.controller.dto.RejectedConceptDto;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.NormalizeMode;
@@ -7,7 +9,6 @@ import com.dia.ismdtoolbackend.exception.OntologyUploadConflictingTypesException
 import com.dia.ismdtoolbackend.exception.OntologyUploadException;
 import com.dia.ismdtoolbackend.exception.OntologyUploadMetadataException;
 import com.dia.ismdtoolbackend.exception.OntologyUploadRdfStoreException;
-import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
 import com.dia.ismdtoolbackend.utility.exporter.turtle.OFNTypeNormalizer;
@@ -59,9 +60,9 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
     @Override
     @CacheEvict(cacheNames = {ReferencedConceptResolutionEngine.CACHE_NAME,
             WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE}, allEntries = true)
-    public OntologyMetadataModel uploadFromFile(MultipartFile file, String userId,
-                                                NormalizeMode normalizeMode,
-                                                List<String> conceptsToNormalize) throws IOException, OntologyUploadException {
+    public OntologyUploadResultDto uploadFromFile(MultipartFile file, String userId,
+                                                  NormalizeMode normalizeMode,
+                                                  List<String> conceptsToNormalize) throws IOException, OntologyUploadException {
         OntModel finalModel = fileReader.read(file);
         UploadVocabularyLock.Claim claim = null;
         try {
@@ -139,11 +140,9 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
 
             // 6. Save metadata to PostgreSQL in one transaction. If it fails or does not commit,
             //    PostgreSQL holds nothing of this upload and the catch cleans up TDB2.
-            OntologyMetadataModel metadata;
+            OntologySummaryDto ontology;
             try {
-                metadata = transactions.saveMetadata(finalModel, graphName, userId, publishedConceptIris);
-                metadata.setRejectedConcepts(rejectedConcepts);
-                metadata.setCorrectedIris(correctedIris);
+                ontology = transactions.saveMetadata(finalModel, graphName, userId, publishedConceptIris);
             } catch (Exception e) {
                 // A committed row for this graph belongs to a writer that got there first, and so
                 // does the graph: it is left in place.
@@ -164,7 +163,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             // 7. Advisory validation, started once the metadata is committed.
             validationRunner.start(ontologyContent, graphName);
 
-            return metadata;
+            return new OntologyUploadResultDto(ontology, rejectedConcepts, correctedIris);
         } finally {
             if (claim != null) {
                 claim.close();

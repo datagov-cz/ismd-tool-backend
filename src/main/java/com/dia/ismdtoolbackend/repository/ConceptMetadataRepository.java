@@ -112,7 +112,7 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
 
     /**
      * Concept counts grouped by graph_name, restricted to a fixed set of graphs.
-     * Used by search to populate {@code conceptCount} on ontology results — one
+     * Used by search and the vocabulary list to populate {@code conceptCount} — one
      * batched query per page instead of N round-trips.
      * <p>
      * Returns {@code Object[]} pairs {@code [graphName, count]} so callers can
@@ -129,6 +129,8 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
             GROUP BY c.graph_name
             """, nativeQuery = true)
     List<Object[]> countByGraphNameIn(@Param("graphNames") List<String> graphNames);
+
+    long countByGraphName(String graphName);
 
     Optional<ConceptMetadataEntity> findByConceptIri(String conceptIri);
 

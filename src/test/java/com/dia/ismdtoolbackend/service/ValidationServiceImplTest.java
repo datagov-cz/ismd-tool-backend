@@ -4,7 +4,7 @@ import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
 import com.dia.ismdtoolbackend.enums.OntologyValidationStatus;
 import com.dia.ismdtoolbackend.exception.ValidationException;
-import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
+import com.dia.ismdtoolbackend.models.OntologyRef;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.impl.ValidationServiceImpl;
@@ -45,13 +45,11 @@ class ValidationServiceImplTest {
     @InjectMocks
     private ValidationServiceImpl validationService;
 
-    private OntologyMetadataModel ontologyMetadata;
+    private OntologyRef ontologyMetadata;
 
     @BeforeEach
     void setUp() {
-        ontologyMetadata = new OntologyMetadataModel();
-        ontologyMetadata.setId(ONTOLOGY_ID);
-        ontologyMetadata.setGraphName(GRAPH_NAME);
+        ontologyMetadata = new OntologyRef(ONTOLOGY_ID, null, GRAPH_NAME, null);
     }
 
     private ValidationReportEntity storedReport(Instant timestamp) {

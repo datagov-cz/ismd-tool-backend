@@ -63,7 +63,7 @@ public final class OntologyServiceFixture {
     }
 
     OntologyMetadataEnricher metadataEnricher() {
-        return new OntologyMetadataEnricher(jenaTDB2Repository, ontologyMetadataMapper, commentRepository);
+        return new OntologyMetadataEnricher(jenaTDB2Repository, ontologyMetadataMapper, conceptMetadataRepository);
     }
 
     OntologyCreateOperation createOperation() {

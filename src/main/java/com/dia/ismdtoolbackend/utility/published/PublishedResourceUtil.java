@@ -1,11 +1,11 @@
 package com.dia.ismdtoolbackend.utility.published;
 
+import com.dia.ismdtoolbackend.models.OntologyRef;
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.controller.dto.NkdConceptRefDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.enums.SnapshotOrigin;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
-import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.models.PublishedOntologyDeviationModel;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
 import com.dia.ismdtoolbackend.service.impl.OntologyDeviationComparator;
@@ -39,13 +39,13 @@ public class PublishedResourceUtil {
      *                      re-deriving it here would duplicate that whole pass.
      */
     public PublishedOntologyDeviationModel checkOntologyDeviation(OntologyDetailModel localOntology,
-                                                                  OntologyMetadataModel ontologyMetadata) {
-        if (Boolean.FALSE.equals(ontologyMetadata.getIsPublished())) {
-            log.debug("Ontology {} is not published, skipping deviation check", ontologyMetadata.getGraphName());
+                                                                  OntologyRef ontologyMetadata) {
+        if (Boolean.FALSE.equals(ontologyMetadata.isPublished())) {
+            log.debug("Ontology {} is not published, skipping deviation check", ontologyMetadata.graphName());
             return null;
         }
 
-        String ontologyIri = ontologyMetadata.getGraphName();
+        String ontologyIri = ontologyMetadata.graphName();
         log.info("Checking ontology deviation for: {}", ontologyIri);
 
         try {

@@ -10,7 +10,8 @@ import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
-import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
+import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
+import com.dia.ismdtoolbackend.models.OntologyRef;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -64,7 +65,7 @@ class OntologyServiceImplTest {
         @Test
         void writes() {
             OntologyCreateModel create = createModel();
-            OntologyMetadataModel created = new OntologyMetadataModel();
+            OntologySummaryDto created = new OntologySummaryDto();
             when(createOperation.createOntology(create, USER_ID)).thenReturn(created);
             OntologyCreateWithConceptsRequestDto withConcepts =
                     new OntologyCreateWithConceptsRequestDto(create, List.of(), List.of(), List.of());
@@ -72,7 +73,7 @@ class OntologyServiceImplTest {
                     new OntologyCreateWithConceptsResponseDto(created, Map.of());
             when(createOperation.createWithConcepts(withConcepts, USER_ID)).thenReturn(createdWithConcepts);
             OntologyEditModel edit = new OntologyEditModel();
-            OntologyMetadataModel edited = new OntologyMetadataModel();
+            OntologySummaryDto edited = new OntologySummaryDto();
             when(editOperation.editOntology(ONTOLOGY_ID, edit)).thenReturn(edited);
 
             assertThat(service.createOntology(create, USER_ID)).isSameAs(created);
@@ -99,10 +100,10 @@ class OntologyServiceImplTest {
 
         @Test
         void metadataReads() {
-            OntologyMetadataModel byId = new OntologyMetadataModel();
-            OntologyMetadataModel bySlug = new OntologyMetadataModel();
-            List<OntologyMetadataModel> all = List.of(byId);
-            List<OntologyMetadataModel> bySlugs = List.of(bySlug);
+            OntologyRef byId = new OntologyRef(ONTOLOGY_ID, SLUG, GRAPH, false);
+            OntologyRef bySlug = new OntologyRef(ONTOLOGY_ID, SLUG, GRAPH, false);
+            List<OntologySummaryDto> all = List.of(new OntologySummaryDto());
+            List<OntologySummaryDto> bySlugs = List.of(new OntologySummaryDto());
             when(metadataReader.getOntologyMetadata(ONTOLOGY_ID)).thenReturn(byId);
             when(metadataReader.getOntologyMetadataBySlug(SLUG)).thenReturn(bySlug);
             when(metadataReader.getAll(USER_ID, true)).thenReturn(all);
@@ -118,7 +119,7 @@ class OntologyServiceImplTest {
         void iriCheckAndExport() {
             OntologyIriCheckRequestDto request = new OntologyIriCheckRequestDto("http://example.org/", null);
             OntologyIriCheckResponseDto response = new OntologyIriCheckResponseDto(GRAPH, true, true);
-            OntologyMetadataModel metadata = new OntologyMetadataModel();
+            OntologyRef metadata = new OntologyRef(ONTOLOGY_ID, SLUG, GRAPH, false);
             when(createOperation.checkIri(request)).thenReturn(response);
             when(turtleExport.getTtlContentFromOntology(metadata)).thenReturn("@prefix : <x> .");
 

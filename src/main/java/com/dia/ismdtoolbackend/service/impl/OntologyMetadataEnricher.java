@@ -1,8 +1,7 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.entity.CommentEntity;
+import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
-import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.repository.*;
 import com.dia.utility.UtilityMethods;
@@ -34,9 +33,9 @@ class OntologyMetadataEnricher {
 
     private final JenaTDB2Repository jenaTDB2Repository;
     private final OntologyMetadataMapper ontologyMetadataMapper;
-    private final CommentRepository commentRepository;
+    private final ConceptMetadataRepository conceptMetadataRepository;
 
-    List<OntologyMetadataModel> enrichEntitiesWithBatchMetadata(List<OntologyMetadataEntity> entities) {
+    List<OntologySummaryDto> enrichEntitiesWithBatchMetadata(List<OntologyMetadataEntity> entities) {
         if (entities.isEmpty()) {
             return List.of();
         }
@@ -48,27 +47,28 @@ class OntologyMetadataEnricher {
 
         Model batchMetadata = jenaTDB2Repository.fetchMetadataProperties(graphNames);
         Map<String, Model> perGraphModels = partitionModelBySubject(batchMetadata, graphNames);
-
-        // One comment query for the whole page, grouped in memory — a per-entity lookup here would
-        // undo the batched RDF fetch above with 1+N queries on an unfiltered list.
-        List<Long> ontologyIds = entities.stream()
-                .map(OntologyMetadataEntity::getId)
-                .toList();
-        Map<Long, List<CommentEntity>> commentsByOntologyId =
-                commentRepository.findByOntologyMetadataIdIn(ontologyIds).stream()
-                        .collect(java.util.stream.Collectors.groupingBy(c -> c.getOntologyMetadata().getId()));
+        Map<String, Integer> conceptCounts = conceptCountsByGraph(graphNames);
 
         return entities.stream()
                 .map(entity -> {
-                    OntologyMetadataModel model = ontologyMetadataMapper.toDto(entity);
-                    Model graphModel = perGraphModels.get(entity.getGraphName());
-                    enrichMetadataFromModel(model, entity, graphModel);
-                    List<CommentEntity> commentEntities =
-                            commentsByOntologyId.getOrDefault(entity.getId(), List.of());
-                    model.setComments(ontologyMetadataMapper.commentEntitiesToModels(commentEntities));
+                    OntologySummaryDto model = ontologyMetadataMapper.toSummary(entity);
+                    enrichMetadataFromModel(model, entity, perGraphModels.get(entity.getGraphName()));
+                    model.setConceptCount(conceptCounts.getOrDefault(entity.getGraphName(), 0));
                     return model;
                 })
                 .toList();
+    }
+
+    /** One grouped count for the whole page; a graph with no concept rows is absent. */
+    Map<String, Integer> conceptCountsByGraph(List<String> graphNames) {
+        Map<String, Integer> counts = new HashMap<>();
+        if (graphNames.isEmpty()) {
+            return counts;
+        }
+        for (Object[] row : conceptMetadataRepository.countByGraphNameIn(graphNames)) {
+            counts.put(row[0].toString(), ((Number) row[1]).intValue());
+        }
+        return counts;
     }
 
     Map<String, Model> partitionModelBySubject(Model batchModel, List<String> graphNames) {
@@ -85,7 +85,7 @@ class OntologyMetadataEnricher {
         return result;
     }
 
-    void enrichMetadataFromRDF(OntologyMetadataModel model, OntologyMetadataEntity entity) {
+    void enrichMetadataFromRDF(OntologySummaryDto model, OntologyMetadataEntity entity) {
         String graphName = entity.getGraphName();
         if (graphName == null || graphName.isEmpty()) {
             log.warn("Cannot enrich metadata: graphName is null or empty");
@@ -103,7 +103,7 @@ class OntologyMetadataEnricher {
         }
     }
 
-    void enrichMetadataFromModel(OntologyMetadataModel model, OntologyMetadataEntity entity, Model rdfModel) {
+    void enrichMetadataFromModel(OntologySummaryDto model, OntologyMetadataEntity entity, Model rdfModel) {
         String graphName = entity.getGraphName();
         Map<String, String> fallbackName = fallbackNameFromGraphName(graphName);
 

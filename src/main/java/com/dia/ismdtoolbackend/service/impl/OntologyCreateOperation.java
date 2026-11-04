@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyIriCheckRequestDto;
@@ -56,7 +57,7 @@ class OntologyCreateOperation {
     private final OutboxRelayTrigger outboxRelayTrigger;
     private final OntologyMetadataEnricher metadataEnricher;
 
-    OntologyMetadataModel createOntology(OntologyCreateModel ontologyCreateModel, String userId) {
+    OntologySummaryDto createOntology(OntologyCreateModel ontologyCreateModel, String userId) {
         validateOntologyCreateModel(ontologyCreateModel);
 
         String ontologyIRI = generateOntologyIri(ontologyCreateModel.getNameModel(), ontologyCreateModel.getNamespace());
@@ -70,7 +71,8 @@ class OntologyCreateOperation {
         if (ontologyMetadataOpt.isPresent() && ontologyIRI.equals(ontologyMetadataOpt.get().getGraphName())) {
             log.error("ontologyId {} already present", ontologyIRI);
             OntologyMetadataEntity existingEntity = ontologyMetadataOpt.get();
-            OntologyMetadataModel model = ontologyMetadataMapper.toDto(existingEntity);
+            OntologySummaryDto model = ontologyMetadataMapper.toSummary(existingEntity);
+            model.setConceptCount((int) conceptMetadataRepository.countByGraphName(ontologyIRI));
             var pending = outboxRepository.findFirstByGraphNameAndOperationAndStatusNotOrderBySeqAsc(
                     ontologyIRI, OutboxOperation.CREATE_GRAPH, OutboxStatus.DONE);
             if (pending.isPresent()) {
@@ -100,8 +102,9 @@ class OntologyCreateOperation {
             }
             outboxWriter.enqueueCreateGraph(ontologyIRI, graphModel);
             outboxRelayTrigger.nudgeAfterCommit();
-            OntologyMetadataModel result = ontologyMetadataMapper.toDto(metadataEntity);
+            OntologySummaryDto result = ontologyMetadataMapper.toSummary(metadataEntity);
             metadataEnricher.enrichMetadataFromModel(result, metadataEntity, graphModel);
+            result.setConceptCount(0);
             return result;
         } finally {
             graphModel.close();
@@ -143,7 +146,7 @@ class OntologyCreateOperation {
                 throw new OntologyCreationConflictException("IRI nebo identifikátor slovníku či pojmu již existuje.");
             }
 
-            OntologyMetadataModel result = ontologyMetadataMapper.toDto(ontology);
+            OntologySummaryDto result = ontologyMetadataMapper.toSummary(ontology);
             Resource vocabulary = graphModel.getResource(graph);
             result.setName(metadataEnricher.extractMultilingualValue(vocabulary, SKOS.prefLabel));
             result.setPopis(metadataEnricher.extractMultilingualValue(vocabulary, DCTerms.description));

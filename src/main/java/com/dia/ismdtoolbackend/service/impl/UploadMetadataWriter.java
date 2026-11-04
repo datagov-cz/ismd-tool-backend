@@ -1,12 +1,11 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.exception.OntologyAlreadyExistsException;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
-import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
-import com.dia.ismdtoolbackend.models.UserModel;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.utility.exporter.turtle.OFNTypeNormalizer;
@@ -42,12 +41,9 @@ class UploadMetadataWriter {
         String slug = UtilityMethods.extractNameFromIRI(graphName);
         Optional<OntologyMetadataEntity> existingBySlug = ontologyMetadataRepository.findBySlug(slug);
         if (existingBySlug.isPresent()) {
-            OntologyMetadataModel existingMetadata = ontologyMetadataMapper.toDto(existingBySlug.get());
             log.info("Ontology already exists with slug: {} (graph name: {})", slug, graphName);
             throw new OntologyAlreadyExistsException(
-                    "Slovník se stejným IRI již v Nástroji existuje: " + graphName,
-                    existingMetadata
-            );
+                    "Slovník se stejným IRI již v Nástroji existuje: " + graphName);
         }
     }
 
@@ -56,20 +52,24 @@ class UploadMetadataWriter {
         return ontologyMetadataRepository.findByGraphName(graphName).isPresent();
     }
 
-    OntologyMetadataModel createOntologyMetadataEntity(String graphName, String userId) {
-        String slug = UtilityMethods.extractNameFromIRI(graphName);
+    OntologyMetadataEntity createOntologyMetadataEntity(String graphName, String userId) {
+        OntologyMetadataEntity entity = new OntologyMetadataEntity();
+        entity.setSlug(UtilityMethods.extractNameFromIRI(graphName));
+        entity.setGraphName(graphName);
+        entity.setUserId(userId);
+        entity.setIsPublished(false);
 
-        OntologyMetadataModel ontologyMetadataModel = new OntologyMetadataModel();
-        ontologyMetadataModel.setSlug(slug);
-        ontologyMetadataModel.setGraphName(graphName);
-        ontologyMetadataModel.setUser(new UserModel(userId));
-        ontologyMetadataModel.setIsPublished(false);
+        log.debug("Ontology metadata entity graphName: {}, userId: {}", graphName, userId);
+        OntologyMetadataEntity saved = ontologyMetadataRepository.save(entity);
+        log.debug("Ontology metadata saved: {}", saved);
+        return saved;
+    }
 
-        log.debug("Ontology metadata entity graphName: {}, userId: {}", ontologyMetadataModel.getGraphName(), userId);
-        OntologyMetadataEntity ontologyMetadataEntity = ontologyMetadataMapper.toEntity(ontologyMetadataModel);
-        OntologyMetadataEntity savedOntologyMetadataEntity = ontologyMetadataRepository.save(ontologyMetadataEntity);
-        log.debug("Ontology metadata saved: {}", savedOntologyMetadataEntity);
-        return ontologyMetadataMapper.toDto(savedOntologyMetadataEntity);
+    /** The stored vocabulary as the upload response reports it. */
+    OntologySummaryDto summarize(OntologyMetadataEntity entity) {
+        OntologySummaryDto summary = ontologyMetadataMapper.toSummary(entity);
+        summary.setConceptCount((int) conceptMetadataRepository.countByGraphName(entity.getGraphName()));
+        return summary;
     }
 
     boolean extractAndSaveConceptMetadata(OntModel model, String graphName, String userId, Long ontologyMetadataId, List<String> publishedConceptIris) {

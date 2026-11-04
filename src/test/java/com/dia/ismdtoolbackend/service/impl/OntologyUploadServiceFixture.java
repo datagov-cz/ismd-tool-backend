@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.service.impl;
 import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
+import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapperImpl;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
@@ -33,7 +34,8 @@ public final class OntologyUploadServiceFixture {
     private static final String MAX_FILE_SIZE = "10MB";
     private static final int PARSE_TIMEOUT_SECONDS = 60;
 
-    private OntologyMetadataMapper ontologyMetadataMapper = mock(OntologyMetadataMapper.class);
+    /** Real mapper: generated and pure, so a test asserts what the mapping really produces. */
+    private OntologyMetadataMapper ontologyMetadataMapper = new OntologyMetadataMapperImpl();
     private OntologyMetadataRepository ontologyMetadataRepository = mock(OntologyMetadataRepository.class);
     private ConceptMetadataRepository conceptMetadataRepository = mock(ConceptMetadataRepository.class);
     private ValidationClient validationClient = mock(ValidationClient.class);

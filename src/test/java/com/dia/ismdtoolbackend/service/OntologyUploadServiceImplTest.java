@@ -8,11 +8,12 @@ import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
+import com.dia.ismdtoolbackend.enums.ConceptSourceTag;
 import com.dia.ismdtoolbackend.enums.NormalizeMode;
 import com.dia.ismdtoolbackend.enums.OntologyValidationStatus;
 import com.dia.validation.ValidationReport;
 import com.dia.ismdtoolbackend.exception.InSchemeDecisionRequiredException;
-import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
+import com.dia.ismdtoolbackend.controller.dto.OntologyUploadResultDto;
 import com.dia.ismdtoolbackend.models.UserModel;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
@@ -203,10 +204,6 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
 
-        OntologyMetadataModel expectedDto = new OntologyMetadataModel();
-        expectedDto.setGraphName(ontologyIRI);
-        expectedDto.setUser(new UserModel(userId));
-        expectedDto.setId(1L);
 
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
         savedEntity.setGraphName(ontologyIRI);
@@ -214,19 +211,17 @@ class OntologyUploadServiceImplTest {
         savedEntity.setId(1L);
 
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
-        when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
-        when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);
         when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.of(savedEntity));
 
 
         doNothing().when(jenaTDB2Repository).putOntologyModel(eq(ontologyIRI), any(OntModel.class));
 
-        OntologyMetadataModel result = ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
+        OntologyUploadResultDto result = ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
 
         assertThat(result).isNotNull();
-        assertThat(result.getGraphName()).isEqualTo(ontologyIRI);
-        assertThat(result.getUser().getUserId()).isEqualTo(userId);
+        assertThat(result.ontology().getGraphName()).isEqualTo(ontologyIRI);
+        assertThat(result.ontology().getId()).isEqualTo(1L);
 
         verify(jenaTDB2Repository).putOntologyModel(eq(ontologyIRI), any(OntModel.class));
     }
@@ -242,11 +237,7 @@ class OntologyUploadServiceImplTest {
         savedEntity.setGraphName(ontologyIRI);
         savedEntity.setId(1L);
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
-        when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
-        OntologyMetadataModel savedModel = new OntologyMetadataModel();
-        savedModel.setId(1L);
-        when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(savedModel);
         when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.of(savedEntity));
 
         AtomicReference<String> validationThread = new AtomicReference<>();
@@ -338,13 +329,9 @@ class OntologyUploadServiceImplTest {
         savedEntity.setGraphName(ontologyIRI);
         savedEntity.setUserId(userId);
         savedEntity.setId(1L);
-        OntologyMetadataModel expectedDto = new OntologyMetadataModel();
-        expectedDto.setId(1L);
 
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
-        when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
-        when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);
         when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.of(savedEntity));
         when(conceptMetadataRepository.findByConceptIri(anyString())).thenReturn(Optional.empty());
         when(conceptMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
@@ -395,12 +382,8 @@ class OntologyUploadServiceImplTest {
         savedEntity.setGraphName(DECISION_ONTOLOGY);
         savedEntity.setUserId(userId);
         savedEntity.setId(1L);
-        OntologyMetadataModel dto = new OntologyMetadataModel();
-        dto.setId(1L);
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
-        when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
-        when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(dto);
         when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.of(savedEntity));
         if (conceptsOwned) {
             when(conceptMetadataRepository.findByConceptIri(anyString())).thenReturn(Optional.empty());
@@ -847,12 +830,8 @@ class OntologyUploadServiceImplTest {
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
         savedEntity.setGraphName(graphName);
         savedEntity.setId(1L);
-        OntologyMetadataModel savedModel = new OntologyMetadataModel();
-        savedModel.setId(1L);
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
-        when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
-        when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(savedModel);
         when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.of(savedEntity));
 
         ontologyUploadService.uploadFromFile(multipartFile, "user123", NormalizeMode.NORMALIZE_ALL, null);
@@ -863,6 +842,44 @@ class OntologyUploadServiceImplTest {
         Map<String, Boolean> publishedByIri = new HashMap<>();
         saved.getValue().forEach(c -> publishedByIri.put(c.getConceptIri(), c.getIsPublished()));
         assertThat(publishedByIri).isEqualTo(Map.of(published, true, draft, false));
+    }
+
+    /** A vocabulary published in NKD is reported as the working copy it was stored as, with its concept count. */
+    @Test
+    void upload_vocabularyPublishedInNkd_reportsAWorkingCopy() throws IOException {
+        String graphName = "http://example.org/test-ontology";
+        when(multipartFile.getBytes()).thenReturn(("""
+                @prefix owl: <http://www.w3.org/2002/07/owl#> .
+                @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+                @prefix ofn: <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/> .
+                <%1$s> a owl:Ontology, skos:ConceptScheme .
+                <%1$s/pojem/a> a ofn:pojem, owl:Class ; skos:inScheme <%1$s> .
+                """.formatted(graphName)).getBytes());
+        when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
+        when(publishedResourceUtil.checkPublishedResourcesInNKD(any(), any())).thenReturn(List.of(graphName));
+
+        OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
+        savedEntity.setGraphName(graphName);
+        savedEntity.setId(1L);
+        when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
+        when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenAnswer(i -> {
+            // A separate instance from the one the concept step flips, as a re-fetch would return.
+            OntologyMetadataEntity row = new OntologyMetadataEntity();
+            row.setId(1L);
+            row.setGraphName(graphName);
+            row.setIsPublished(false);
+            return row;
+        });
+        when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.of(savedEntity));
+        when(conceptMetadataRepository.countByGraphName(graphName)).thenReturn(1L);
+
+        OntologyUploadResultDto result =
+                ontologyUploadService.uploadFromFile(multipartFile, "user123", NormalizeMode.NORMALIZE_ALL, null);
+
+        assertThat(result.ontology().getIsPublished()).isTrue();
+        assertThat(result.ontology().getSourceTag()).isEqualTo(ConceptSourceTag.WORKING_COPY);
+        assertThat(result.ontology().getConceptCount()).isEqualTo(1);
+        assertThat(result.rejectedConcepts()).isEmpty();
     }
 
     @Test
@@ -906,13 +923,9 @@ class OntologyUploadServiceImplTest {
         savedEntity.setUserId(userId);
         savedEntity.setId(1L);
 
-        OntologyMetadataModel expectedDto = new OntologyMetadataModel();
-        expectedDto.setId(1L);
 
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
-        when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
-        when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);
 
 
         doNothing().when(jenaTDB2Repository).putOntologyModel(anyString(), any(OntModel.class));
