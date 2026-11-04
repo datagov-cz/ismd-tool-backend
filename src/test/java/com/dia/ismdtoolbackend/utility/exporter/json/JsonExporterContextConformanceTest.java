@@ -233,7 +233,7 @@ class JsonExporterContextConformanceTest {
             "slovníky:pojem                             | Slovník,Tezaurus",
             "slovníky:pojem, owl:Class, slovníky:třída  | Slovník,Tezaurus,Konceptuální model",
             "slovníky:pojem, owl:ObjectProperty, slovníky:vztah | Slovník,Tezaurus,Konceptuální model",
-            "slovníky:typ-objektu-práva                 | Slovník,Tezaurus,Konceptuální model",
+            "slovníky:pojem, slovníky:třída             | Slovník,Tezaurus",
             "slovníky:pojem, owl:DatatypeProperty, slovníky:vlastnost | Slovník,Tezaurus,Konceptuální model",
             "skos:Concept                               | Slovník",
     })

@@ -2,10 +2,13 @@ package com.dia.ismdtoolbackend.ofn;
 
 import org.apache.jena.datatypes.xsd.XSDDatatype;
 import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.Property;
+import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.vocabulary.RDF;
 
 import java.time.Clock;
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -36,5 +39,26 @@ public final class OfnDates {
                 model.createTypedLiteral(at.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
                         XSDDatatype.XSDdateTimeStamp));
         return instant;
+    }
+
+    /**
+     * Sets the vocabulary's {@code okamžik-poslední-změny} to {@code lastChange}, replacing any stored
+     * value with its instant node; with a null {@code lastChange} the vocabulary has none. The stored
+     * {@code lastChange} is zone-less and read in the JVM's zone, the zone it was written in.
+     */
+    public static void replaceLastChange(Model model, String vocabularyIri, LocalDateTime lastChange) {
+        Resource vocabulary = model.createResource(vocabularyIri);
+        Property lastChangeProperty = model.createProperty(OfnIris.OKAMZIK_POSLEDNI_ZMENY);
+        for (RDFNode old : model.listObjectsOfProperty(vocabulary, lastChangeProperty).toList()) {
+            if (old.isAnon()) {
+                model.removeAll(old.asResource(), null, null);
+            }
+        }
+        vocabulary.removeAll(lastChangeProperty);
+        if (lastChange != null) {
+            OffsetDateTime at = lastChange.atZone(ZoneId.systemDefault())
+                    .withZoneSameInstant(ZONE).toOffsetDateTime().truncatedTo(ChronoUnit.SECONDS);
+            vocabulary.addProperty(lastChangeProperty, instant(model, at));
+        }
     }
 }

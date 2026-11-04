@@ -12,6 +12,7 @@ import com.dia.ismdtoolbackend.ofn.ConformanceIssue;
 import com.dia.ismdtoolbackend.ofn.OfnJsonLdParser;
 import com.dia.ismdtoolbackend.ofn.OfnRdf;
 import com.dia.ismdtoolbackend.ofn.OfnSpecification;
+import com.dia.ismdtoolbackend.ofn.OfnDates;
 import com.dia.ismdtoolbackend.ofn.OfnVocabularyExporter;
 import com.dia.ismdtoolbackend.service.impl.OntologyUploadServiceFixture;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -43,6 +44,10 @@ import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -121,9 +126,14 @@ class OntologyDownloadServiceImplTest {
     }
 
     private void ontologyExists() {
+        ontologyExists(null);
+    }
+
+    private void ontologyExists(LocalDateTime updatedAt) {
         OntologyMetadataEntity metadata = new OntologyMetadataEntity();
         metadata.setId(ONTOLOGY_ID);
         metadata.setGraphName(GRAPH_NAME);
+        metadata.setUpdatedAt(updatedAt);
         when(ontologyMetadataRepository.findById(ONTOLOGY_ID)).thenReturn(Optional.of(metadata));
     }
 
@@ -198,6 +208,59 @@ class OntologyDownloadServiceImplTest {
             Model fromJson = ModelFactory.createDefaultModel();
             OfnJsonLdParser.parse(json, fromJson);
             assertThat(fromJson.isIsomorphicWith(Ttl.parse(ttl))).isTrue();
+        }
+    }
+
+    @Nested
+    class LastChange {
+
+        /** {@link #STORED_GRAPH} with the last-change date an uploaded file carried. */
+        private static final String UPLOADED_WITH_LAST_CHANGE = STORED_GRAPH + """
+                <https://slovník.gov.cz/datový/test-slovník> slovníky:okamžik-poslední-změny [
+                    a čas:časový-okamžik ; čas:datum-a-čas "2020-01-01T00:00:00Z"^^xsd:dateTimeStamp ] .
+                """;
+
+        private static final LocalDateTime UPDATED_AT = LocalDateTime.of(2026, 11, 4, 9, 30, 15, 123_000_000);
+
+        private static String expectedLastChange() {
+            return UPDATED_AT.atZone(ZoneId.systemDefault()).withZoneSameInstant(OfnDates.ZONE)
+                    .toOffsetDateTime().truncatedTo(ChronoUnit.SECONDS)
+                    .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+        }
+
+        @Test
+        void aktualizovano_isTheMetadataLastChange_notTheUploadedValue() throws Exception {
+            ontologyExists(UPDATED_AT);
+            fuseki.servesTurtle(UPLOADED_WITH_LAST_CHANGE);
+
+            JsonNode lastChange = new ObjectMapper()
+                    .readTree(service().downloadOntology(ONTOLOGY_ID, "json-ld")).get("aktualizováno");
+
+            assertThat(lastChange.get("typ").asText()).isEqualTo("Časový okamžik");
+            assertThat(lastChange.get("datum_a_čas").asText()).isEqualTo(expectedLastChange());
+        }
+
+        @Test
+        void turtle_hasOnlyTheMetadataLastChange() {
+            ontologyExists(UPDATED_AT);
+            fuseki.servesTurtle(UPLOADED_WITH_LAST_CHANGE);
+
+            Model ttl = Ttl.parse(service().downloadOntology(ONTOLOGY_ID, "ttl"));
+
+            assertIsomorphic(STORED_GRAPH + """
+                    <https://slovník.gov.cz/datový/test-slovník> slovníky:okamžik-poslední-změny [
+                        a čas:časový-okamžik ; čas:datum-a-čas "%s"^^xsd:dateTimeStamp ] .
+                    """.formatted(expectedLastChange()), ttl);
+        }
+
+        @Test
+        void withoutAMetadataLastChange_theUploadedValueIsDropped() throws Exception {
+            ontologyExists(null);
+            fuseki.servesTurtle(UPLOADED_WITH_LAST_CHANGE);
+
+            JsonNode document = new ObjectMapper().readTree(service().downloadOntology(ONTOLOGY_ID, "json-ld"));
+
+            assertThat(document.has("aktualizováno")).isFalse();
         }
     }
 
