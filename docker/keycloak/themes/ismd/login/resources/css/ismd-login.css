@@ -189,21 +189,34 @@ input[type="password"]:focus {
 }
 
 .pf-c-input-group {
+  display: flex;
   position: relative;
+  width: 100%;
+  min-width: 0;
+  align-items: stretch;
   border: 0;
+  border-radius: 8px;
   background: transparent;
   box-shadow: none;
 }
 
 .pf-c-input-group .pf-c-form-control {
+  flex: 1 1 auto;
+  min-width: 0;
   border-radius: 8px 0 0 8px;
   border-right: 0;
   box-shadow: none;
 }
 
 .pf-c-input-group .pf-c-button,
+.pf-c-input-group .pf-c-button.pf-m-control,
 .pf-c-input-group button {
+  flex: 0 0 42px;
   width: 42px;
+  min-width: 42px;
+  height: 40px;
+  min-height: 40px;
+  margin: 0;
   padding: 0;
   border: 1px solid var(--ismd-border);
   border-left: 0;
@@ -217,6 +230,11 @@ input[type="password"]:focus {
 .pf-c-input-group .pf-c-button:focus,
 .pf-c-input-group .pf-c-button:active {
   box-shadow: none;
+}
+
+.pf-c-input-group .pf-c-button::after,
+.pf-c-input-group button::after {
+  content: none;
 }
 
 .pf-c-input-group:hover .pf-c-form-control,
