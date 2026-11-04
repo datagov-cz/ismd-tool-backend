@@ -9,11 +9,17 @@ import org.apache.jena.vocabulary.RDFS;
 import java.util.*;
 
 import com.dia.ismdtoolbackend.exception.ModelProcessingException;
+import com.dia.ismdtoolbackend.ofn.OfnIris;
 
 import static com.dia.constants.VocabularyConstants.*;
 
 @Slf4j
 public class ModelAnalyzer {
+
+    /** Types that make a resource a concept; the kind comes from OWL, never from the ISMD role markers. */
+    private static final Set<String> CONCEPT_TYPES = Set.of(
+            OfnIris.POJEM, OfnIris.KONCEPT,
+            OfnIris.OWL_CLASS, OfnIris.OWL_DATATYPE_PROPERTY, OfnIris.OWL_OBJECT_PROPERTY);
 
     public ModelStructure analyzeModel(Model model) {
         if (model == null) {
@@ -164,7 +170,6 @@ public class ModelAnalyzer {
 
     private Map<String, Resource> buildResourceMap(Model model) {
         Map<String, Resource> resourceMap = new HashMap<>();
-        Set<String> conceptTypeURIs = buildConceptTypeURIs();
 
         StmtIterator iter = model.listStatements(null, RDF.type, (RDFNode) null);
         while (iter.hasNext()) {
@@ -178,7 +183,7 @@ public class ModelAnalyzer {
                 if (objectURI != null) {
                     if (objectURI.equals(OWL2.Ontology.getURI()) && subject.getURI() != null) {
                         resourceMap.put("ontology", subject);
-                    } else if (conceptTypeURIs.contains(objectURI) && subject.getURI() != null) {
+                    } else if (CONCEPT_TYPES.contains(objectURI) && subject.getURI() != null) {
                         resourceMap.put(subject.getURI(), subject);
                     }
                 }
@@ -186,22 +191,6 @@ public class ModelAnalyzer {
         }
 
         return resourceMap;
-    }
-
-    private Set<String> buildConceptTypeURIs() {
-        Set<String> conceptTypeURIs = new HashSet<>();
-        String[] conceptTypes = {POJEM, TRIDA, VZTAH, VLASTNOST, TSP, TOP, VEREJNY_UDAJ, NEVEREJNY_UDAJ};
-
-        for (String conceptType : conceptTypes) {
-            conceptTypeURIs.add(OFN_NAMESPACE + conceptType);
-        }
-        conceptTypeURIs.add(SKOS_NS + "Concept");
-
-        conceptTypeURIs.add("http://www.w3.org/2002/07/owl#Class");
-        conceptTypeURIs.add("http://www.w3.org/2002/07/owl#ObjectProperty");
-        conceptTypeURIs.add("http://www.w3.org/2002/07/owl#DatatypeProperty");
-
-        return conceptTypeURIs;
     }
 
     private String extractTemporalMetadata(Resource vocabularyResource, Model model, String propertyName) {
@@ -245,30 +234,19 @@ public class ModelAnalyzer {
 
     private List<String> determineVocabularyTypes(Model model) {
         List<String> types = new ArrayList<>();
-
         types.add(TYPE_SLOVNIK);
 
-        boolean hasPojem = hasConceptOfType(model, POJEM);
-
-        boolean hasConceptualModelTypes = hasConceptOfType(model, TRIDA) ||
-                                         hasConceptOfType(model, TSP) ||
-                                         hasConceptOfType(model, TOP) ||
-                                         hasConceptOfType(model, VLASTNOST) ||
-                                         hasConceptOfType(model, VZTAH);
-
-        if (hasPojem || hasConceptualModelTypes) {
+        boolean hasOwlKind = OfnIris.MARKER_BY_OWL_KIND.keySet().stream().anyMatch(kind -> hasType(model, kind));
+        if (hasOwlKind || hasType(model, OfnIris.POJEM)) {
             types.add(TYPE_TEZAURUS);
         }
-
-        if (hasConceptualModelTypes) {
+        if (hasOwlKind) {
             types.add(TYPE_KM);
         }
-
         return types;
     }
 
-    private boolean hasConceptOfType(Model model, String conceptType) {
-        Resource typeResource = model.getResource(OFN_NAMESPACE + conceptType);
-        return model.listStatements(null, RDF.type, typeResource).hasNext();
+    private boolean hasType(Model model, String typeIri) {
+        return model.contains(null, RDF.type, model.getResource(typeIri));
     }
 }

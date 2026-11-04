@@ -1,9 +1,24 @@
 package com.dia.ismdtoolbackend.query;
 
+import com.dia.ismdtoolbackend.ofn.OfnIris;
+import org.apache.jena.query.QueryExecution;
+import org.apache.jena.query.QueryExecutionFactory;
+import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.ModelFactory;
+import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.vocabulary.OWL2;
+import org.apache.jena.vocabulary.RDF;
+import org.apache.jena.vocabulary.SKOS;
 import org.junit.jupiter.api.Test;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.entry;
 
 class NKDSPARQLBrowseQueryTest {
 
@@ -21,17 +36,28 @@ class NKDSPARQLBrowseQueryTest {
     }
 
     @Test
-    void buildOntologyConceptsQuery_projectsAllThreeRoleMarkers() {
-        String query = NKDSPARQLBrowseQuery.buildOntologyConceptsQuery(ONTOLOGY, "cs");
+    void buildOntologyConceptsQuery_roleComesFromTheOwlKindOnly() {
+        Model data = ModelFactory.createDefaultModel();
+        Resource scheme = data.createResource(ONTOLOGY);
+        Map<String, Resource> types = Map.of(
+                "class", OWL2.Class, "datatype", OWL2.DatatypeProperty, "object", OWL2.ObjectProperty,
+                "markerOnly", data.createResource(OfnIris.MARKER_TRIDA));
+        types.forEach((name, type) -> data.createResource("https://example.org/pojem/" + name)
+                .addProperty(SKOS.inScheme, scheme).addProperty(RDF.type, type));
 
-        // Role is read from independent OPTIONAL binds, each accepting the OFN tag or the OWL type,
-        // so an unfiltered listing still populates conceptType.
-        assertThat(query).contains("?roleTrida");
-        assertThat(query).contains("?roleVlastnost");
-        assertThat(query).contains("?roleVztah");
-        assertThat(query).contains("http://www.w3.org/2002/07/owl#Class");
-        assertThat(query).contains("http://www.w3.org/2002/07/owl#DatatypeProperty");
-        assertThat(query).contains("http://www.w3.org/2002/07/owl#ObjectProperty");
+        Map<String, List<String>> boundRoles = new HashMap<>();
+        try (QueryExecution exec = QueryExecutionFactory.create(
+                NKDSPARQLBrowseQuery.buildOntologyConceptsQuery(ONTOLOGY, "cs"), data)) {
+            exec.execSelect().forEachRemaining(row -> boundRoles.put(
+                    row.getResource("concept").getLocalName(),
+                    Stream.of("roleTrida", "roleVlastnost", "roleVztah").filter(row::contains).toList()));
+        }
+
+        assertThat(boundRoles).containsOnly(
+                entry("class", List.of("roleTrida")),
+                entry("datatype", List.of("roleVlastnost")),
+                entry("object", List.of("roleVztah")),
+                entry("markerOnly", List.of()));
     }
 
     @Test

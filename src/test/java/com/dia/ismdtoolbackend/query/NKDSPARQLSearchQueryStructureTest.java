@@ -31,10 +31,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Stream;
 
-import static com.dia.constants.VocabularyConstants.OFN_NAMESPACE;
-import static com.dia.constants.VocabularyConstants.TRIDA;
-import static com.dia.constants.VocabularyConstants.VLASTNOST;
-import static com.dia.constants.VocabularyConstants.VZTAH;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -45,27 +41,27 @@ class NKDSPARQLSearchQueryStructureTest {
 
     static Stream<Arguments> roles() {
         return Stream.of(
-                Arguments.of(ConceptType.TRIDA, OFN_NAMESPACE + TRIDA, OWL2.Class.getURI()),
-                Arguments.of(ConceptType.VLASTNOST, OFN_NAMESPACE + VLASTNOST, OWL2.DatatypeProperty.getURI()),
-                Arguments.of(ConceptType.VZTAH, OFN_NAMESPACE + VZTAH, OWL2.ObjectProperty.getURI()));
+                Arguments.of(ConceptType.TRIDA, OWL2.Class.getURI()),
+                Arguments.of(ConceptType.VLASTNOST, OWL2.DatatypeProperty.getURI()),
+                Arguments.of(ConceptType.VZTAH, OWL2.ObjectProperty.getURI()));
     }
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("roles")
-    void pageQueryNarrowsToTheOfnRoleOrItsOwlType(ConceptType role, String ofnType, String owlType) {
+    void pageQueryNarrowsToTheOwlTypeOnly(ConceptType role, String owlType) {
         Query page = QueryFactory.create(NKDSPARQLSearchQuery.buildConceptSearchQuery(
                 "osoba", "cs", 20, 0, null, null, role));
 
-        assertThat(roleFilters(page)).contains(Set.of(ofnType, owlType));
+        assertThat(roleFilters(page)).containsExactly(owlType);
     }
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("roles")
-    void countQueryNarrowsExactlyLikeThePageQuery(ConceptType role, String ofnType, String owlType) {
+    void countQueryNarrowsExactlyLikeThePageQuery(ConceptType role, String owlType) {
         Query count = QueryFactory.create(NKDSPARQLSearchQuery.buildConceptSearchCountQuery(
                 "osoba", null, null, role));
 
-        assertThat(roleFilters(count)).containsExactly(Set.of(ofnType, owlType));
+        assertThat(roleFilters(count)).containsExactly(owlType);
     }
 
     @Test
@@ -126,18 +122,12 @@ class NKDSPARQLSearchQueryStructureTest {
         }
     }
 
-    /** For each filter of the form EXISTS { ?resource a <A> } || EXISTS { ?resource a <B> }, the set {A, B}. */
-    private static List<Set<String>> roleFilters(Query query) {
-        List<Set<String>> result = new ArrayList<>();
+    /** The type of every filter of the form EXISTS { ?resource a <T> }. */
+    private static List<String> roleFilters(Query query) {
+        List<String> result = new ArrayList<>();
         for (Expr filter : filters(query)) {
-            if (filter instanceof E_LogicalOr or
-                    && or.getArg1() instanceof E_Exists left && or.getArg2() instanceof E_Exists right) {
-                Set<String> types = new HashSet<>();
-                types.addAll(rdfTypesOf(left.getElement()));
-                types.addAll(rdfTypesOf(right.getElement()));
-                if (types.size() == 2) {
-                    result.add(types);
-                }
+            if (filter instanceof E_Exists exists) {
+                result.addAll(rdfTypesOf(exists.getElement()));
             }
         }
         return result;

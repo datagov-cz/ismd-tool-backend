@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.ofn.OfnDates;
 import com.dia.ismdtoolbackend.ofn.OfnVocabularyExporter;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.exception.EmptyDataException;
@@ -40,7 +41,8 @@ public class OntologyDownloadServiceImpl implements OntologyDownloadService {
             throw new OntologyNotFoundException("Metadata slovníku nebyla nalezena");
         }
 
-        String graphName = ontologyMetadataOpt.get().getGraphName();
+        OntologyMetadataEntity metadata = ontologyMetadataOpt.get();
+        String graphName = metadata.getGraphName();
         OfnVocabularyExporter.Format ofnFormat = OfnVocabularyExporter.Format.of(format);
 
         boolean acquired;
@@ -65,6 +67,8 @@ public class OntologyDownloadServiceImpl implements OntologyDownloadService {
                     log.error("Ontology model is empty.");
                     throw new EmptyDataException("Slovník je prázdný, nebo nebyl nalezen.");
                 }
+                // aktualizováno is the metadata's last change, not a stored or uploaded value
+                OfnDates.replaceLastChange(model, graphName, metadata.getUpdatedAt());
                 return exporter.export(model, graphName, ofnFormat);
             } finally {
                 model.close();
