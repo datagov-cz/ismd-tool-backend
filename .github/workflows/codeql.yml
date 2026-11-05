@@ -16,15 +16,11 @@ permissions:
   contents: read
   security-events: write
   actions: read
-  packages: read
 
 jobs:
   analyze:
     name: Analyze (java)
     runs-on: ubuntu-latest
-    env:
-      GITHUB_ACTOR: ${{ github.actor }}
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - name: Checkout
@@ -35,9 +31,6 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-          server-id: github
-          server-username: GITHUB_ACTOR
-          server-password: GITHUB_TOKEN
 
       - name: Cache Maven packages
         uses: actions/cache@v6

@@ -10,7 +10,7 @@ import java.util.*;
 
 import com.dia.ismdtoolbackend.exception.ModelProcessingException;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 
 @Slf4j
 public class ModelAnalyzer {

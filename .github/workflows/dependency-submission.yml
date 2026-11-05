@@ -2,8 +2,6 @@ name: Maven Dependency Submission
 
 # Submits the resolved Maven dependency graph to GitHub so Dependabot
 # alerts and dependency review reflect the real transitive tree.
-# Replaces the repo's "Automatic dependency submission" setting, which
-# cannot authenticate against our private GitHub Packages repo.
 
 on:
   push:
@@ -12,14 +10,10 @@ on:
 
 permissions:
   contents: write
-  packages: read
 
 jobs:
   submit:
     runs-on: ubuntu-latest
-    env:
-      GITHUB_ACTOR: ${{ github.actor }}
-      GITHUB_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -29,9 +23,6 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-          server-id: github
-          server-username: GITHUB_ACTOR
-          server-password: GITHUB_TOKEN
 
       - name: Submit dependency snapshot
         uses: advanced-security/maven-dependency-submission-action@v6

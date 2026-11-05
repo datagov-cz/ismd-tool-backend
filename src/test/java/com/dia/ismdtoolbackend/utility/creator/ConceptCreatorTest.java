@@ -24,7 +24,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 import static com.dia.ismdtoolbackend.testsupport.rdf.Ttl.iris;
 import static com.dia.ismdtoolbackend.testsupport.rdf.Ttl.literals;
 import static com.dia.ismdtoolbackend.testsupport.rdf.Ttl.types;

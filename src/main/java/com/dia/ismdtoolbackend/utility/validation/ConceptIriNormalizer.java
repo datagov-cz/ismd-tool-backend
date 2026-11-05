@@ -8,7 +8,7 @@ import com.dia.ismdtoolbackend.models.concept.PropertyConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.PropertyConceptModel;
 import com.dia.ismdtoolbackend.models.concept.RelationshipConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.RelationshipConceptModel;
-import com.dia.utility.UtilityMethods;
+import com.dia.ismdtoolbackend.utility.UtilityMethods;
 
 import java.util.ArrayList;
 import java.util.List;

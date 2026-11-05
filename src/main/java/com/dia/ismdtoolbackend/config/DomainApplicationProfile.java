@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.config;
 
-import com.dia.exceptions.DomainException;
+import com.dia.ismdtoolbackend.exception.DomainException;
 import org.springframework.core.env.Environment;
 
 import java.util.Arrays;

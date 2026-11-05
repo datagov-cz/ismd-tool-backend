@@ -15,14 +15,10 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  packages: read
 
 jobs:
   create-release-pr:
     runs-on: ubuntu-latest
-    env:
-      GITHUB_ACTOR: ${{ github.actor }}
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     outputs:
       main_version: ${{ steps.main-version.outputs.version }}
       new_version: ${{ steps.new-version.outputs.version }}
@@ -38,9 +34,6 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-          server-id: github
-          server-username: GITHUB_ACTOR
-          server-password: GITHUB_TOKEN
 
       - name: Fetch main branch
         run: git fetch origin main:main
@@ -108,33 +101,14 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Configure Maven settings for GitHub Packages
-        run: |
-          mkdir -p ~/.m2
-          cat > ~/.m2/settings.xml <<EOF
-          <settings>
-            <servers>
-              <server>
-                <id>github</id>
-                <username>${{ github.actor }}</username>
-                <password>${{ secrets.GITHUB_TOKEN }}</password>
-              </server>
-            </servers>
-          </settings>
-          EOF
-
       # TODO: Re-enable tests after fixing failing tests
       # - name: Run tests
       #   run: |
       #     # Build and run tests to ensure the release is stable
       #     ./mvnw clean test
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
+
       - name: Build with Maven (tests disabled temporarily)
         run: ./mvnw clean package -DskipTests=true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Push release branch
         run: |

@@ -7,8 +7,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static com.dia.constants.VocabularyConstants.DEFINICNI_OBOR;
-import static com.dia.constants.VocabularyConstants.OBOR_HODNOT;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.DEFINICNI_OBOR;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OBOR_HODNOT;
 
 /**
  * Domain/range lookup over an ontology's concept list, built in one pass so per-concept

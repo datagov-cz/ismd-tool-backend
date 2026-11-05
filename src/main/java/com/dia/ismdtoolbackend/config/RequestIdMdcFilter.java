@@ -13,7 +13,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.UUID;
 
-import static com.dia.constants.FormatConstants.Converter.LOG_REQUEST_ID;
+import static com.dia.ismdtoolbackend.constants.FormatConstants.Converter.LOG_REQUEST_ID;
 
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
