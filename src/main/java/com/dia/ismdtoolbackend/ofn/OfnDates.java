@@ -42,9 +42,26 @@ public final class OfnDates {
     }
 
     /**
-     * Sets the vocabulary's {@code okamžik-poslední-změny} to {@code lastChange}, replacing any stored
-     * value with its instant node; with a null {@code lastChange} the vocabulary has none. The stored
-     * {@code lastChange} is zone-less and read in the JVM's zone, the zone it was written in.
+     * A zone-less stored timestamp in {@link #ZONE}, to whole seconds. It is read in the JVM's zone, the
+     * zone it was written in; null stays null.
+     */
+    public static OffsetDateTime fromStored(LocalDateTime stored) {
+        if (stored == null) {
+            return null;
+        }
+        return stored.atZone(ZoneId.systemDefault()).withZoneSameInstant(ZONE)
+                .toOffsetDateTime().truncatedTo(ChronoUnit.SECONDS);
+    }
+
+    /** {@link #fromStored} as the {@code datum-a-čas} lexical form; null stays null. */
+    public static String formatStored(LocalDateTime stored) {
+        OffsetDateTime at = fromStored(stored);
+        return at == null ? null : at.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+    }
+
+    /**
+     * Sets the vocabulary's {@code okamžik-poslední-změny} to {@code lastChange} (see {@link #fromStored}),
+     * replacing any stored value with its instant node; with a null {@code lastChange} the vocabulary has none.
      */
     public static void replaceLastChange(Model model, String vocabularyIri, LocalDateTime lastChange) {
         Resource vocabulary = model.createResource(vocabularyIri);
@@ -56,9 +73,7 @@ public final class OfnDates {
         }
         vocabulary.removeAll(lastChangeProperty);
         if (lastChange != null) {
-            OffsetDateTime at = lastChange.atZone(ZoneId.systemDefault())
-                    .withZoneSameInstant(ZONE).toOffsetDateTime().truncatedTo(ChronoUnit.SECONDS);
-            vocabulary.addProperty(lastChangeProperty, instant(model, at));
+            vocabulary.addProperty(lastChangeProperty, instant(model, fromStored(lastChange)));
         }
     }
 }
