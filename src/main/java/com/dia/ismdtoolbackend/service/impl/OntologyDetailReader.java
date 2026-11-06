@@ -14,6 +14,7 @@ import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
+import com.dia.ismdtoolbackend.ofn.OfnDates;
 import com.dia.ismdtoolbackend.repository.*;
 import com.dia.ismdtoolbackend.service.NkdDetailService;
 import com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer;
@@ -116,6 +117,8 @@ class OntologyDetailReader {
         // it three times across detail extraction and deviation checks.
         Model processedModel = detailExtractor.applyOFNTransformations(rawModel);
         OntologyDetailModel detailModel = detailExtractor.extractOntologyDetail(processedModel);
+        // the last change is the metadata's, as in the download, not a stored or uploaded value
+        detailModel.setModificationDate(OfnDates.formatStored(metadataEntity.getUpdatedAt()));
         applyForeignMemberCounts(detailModel, graphName);
         return new LoadedOntologyDetail(metadataEntity, rawModel, processedModel, detailModel);
     }
