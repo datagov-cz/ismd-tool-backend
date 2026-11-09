@@ -41,8 +41,8 @@ public class ConceptEditor {
     /**
      * Edits a concept, renaming it when the supplied name derives a new IRI.
      *
-     * @param iriTaken tests whether an owned concept other than this one already claims a
-     *                 candidate IRI; a rename onto a taken IRI is rejected with HTTP 400
+     * @param iriTaken tests whether a candidate IRI is taken: claimed by another owned concept, or holding
+     *                 stored triples without a concept row; a rename onto a taken IRI is rejected with HTTP 400
      */
     public EditResult editConcept(String conceptIri, ConceptEditModel editModel, Model model, String graphName,
                                   Predicate<String> iriTaken) {
@@ -75,9 +75,7 @@ public class ConceptEditor {
             log.info("Name changed from '{}' to '{}', updating IRI from {} to {}",
                     oldName, newName, conceptIri, newConceptIRI);
 
-            // Tested against owned-concept metadata, not the in-memory model: the graph also holds
-            // referenced concepts and NKD snapshot copies, whose IRIs are not names this concept
-            // would be colliding with.
+            // The caller decides what counts as taken (see the iriTaken parameter).
             if (!newConceptIRI.equals(conceptIri) && iriTaken.test(newConceptIRI)) {
                 throw new ConceptValidationException(
                         "Pojem se stejným názvem již v ontologii existuje: " + newConceptIRI);

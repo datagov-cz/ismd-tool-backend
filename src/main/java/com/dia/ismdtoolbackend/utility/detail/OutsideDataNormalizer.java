@@ -7,7 +7,7 @@ import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
 import org.apache.jena.vocabulary.SKOS;
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
@@ -35,7 +35,7 @@ final class OutsideDataNormalizer {
     public static int normalizeUploadInput(Model model) {
         int count = 0;
         count += ensureConceptsHaveSkosType(model);
-        count += normalizeOwlClassConcepts(model);
+        count += normalizeOwlKindConcepts(model);
         count += convertLabelsToSkosPrefLabel(model);
         return count;
     }
@@ -105,30 +105,34 @@ final class OutsideDataNormalizer {
     }
 
     /**
-     * Infers {@code skos:Concept} and {@code slovníky:pojem} on {@code owl:Class} concepts. Does NOT
-     * touch {@code skos:inScheme} (that's the NKD-only derivation step, or the authoritative upload step).
+     * Infers {@code skos:Concept} and {@code slovníky:pojem} on {@code /pojem/} concepts of every OWL kind
+     * ({@code owl:Class}, {@code owl:DatatypeProperty}, {@code owl:ObjectProperty}); without them
+     * {@code TurtleFilterUtil} drops a resource typed only with an OWL kind. Does NOT touch
+     * {@code skos:inScheme} (that's the NKD-only derivation step, or the authoritative upload step).
      */
-    private static int normalizeOwlClassConcepts(Model model) {
+    private static int normalizeOwlKindConcepts(Model model) {
         Resource slovnikyPojem = model.createResource(OFN_NAMESPACE + POJEM);
         int count = 0;
 
-        List<Resource> classesToNormalize = new ArrayList<>();
-        ResIterator iter = model.listResourcesWithProperty(RDF.type, OWL2.Class);
-        while (iter.hasNext()) {
-            Resource r = iter.next();
-            if (r.isURIResource() && isConceptResource(r.getURI())) {
-                classesToNormalize.add(r);
+        Set<Resource> conceptsToNormalize = new LinkedHashSet<>();
+        for (Resource owlKind : List.of(OWL2.Class, OWL2.DatatypeProperty, OWL2.ObjectProperty)) {
+            ResIterator iter = model.listResourcesWithProperty(RDF.type, owlKind);
+            while (iter.hasNext()) {
+                Resource r = iter.next();
+                if (r.isURIResource() && isConceptResource(r.getURI())) {
+                    conceptsToNormalize.add(r);
+                }
             }
         }
 
-        for (Resource cls : classesToNormalize) {
+        for (Resource concept : conceptsToNormalize) {
             boolean modified = false;
-            if (!cls.hasProperty(RDF.type, SKOS.Concept)) {
-                cls.addProperty(RDF.type, SKOS.Concept);
+            if (!concept.hasProperty(RDF.type, SKOS.Concept)) {
+                concept.addProperty(RDF.type, SKOS.Concept);
                 modified = true;
             }
-            if (!cls.hasProperty(RDF.type, slovnikyPojem)) {
-                cls.addProperty(RDF.type, slovnikyPojem);
+            if (!concept.hasProperty(RDF.type, slovnikyPojem)) {
+                concept.addProperty(RDF.type, slovnikyPojem);
                 modified = true;
             }
             if (modified) count++;

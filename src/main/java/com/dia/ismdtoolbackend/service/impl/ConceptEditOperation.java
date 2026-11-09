@@ -14,10 +14,12 @@ import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.utility.validation.ConceptIriNormalizer;
 import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
+import com.dia.ismdtoolbackend.utility.validation.ConceptNamespaceRule;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.Statement;
@@ -82,6 +84,7 @@ class ConceptEditOperation {
         String aggregateIri = metadata.getConceptIri();
 
         ConceptEditor.EditResult editResult = performConceptEdit(conceptId, aggregateIri, conceptEditModel, model, graphName);
+        ConceptNamespaceRule.requireInVocabulary(editResult.newConceptIRI, graphName);
 
         // Reconcile NKD links and union the resulting link delta with the editor's, so a dropped link's
         // edge removal rides the same owner-keyed aggregate as the edit. The snapshot service reads
@@ -148,7 +151,8 @@ class ConceptEditOperation {
     ConceptEditor.EditResult performConceptEdit(Long conceptId, String conceptIri, ConceptEditModel conceptEditModel, Model model, String graphName) {
         try {
             ConceptEditor.EditResult editResult = conceptEditor.editConcept(conceptIri, conceptEditModel, model, graphName,
-                    candidateIri -> isConceptIriTakenByOther(candidateIri, conceptId));
+                    candidateIri -> isConceptIriTakenByOther(candidateIri, conceptId)
+                            || graphHoldsSubject(model, candidateIri));
             log.info("Edit completed: {} changes, IRI changed: {}, new IRI: {}",
                     editResult.changesCount, editResult.iriChanged, editResult.newConceptIRI);
             return editResult;
@@ -217,6 +221,15 @@ class ConceptEditOperation {
      * <p>Matches only owned concepts — NKD snapshot copies live in a separate table, so a
      * referenced NKD concept never counts as a collision.
      */
+    /**
+     * True when the graph holds triples about the IRI: a concept an upload rejected but kept because another
+     * concept references it. A rename onto it would merge those triples into this concept. Referenced
+     * concepts appear only as objects and NKD snapshot copies live only in PG, so neither matches.
+     */
+    static boolean graphHoldsSubject(Model model, String iri) {
+        return model.contains(model.createResource(iri), null, (RDFNode) null);
+    }
+
     boolean isConceptIriTakenByOther(String conceptUri, Long conceptId) {
         return conceptMetadataRepository.findByConceptIri(conceptUri)
                 .filter(existing -> !existing.getId().equals(conceptId))

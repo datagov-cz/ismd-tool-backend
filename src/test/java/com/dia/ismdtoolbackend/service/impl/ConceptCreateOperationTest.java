@@ -57,6 +57,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -152,7 +153,9 @@ class ConceptCreateOperationTest {
             verify(outboxWriter).enqueueUpsert(eq(GRAPH_NAME), eq(CONCEPT_IRI), eq(Set.of()), addedCaptor.capture());
             assertThat(addedCaptor.getValue()).containsExactly(label);
             verify(outboxRelayTrigger).nudgeAfterCommit();
-            verifyNoInteractions(jenaTDB2Repository);
+            // Only the collision read; the triples reach TDB2 through the outbox.
+            verify(jenaTDB2Repository).conceptFoundInGraph(CONCEPT_IRI, GRAPH_NAME);
+            verifyNoMoreInteractions(jenaTDB2Repository);
         }
 
         @Test
@@ -263,6 +266,32 @@ class ConceptCreateOperationTest {
             verifyNoInteractions(outboxWriter);
             verify(conceptMetadataRepository, never()).save(any());
         }
+
+        @Test
+        void rejectsAnIriWhoseTriplesTheGraphAlreadyHolds() {
+            when(conceptCreator.createSingleConcept(createModel)).thenReturn(createdResource);
+            when(conceptMetadataRepository.findByConceptIri(CONCEPT_IRI)).thenReturn(Optional.empty());
+            when(jenaTDB2Repository.conceptFoundInGraph(CONCEPT_IRI, GRAPH_NAME)).thenReturn(true);
+
+            assertThatThrownBy(() -> operation.createConcept(createModel, USER_ID))
+                    .isInstanceOf(ConceptValidationException.class)
+                    .hasMessageContaining(CONCEPT_IRI);
+            verifyNoInteractions(outboxWriter, ofnWriteGate);
+            verify(conceptMetadataRepository, never()).save(any());
+        }
+
+        @Test
+        void rejectsAnIriOutsideTheVocabularyNamespace() {
+            String foreignIri = "https://slovník.gov.cz/jiný/pojem/x";
+            when(conceptCreator.createSingleConcept(createModel))
+                    .thenReturn(createdModel.createResource(foreignIri));
+
+            assertThatThrownBy(() -> operation.createConcept(createModel, USER_ID))
+                    .isInstanceOf(ConceptValidationException.class)
+                    .hasMessageContaining("neleží ve jmenném prostoru");
+            verifyNoInteractions(outboxWriter, ofnWriteGate);
+            verify(conceptMetadataRepository, never()).save(any());
+        }
     }
 
     @Nested
@@ -319,7 +348,9 @@ class ConceptCreateOperationTest {
                     .hasMessage("Nepodařilo se uložit metadata pojmu.");
             // The outbox row rolls back with the transaction.
             verify(outboxRelayTrigger, never()).nudgeAfterCommit();
-            verifyNoInteractions(jenaTDB2Repository);
+            // Only the collision read; the triples reach TDB2 through the outbox.
+            verify(jenaTDB2Repository).conceptFoundInGraph(CONCEPT_IRI, GRAPH_NAME);
+            verifyNoMoreInteractions(jenaTDB2Repository);
         }
     }
 }

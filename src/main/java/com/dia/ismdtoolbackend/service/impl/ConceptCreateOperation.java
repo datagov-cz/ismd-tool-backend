@@ -8,6 +8,7 @@ import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.ofn.OfnWriteGate;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
+import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.utility.creator.ConceptMetadataFactory;
 import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
@@ -15,6 +16,7 @@ import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
 import com.dia.ismdtoolbackend.utility.validation.ConceptCreateValidator;
 import com.dia.ismdtoolbackend.utility.validation.ConceptIriNormalizer;
+import com.dia.ismdtoolbackend.utility.validation.ConceptNamespaceRule;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntologyException;
@@ -40,6 +42,7 @@ class ConceptCreateOperation {
     private final OutboxRelayTrigger outboxRelayTrigger;
     private final InitialGraphGuard initialGraphGuard;
     private final OfnWriteGate ofnWriteGate;
+    private final JenaTDB2Repository jenaTDB2Repository;
 
     ConceptMetadataModel createConcept(ConceptCreateModel createModel, String userId) {
         log.info("Creating concept: type={}, name={}, namespace={}, userId={}",
@@ -51,10 +54,11 @@ class ConceptCreateOperation {
 
         Resource conceptResource = createConceptResource(createModel);
         String conceptUri = conceptResource.getURI();
-
-        rejectIfConceptIriTaken(conceptUri);
-
         String ontologyGraphName = createModel.getOntologyGraphName();
+        ConceptNamespaceRule.requireInVocabulary(conceptUri, ontologyGraphName);
+
+        rejectIfConceptIriTaken(conceptUri, ontologyGraphName);
+
         initialGraphGuard.requireInitialGraphApplied(ontologyGraphName);
         ofnWriteGate.requireWritableConcepts(conceptResource.getModel(), ontologyGraphName, List.of(conceptUri));
 
@@ -79,16 +83,24 @@ class ConceptCreateOperation {
     }
 
     /**
-     * Rejects the request when an owned concept already claims this IRI.
+     * Rejects the request when an owned concept already claims this IRI, or when the graph already holds
+     * triples about it without a concept row (a concept an upload rejected but kept because another concept
+     * references it). Creating over such triples would merge them into the new concept, since a create only
+     * inserts.
      *
-     * <p>Matches only owned concepts — NKD snapshot copies live in a separate table, so a
+     * <p>The row check matches only owned concepts — NKD snapshot copies live in a separate table, so a
      * referenced NKD concept never triggers a collision.
      */
-    void rejectIfConceptIriTaken(String conceptUri) {
+    void rejectIfConceptIriTaken(String conceptUri, String graphName) {
         if (conceptMetadataRepository.findByConceptIri(conceptUri).isPresent()) {
             log.info("Rejecting concept creation, IRI already exists: {}", conceptUri);
             throw new ConceptValidationException(
                     "Pojem se stejným názvem již v ontologii existuje: " + conceptUri);
+        }
+        if (jenaTDB2Repository.conceptFoundInGraph(conceptUri, graphName)) {
+            log.info("Rejecting concept creation, graph {} already holds triples of {}", graphName, conceptUri);
+            throw new ConceptValidationException("Slovník již obsahuje data pojmu " + conceptUri
+                    + " (např. pojem odmítnutý při importu, na který odkazuje jiný pojem). Zvolte jiný název.");
         }
     }
 

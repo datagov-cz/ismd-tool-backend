@@ -105,6 +105,11 @@ public class JenaTDB2Repository {
                 conn -> conceptNotFoundInGraph(conn, conceptUri, graphName));
     }
 
+    /** True when the graph holds any triple with the concept as subject. */
+    public boolean conceptFoundInGraph(String conceptUri, String graphName) {
+        return !conceptNotFoundInGraph(conceptUri, graphName);
+    }
+
     static boolean conceptNotFoundInGraph(RDFConnection conn, String conceptUri, String graphName) {
         ParameterizedSparqlString pss = new ParameterizedSparqlString();
         pss.setCommandText("ASK { GRAPH ?g { ?s ?p ?o } }");

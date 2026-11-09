@@ -157,7 +157,7 @@ class ConceptEditOperationTest {
         /** The pre-edit IRI keys the row, so a rename shares an aggregate with the concept's create. */
         @Test
         void keysARenameOnThePreEditIri() {
-            String newIri = "http://example.org/pojem/renamed-concept";
+            String newIri = GRAPH_NAME + "/pojem/renamed-concept";
 
             editCommitting(new EditResult(newIri, true, Set.of(), Set.of()));
 
@@ -250,7 +250,7 @@ class ConceptEditOperationTest {
 
         @Test
         void savesTheNewIriOfARename() {
-            String newIri = "http://example.org/pojem/new-concept";
+            String newIri = GRAPH_NAME + "/pojem/new-concept";
 
             ConceptMetadataModel result = editCommitting(new EditResult(newIri, true, Set.of(), Set.of()));
 
@@ -317,6 +317,33 @@ class ConceptEditOperationTest {
             assertThat(iriTaken.test("http://example.org/pojem/x")).isFalse();
             assertThat(iriTaken.test("http://example.org/pojem/y")).isTrue();
             assertThat(iriTaken.test("http://example.org/pojem/z")).isFalse();
+        }
+
+        /** Stored triples without a concept row (an upload-rejected concept kept as a reference) take the IRI. */
+        @Test
+        void anIriWithStoredTriplesIsTaken() {
+            String leftover = GRAPH_NAME + "/pojem/odmítnutý";
+            String referencedOnly = GRAPH_NAME + "/pojem/jen-odkaz";
+            graph.add(graph.createResource(leftover), RDF.type, OWL2.Class);
+            graph.add(conceptResource, RDFS.seeAlso, graph.createResource(referencedOnly));
+            editCommitting(unchanged());
+            verify(conceptEditor).editConcept(anyString(), any(), any(Model.class), anyString(), iriTakenCaptor.capture());
+            Predicate<String> iriTaken = iriTakenCaptor.getValue();
+
+            assertThat(iriTaken.test(leftover)).isTrue();
+            assertThat(iriTaken.test(referencedOnly)).isFalse();
+        }
+
+        @Test
+        void refusesARenameOutsideTheVocabularyNamespace() {
+            String foreignIri = "https://slovník.gov.cz/jiný/pojem/x";
+            givenEditorReturns(new EditResult(foreignIri, true, Set.of(), Set.of()));
+
+            assertThatThrownBy(() -> operation.editConcept(CONCEPT_ID, editModel))
+                    .isInstanceOf(ConceptValidationException.class)
+                    .hasMessageContaining("neleží ve jmenném prostoru");
+            verifyNoInteractions(outboxWriter);
+            verify(conceptMetadataRepository, never()).save(any());
         }
     }
 
@@ -398,7 +425,7 @@ class ConceptEditOperationTest {
 
         @Test
         void checksTheRenamedIri() {
-            String newIri = "http://example.org/pojem/renamed-concept";
+            String newIri = GRAPH_NAME + "/pojem/renamed-concept";
 
             editCommitting(new EditResult(newIri, true, Set.of(), Set.of()));
 

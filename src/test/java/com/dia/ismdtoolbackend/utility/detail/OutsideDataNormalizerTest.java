@@ -76,15 +76,22 @@ class OutsideDataNormalizerTest {
         }
 
         @Test
-        @DisplayName("adds no types to object and datatype properties")
-        void propertiesUntouched() {
-            String input = """
+        @DisplayName("tags /pojem/ object and datatype properties as skos:Concept and slovníky:pojem, nothing else")
+        void propertiesTagged() {
+            Model model = Ttl.parse("""
                     pojem:má-adresu a owl:ObjectProperty .
                     pojem:jméno a owl:DatatypeProperty .
                     <https://example.org/model/prop> a owl:ObjectProperty, owl:DatatypeProperty .
-                    """;
+                    """);
 
-            assertIsomorphic(input, normalizedForLocalDetail(input));
+            int count = OutsideDataNormalizer.normalizeUploadInput(model);
+
+            assertIsomorphic("""
+                    pojem:má-adresu a owl:ObjectProperty, skos:Concept, slovníky:pojem .
+                    pojem:jméno a owl:DatatypeProperty, skos:Concept, slovníky:pojem .
+                    <https://example.org/model/prop> a owl:ObjectProperty, owl:DatatypeProperty .
+                    """, model);
+            assertThat(count).isEqualTo(2);
         }
 
         @Test
