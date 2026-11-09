@@ -8,7 +8,7 @@ import org.apache.jena.vocabulary.SKOS;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 
 /** Edit behavior shared by every concept type: IRI stability and null-means-unchanged. */
 class ConceptEditorCrossCuttingTest extends ConceptEditorTestBase {

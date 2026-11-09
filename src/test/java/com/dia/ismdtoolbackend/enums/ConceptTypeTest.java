@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.enums;
 
-import com.dia.constants.VocabularyConstants;
+import com.dia.ismdtoolbackend.constants.VocabularyConstants;
 import com.dia.ismdtoolbackend.exception.ConflictingConceptTypeException;
 import org.junit.jupiter.api.Test;
 

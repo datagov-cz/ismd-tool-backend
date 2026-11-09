@@ -1,7 +1,7 @@
 package com.dia.ismdtoolbackend.utility.validation;
 
 import com.dia.ismdtoolbackend.exception.OntologyUploadIriCollisionException;
-import com.dia.utility.UtilityMethods;
+import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
@@ -19,7 +19,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 
 /**
  * Strips trailing slashes from the IRIs of an uploaded vocabulary, in place, so an uploaded

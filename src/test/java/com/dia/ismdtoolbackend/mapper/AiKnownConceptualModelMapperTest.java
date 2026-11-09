@@ -12,11 +12,11 @@ import java.util.List;
 import java.util.Arrays;
 import java.util.Map;
 
-import static com.dia.constants.VocabularyConstants.OFN_NAMESPACE;
-import static com.dia.constants.VocabularyConstants.TOP;
-import static com.dia.constants.VocabularyConstants.TOP_JSON_LD;
-import static com.dia.constants.VocabularyConstants.TSP;
-import static com.dia.constants.VocabularyConstants.TSP_JSON_LD;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OFN_NAMESPACE;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TOP;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TOP_JSON_LD;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TSP;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TSP_JSON_LD;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class AiKnownConceptualModelMapperTest {

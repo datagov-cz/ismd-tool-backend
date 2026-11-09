@@ -9,7 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.*;
 import java.util.regex.Pattern;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 
 
 @Slf4j

@@ -15,7 +15,7 @@ import java.util.Map;
 
 import com.dia.ismdtoolbackend.exception.TurtleExportException;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 
 @Slf4j
 public class TurtleFormatterUtil {

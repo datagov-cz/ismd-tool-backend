@@ -19,11 +19,11 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static com.dia.constants.VocabularyConstants.OFN_NAMESPACE;
-import static com.dia.constants.VocabularyConstants.TOP;
-import static com.dia.constants.VocabularyConstants.TOP_JSON_LD;
-import static com.dia.constants.VocabularyConstants.TSP;
-import static com.dia.constants.VocabularyConstants.TSP_JSON_LD;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OFN_NAMESPACE;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TOP;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TOP_JSON_LD;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TSP;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TSP_JSON_LD;
 
 @Component
 public class AiKnownConceptualModelMapper {
