@@ -1,8 +1,9 @@
 package com.dia.ismdtoolbackend.ofn;
 
 /**
- * RDF IRIs of the OFN slovníky terms the tool writes and reads. {@code OfnIrisTest} checks every OFN IRI
- * against the bundled context.
+ * RDF IRIs of the OFN slovníky terms the tool writes and reads. {@code OfnIrisTest} checks that every
+ * constant is a prefix namespace or a term IRI of the bundled context, so a renamed or removed term fails
+ * the build.
  */
 public final class OfnIris {
 
