@@ -146,9 +146,8 @@ class ConceptSourceUpdater {
     }
 
     /**
-     * The concept's stored sources under {@code property}, or {@code null} when one is not in the OFN
-     * shape (a digital-object blank node whose url is an {@code xsd:anyURI} literal), so it never equals
-     * an edit and gets rewritten.
+     * The concept's stored sources under {@code property}, compared by the lexical form of their url, title
+     * and description, or {@code null} when one has no url, so it never equals an edit and gets rewritten.
      */
     private Set<SourceRecord> currentSources(Resource concept, Property property, Property url,
                                              Property title, Property description) {

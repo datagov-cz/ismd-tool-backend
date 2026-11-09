@@ -603,6 +603,38 @@ class OntologyUploadServiceImplTest {
                 });
     }
 
+    /** A plain OWL resource (no Pojem/Koncept, no inScheme) is reported and pruned, not stored silently. */
+    @Test
+    void testUploadFromFile_owlKindWithoutConceptTypeOrScheme_isRejectedAndPruned() throws Exception {
+        String userId = "user123";
+        when(multipartFile.getBytes()).thenReturn(String.format(
+                "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
+                        + " @prefix skos: <http://www.w3.org/2004/02/skos/core#> ."
+                        + " @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> ."
+                        + " <%1$s> a owl:Ontology, skos:ConceptScheme, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> ."
+                        + " <%2$s> a owl:DatatypeProperty ; rdfs:label \"Jméno\"@cs .",
+                DECISION_ONTOLOGY, DECISION_C1).getBytes());
+        when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
+        when(multipartFile.isEmpty()).thenReturn(false);
+        stubPersistenceForDecisionFlow(userId, false);
+        boolean[] stored = {true};
+        doAnswer(invocation -> {
+            OntModel model = invocation.getArgument(1);
+            stored[0] = model.listStatements(model.createResource(DECISION_C1), null,
+                    (org.apache.jena.rdf.model.RDFNode) null).hasNext();
+            return null;
+        }).when(jenaTDB2Repository).putOntologyModel(eq(DECISION_ONTOLOGY), any(OntModel.class));
+
+        OntologyUploadResultDto result =
+                ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
+
+        assertThat(result.rejectedConcepts()).singleElement().satisfies(rejected -> {
+            assertThat(rejected.iri()).isEqualTo(DECISION_C1);
+            assertThat(rejected.reason()).contains("chybí typ Pojem/Koncept");
+        });
+        assertThat(stored[0]).as("nothing references it, so it is pruned").isFalse();
+    }
+
     @Test
     void testUploadFromFile_bothObjectAndDatatypeProperty_failsTheWholeUpload() throws Exception {
         String userId = "user123";

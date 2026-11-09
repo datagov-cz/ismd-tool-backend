@@ -12,6 +12,7 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -31,31 +32,30 @@ public final class OfnSpecification {
 
     private static volatile OfnSpecification bundled;
 
-    private final JsonNode contextDocument;
     private final OfnContextIndex contextIndex;
     private final JsonNode schemaDocument;
     private final JsonSchema schema;
-    private final JsonSchema conceptSchema;
     private final Map<String, JsonSchema> conceptSchemasByType;
     private final String contextUrl;
+    private final OfnIdValueRules idValueRules;
 
     public OfnSpecification(JsonNode contextDocument, JsonNode schemaDocument) {
-        this.contextDocument = contextDocument;
         this.contextIndex = new OfnContextIndex(contextDocument);
         this.schemaDocument = schemaDocument;
 
         JsonSchemaFactory factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012);
-        SchemaValidatorsConfig config = SchemaValidatorsConfig.builder().formatAssertionsEnabled(true).build();
+        // Czech messages: the schema's failures are shown to users next to ISMD's own (Czech) issue texts.
+        SchemaValidatorsConfig config = SchemaValidatorsConfig.builder().formatAssertionsEnabled(true)
+                .locale(Locale.forLanguageTag("cs")).build();
         this.schema = factory.getSchema(schemaDocument, config);
 
-        this.conceptSchema = factory.getSchema(
-                schemaDocument.path("properties").path(CONCEPTS_KEY).path("items"), config);
         Map<String, JsonSchema> variants = new LinkedHashMap<>();
         for (JsonNode variant : conceptVariants()) {
             variants.put(variant.path("title").asText(), factory.getSchema(variant, config));
         }
         this.conceptSchemasByType = Collections.unmodifiableMap(variants);
         this.contextUrl = readContextUrl(schemaDocument);
+        this.idValueRules = new OfnIdValueRules(contextIndex, schemaDocument, config.getRegularExpressionFactory());
     }
 
     /** The specification bundled with the application (loaded once). */
@@ -75,11 +75,6 @@ public final class OfnSpecification {
         return result;
     }
 
-    /** The context document, e.g. for resolving the context URL offline. */
-    public JsonNode contextDocument() {
-        return contextDocument;
-    }
-
     public OfnContextIndex contextIndex() {
         return contextIndex;
     }
@@ -88,14 +83,14 @@ public final class OfnSpecification {
         return schemaDocument;
     }
 
+    /** What the schema allows as a text value of each {@code @id} field, checked as the schema checks it. */
+    public OfnIdValueRules idValueRules() {
+        return idValueRules;
+    }
+
     /** The whole-document schema. */
     public JsonSchema schema() {
         return schema;
-    }
-
-    /** The schema of one item of {@code pojmy} (any concept variant). */
-    public JsonSchema conceptSchema() {
-        return conceptSchema;
     }
 
     /**

@@ -16,23 +16,6 @@ public record ConformanceIssue(Kind kind, String conceptIri, String location, St
         this(kind, conceptIri, location, message, null);
     }
 
-    /** The document key the issue is about: the first field below the concept, e.g. {@code agenda}. */
-    public String key() {
-        String path = location;
-        int conceptEnd = path.indexOf("]/");
-        if (path.startsWith(OfnSpecification.CONCEPTS_KEY + "[") && conceptEnd > 0) {
-            path = path.substring(conceptEnd + 2);
-        }
-        int end = path.length();
-        for (char stop : new char[]{'/', '['}) {
-            int index = path.indexOf(stop);
-            if (index >= 0 && index < end) {
-                end = index;
-            }
-        }
-        return path.substring(0, end);
-    }
-
     public enum Kind {
         /** A value with no matching term or shape in the OFN context was dropped. */
         VALUE_DROPPED,

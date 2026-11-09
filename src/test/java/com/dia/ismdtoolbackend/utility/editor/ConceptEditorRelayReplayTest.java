@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.utility.editor;
 
 import com.dia.ismdtoolbackend.models.concept.DigitalObjectModel;
 import com.dia.ismdtoolbackend.outbox.InMemoryTdb2;
+import com.dia.ismdtoolbackend.outbox.OutboxTriples;
 import com.dia.ismdtoolbackend.testsupport.fixtures.Texts;
 import com.dia.ismdtoolbackend.testsupport.rdf.Ttl;
 import org.apache.jena.rdf.model.Model;
@@ -46,6 +47,25 @@ class ConceptEditorRelayReplayTest extends ConceptEditorTestBase {
         return result;
     }
 
+    /**
+     * The relay applies the same outbox row again when its DONE was lost after Fuseki committed. Each apply
+     * parses the stored payload anew, so its blank nodes are fresh, as they are over HTTP to Fuseki.
+     */
+    private void editAndReplayTwice() {
+        ConceptEditor.EditResult result = conceptEditor.editConcept(OLD, classConceptEditModel, model, GRAPH);
+        String remove = nTriples(result.statementsToRemove);
+        String add = nTriples(result.statementsToAdd);
+        tdb2.applyConceptDelta(OLD, GRAPH, OutboxTriples.parse(remove), OutboxTriples.parse(add));
+        tdb2.applyConceptDelta(OLD, GRAPH, OutboxTriples.parse(remove), OutboxTriples.parse(add));
+    }
+
+    private static String nTriples(java.util.Set<org.apache.jena.rdf.model.Statement> statements) {
+        java.io.StringWriter out = new java.io.StringWriter();
+        org.apache.jena.riot.RDFDataMgr.write(out, ModelFactory.createDefaultModel().add(List.copyOf(statements)),
+                org.apache.jena.riot.Lang.NTRIPLES);
+        return out.toString();
+    }
+
     private void assertTdb2EqualsTheEditedModel() {
         Model stored = ModelFactory.createDefaultModel().add(tdb2.dataset().getNamedModel(GRAPH));
         assertThat(stored.isIsomorphicWith(model))
@@ -70,6 +90,25 @@ class ConceptEditorRelayReplayTest extends ConceptEditorTestBase {
         ConceptEditor.EditResult result = editAndReplay();
 
         assertThat(result.iriChanged).isTrue();
+        assertTdb2EqualsTheEditedModel();
+    }
+
+    @Test
+    void renameReappliedAfterALostDone_leavesOneCopyOfEachSource() {
+        classConceptEditModel.setNameModel(Texts.name("cs", "Nová třída"));
+
+        editAndReplayTwice();
+
+        assertTdb2EqualsTheEditedModel();
+    }
+
+    @Test
+    void sourceEditReappliedAfterALostDone_leavesOneCopyOfEachSource() {
+        classConceptEditModel.setDefiningNonLegalSource(List.of(new DigitalObjectModel("D2", null, "https://example.com/d2")));
+        classConceptEditModel.setRelatedNonLegalSource(List.of(new DigitalObjectModel("R1", null, "https://example.com/r1")));
+
+        editAndReplayTwice();
+
         assertTdb2EqualsTheEditedModel();
     }
 

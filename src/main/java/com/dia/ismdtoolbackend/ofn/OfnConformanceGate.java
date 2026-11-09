@@ -29,8 +29,7 @@ import java.util.*;
  *       required fields are reported as incomplete, other failures as invalid.</li>
  * </ol>
  * Every rule comes from the context and schema in {@link OfnSpecification}; nothing here names an
- * OFN term, so a new OFN version needs no code change. The only exception is a caller-supplied set of
- * tolerated type IRIs, kept in {@code typ} although the context does not define them.
+ * OFN term, so a new OFN version needs no code change.
  */
 @Slf4j
 public class OfnConformanceGate {
@@ -137,6 +136,9 @@ public class OfnConformanceGate {
 
         boolean isSet = "@set".equals(term.container()) || term.isReverse();
         if (!isSet && value.isArray()) {
+            if (value.isEmpty()) {
+                return null; // an empty list holds no value: the field is absent
+            }
             if (value.size() != 1) {
                 issues.add(new ConformanceIssue(Kind.VALUE_DROPPED, conceptIri, location,
                         "pole povoluje jedinou hodnotu, nalezeno " + value.size()));
@@ -193,7 +195,7 @@ public class OfnConformanceGate {
     private String literalProblem(Term term, JsonNode item) {
         String type = term.type();
         if ("@id".equals(type)) {
-            return item.isTextual() && context.isIriOrKnownCurie(item.asText()) ? null : "hodnota není IRI";
+            return item.isTextual() ? specification.idValueRules().problem(term.name(), item.asText()) : "hodnota není IRI";
         }
         if ("xsd:boolean".equals(type)) {
             return item.isBoolean() ? null : "hodnota není logická hodnota (true/false)";
@@ -207,6 +209,10 @@ public class OfnConformanceGate {
         return null;
     }
 
+    /**
+     * Keeps the non-blank texts of a language map. A value that is not text is dropped with an issue; a blank
+     * text holds nothing, so it is dropped without one.
+     */
     private JsonNode pruneLanguageMap(JsonNode value, String location, String conceptIri,
                                       List<ConformanceIssue> issues) {
         if (!value.isObject()) {
@@ -224,7 +230,10 @@ public class OfnConformanceGate {
             }
             ArrayNode texts = JsonNodeFactory.instance.arrayNode();
             for (JsonNode text : asList(entry.getValue())) {
-                if (text.isTextual() && !text.asText().isBlank()) {
+                if (!text.isTextual()) {
+                    issues.add(new ConformanceIssue(Kind.VALUE_DROPPED, conceptIri, location + "/" + language,
+                            "hodnota není text: " + text, text.isValueNode() ? text.asText() : null));
+                } else if (!text.asText().isBlank()) {
                     texts.add(text);
                 }
             }
@@ -249,28 +258,39 @@ public class OfnConformanceGate {
             }
         });
 
+        // Concepts are tracked as objects, not by IRI: a concept may lack an IRI or share one with another.
+        Map<ObjectNode, ConformanceIssue> incomplete = new IdentityHashMap<>();
         Deque<ObjectNode> toCheck = new ArrayDeque<>(kept);
         while (!toCheck.isEmpty()) {
-            Set<String> newlyExcluded = new LinkedHashSet<>();
+            Set<ObjectNode> newlyExcluded = Collections.newSetFromMap(new IdentityHashMap<>());
+            Set<String> excludedIris = new LinkedHashSet<>();
             for (ObjectNode concept : toCheck) {
                 SchemaErrors errors = schemaErrors(concept);
                 String iri = concept.path(idKey).asText(null);
+                ConformanceIssue previous = incomplete.remove(concept);
+                if (previous != null) {
+                    issues.removeIf(issue -> issue == previous);
+                }
                 if (!errors.invalid().isEmpty()) {
-                    newlyExcluded.add(iri);
+                    newlyExcluded.add(concept);
+                    if (iri != null) {
+                        excludedIris.add(context.expand(iri));
+                    }
                     issues.add(new ConformanceIssue(Kind.CONCEPT_EXCLUDED, iri, conceptLocation(concept),
                             "pojem nesplňuje OFN schéma: " + String.join("; ", errors.all())));
                 } else if (!errors.missing().isEmpty()) {
-                    issues.removeIf(issue -> issue.kind() == Kind.CONCEPT_INCOMPLETE && Objects.equals(issue.conceptIri(), iri));
-                    issues.add(new ConformanceIssue(Kind.CONCEPT_INCOMPLETE, iri, conceptLocation(concept),
-                            "pojem není úplný: " + String.join("; ", errors.missing())));
+                    ConformanceIssue issue = new ConformanceIssue(Kind.CONCEPT_INCOMPLETE, iri, conceptLocation(concept),
+                            "pojem není úplný: " + String.join("; ", errors.missing()));
+                    incomplete.put(concept, issue);
+                    issues.add(issue);
                 }
             }
-            kept.removeIf(concept -> newlyExcluded.contains(concept.path(idKey).asText(null)));
+            kept.removeIf(newlyExcluded::contains);
 
             toCheck.clear();
-            if (!newlyExcluded.isEmpty()) {
+            if (!excludedIris.isEmpty()) {
                 for (ObjectNode concept : kept) {
-                    if (removeReferences(concept, newlyExcluded, issues)) {
+                    if (removeReferences(concept, excludedIris, issues)) {
                         toCheck.add(concept);
                     }
                 }
@@ -312,7 +332,10 @@ public class OfnConformanceGate {
         return "chybí povinné pole " + field + where;
     }
 
-    /** Schema errors of a concept: against the variant of each of its types, or any variant if none match. */
+    /**
+     * Schema errors of a concept against the variant of each of its types. A concept none of whose types names a
+     * variant is invalid as a whole: checking it against every variant would only list their mixed requirements.
+     */
     private SchemaErrors schemaErrors(ObjectNode concept) {
         List<JsonSchema> variants = new ArrayList<>();
         for (JsonNode type : asList(concept.path(typeKey))) {
@@ -322,7 +345,8 @@ public class OfnConformanceGate {
             }
         }
         if (variants.isEmpty()) {
-            variants.add(specification.conceptSchema());
+            return new SchemaErrors(List.of(), List.of("typ neodpovídá žádné variantě OFN (očekáván jeden z: "
+                    + String.join(", ", specification.conceptSchemasByType().keySet()) + ")"));
         }
         List<ValidationMessage> messages = new ArrayList<>();
         for (JsonSchema variant : variants) {
@@ -331,7 +355,13 @@ public class OfnConformanceGate {
         return split(messages);
     }
 
-    /** Removes IRI references to the given concepts. Returns true when anything was removed. */
+    /**
+     * Removes the concept's references to the excluded concepts, compared as full IRIs (a reference may be a
+     * compact IRI), and returns true when anything was removed. Only direct fields reference concepts: the one
+     * nested {@code @id} term holds a dataset IRI.
+     *
+     * @param targets full IRIs of the excluded concepts
+     */
     private boolean removeReferences(ObjectNode concept, Set<String> targets, List<ConformanceIssue> issues) {
         Deque<Scope> scopes = conceptScopes(concept);
         String iri = concept.path(idKey).asText(null);
@@ -344,7 +374,7 @@ public class OfnConformanceGate {
             JsonNode value = concept.get(key);
             ArrayNode kept = JsonNodeFactory.instance.arrayNode();
             for (JsonNode item : asList(value)) {
-                if (item.isTextual() && targets.contains(item.asText())) {
+                if (item.isTextual() && targets.contains(context.expand(item.asText()))) {
                     issues.add(new ConformanceIssue(Kind.REFERENCE_REMOVED, iri, conceptLocation(concept) + "/" + key,
                             "odkaz na vyřazený pojem " + item.asText(), item.asText()));
                     changed = true;
@@ -397,10 +427,17 @@ public class OfnConformanceGate {
         return OfnSpecification.CONCEPTS_KEY + "[" + label(concept, 0) + "]";
     }
 
-    /** Last IRI segment of a node (e.g. "řidič"), or its array index when it has no IRI. */
+    /**
+     * Local name of a node's IRI (after the last {@code /} or {@code #}, e.g. "řidič"), the whole IRI when
+     * nothing follows, or the node's array index when it has no IRI.
+     */
     private String label(JsonNode item, int index) {
         String iri = item.path(idKey).asText("");
-        return iri.isEmpty() ? String.valueOf(index) : iri.substring(iri.lastIndexOf('/') + 1);
+        if (iri.isEmpty()) {
+            return String.valueOf(index);
+        }
+        String name = OfnIris.localName(iri);
+        return name.isEmpty() ? iri : name;
     }
 
     private static boolean isEmptyContainer(JsonNode value) {

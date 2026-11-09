@@ -199,16 +199,21 @@ public final class OfnRdfReader {
             }
             List<RDFNode> sorted = new ArrayList<>(objects);
             sorted.sort(Comparator.comparing(RDFNode::toString));
-            ArrayNode items = JSON.arrayNode();
+            List<JsonNode> rendered = new ArrayList<>();
             for (RDFNode object : sorted) {
                 JsonNode item = item(term, object, scopes, location, conceptIri, level);
                 if (item != null) {
-                    items.add(item);
+                    rendered.add(item);
                 }
             }
-            if (items.isEmpty()) {
+            if (rendered.isEmpty()) {
                 return null;
             }
+            // Ordered by the rendered value, so a nested (blank-node) value keeps its place across reads:
+            // a blank node's label differs every time the graph is read.
+            rendered.sort(Comparator.comparing(JsonNode::toString));
+            ArrayNode items = JSON.arrayNode();
+            rendered.forEach(items::add);
             return "@set".equals(term.container()) || items.size() > 1 ? items : items.get(0);
         }
 

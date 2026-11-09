@@ -87,10 +87,14 @@ class RdfChangesetLoaderTest {
         assertThatThrownBy(this::load).hasMessageContaining("001-first is not valid SPARQL Update");
     }
 
+    /** The shipped folder holds the README next to any changesets; only {@code .ru} files are changesets. */
     @Test
-    void bundledChangesetsAllLoad() {
-        assertThat(new RdfChangesetLoader(RdfChangesetLoader.DEFAULT_LOCATION).load())
-                .allSatisfy(changeset -> assertThat(changeset.description()).isNotBlank());
+    void bundledChangelogLoads_withItsReadmeIgnored() {
+        List<RdfChangeset> bundled = new RdfChangesetLoader(RdfChangesetLoader.DEFAULT_LOCATION).load();
+
+        assertThat(bundled).extracting(RdfChangeset::id).allMatch(id -> id.matches("\\d{3}-.+"));
+        assertThat(bundled).allSatisfy(changeset -> assertThat(changeset.description()).isNotBlank());
+        assertThat(getClass().getClassLoader().getResource("db/rdf-changelog/README.md")).isNotNull();
     }
 
     @Test

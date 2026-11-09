@@ -70,6 +70,9 @@ public class RdfMigrationRunner implements SmartInitializingSingleton {
                         + changeset.checksum() + "). Add a new changeset instead.");
             }
         }
+        Set<String> bundled = changesets.stream().map(RdfChangeset::id).collect(Collectors.toSet());
+        applied.keySet().stream().filter(id -> !bundled.contains(id)).sorted().forEach(id ->
+                log.warn("RDF migration {} is recorded as applied but its changeset file is missing", id));
         List<RdfChangeset> pending = changesets.stream().filter(c -> !applied.containsKey(c.id())).toList();
         if (pending.isEmpty()) {
             log.info("RDF migrations: {} changeset(s), none pending", changesets.size());

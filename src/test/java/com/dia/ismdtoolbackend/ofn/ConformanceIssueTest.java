@@ -13,20 +13,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class ConformanceIssueTest {
 
-    @ParameterizedTest(name = "{0} → {1}")
-    @CsvSource(emptyValue = "", value = {
-            "pojmy[řidič]/agenda, agenda",
-            "pojmy[řidič]/definující-nelegislativní-zdroj[0]/url, definující-nelegislativní-zdroj",
-            "pojmy[řidič]/typ, typ",
-            "název, název",
-            "vytvořeno/datum_a_čas, vytvořeno",
-            "pojmy[řidič], pojmy",
-            "'', ''",
-    })
-    void key_isTheFirstFieldBelowTheConcept(String location, String key) {
-        assertThat(new ConformanceIssue(Kind.VALUE_DROPPED, null, location, "x").key()).isEqualTo(key);
-    }
-
     @Test
     void shortConstructor_hasNoValue() {
         assertThat(new ConformanceIssue(Kind.VALUE_DROPPED, "a", "l", "m").value()).isNull();

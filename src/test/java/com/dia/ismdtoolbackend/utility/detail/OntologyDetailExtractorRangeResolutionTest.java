@@ -36,7 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * </ul>
  *
  * Fallback: {@code rangeResolved} returns the {@code Literal} DTO for null/empty/unknown
- * input — mirrors the write-path default in {@code ConceptCreator.addRangeProperty}.
+ * input — mirrors the write-path default in {@code PropertyDataType.rangeIri}.
  */
 @ExtendWith(MockitoExtension.class)
 class OntologyDetailExtractorRangeResolutionTest {

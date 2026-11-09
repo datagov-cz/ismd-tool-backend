@@ -13,10 +13,6 @@ public record GateResult(ObjectNode document, List<ConformanceIssue> issues) {
         issues = List.copyOf(issues);
     }
 
-    public boolean isVocabularyValid() {
-        return issues.stream().noneMatch(issue -> issue.kind() == ConformanceIssue.Kind.VOCABULARY_INVALID);
-    }
-
     public List<ConformanceIssue> issuesOfKind(ConformanceIssue.Kind kind) {
         return issues.stream().filter(issue -> issue.kind() == kind).toList();
     }

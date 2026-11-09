@@ -8,6 +8,9 @@ import org.apache.jena.rdf.model.ResourceFactory;
 import org.apache.jena.update.UpdateAction;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
@@ -31,6 +34,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * The runner against the real tracking table (Liquibase on H2) and an in-memory RDF dataset.
  */
 @FullContextTest
+@ExtendWith(OutputCaptureExtension.class)
 @ActiveProfiles("local")
 @TestPropertySource(properties = "full-context.db-name=rdf-migration")
 class RdfMigrationRunnerTest {
@@ -180,6 +184,18 @@ class RdfMigrationRunnerTest {
         assertThat(runner().migrate()).containsExactly("001-mark");
         assertThat(migrated(V1)).isTrue();
         assertThat(migrated(V2)).isTrue();
+    }
+
+    @Test
+    void anAppliedChangesetWhoseFileIsGone_isReportedAndNothingRuns(CapturedOutput output) throws IOException {
+        Files.writeString(dir.resolve("001-mark.ru"), MARK);
+        runner().migrate();
+        Files.delete(dir.resolve("001-mark.ru"));
+        updates.clear();
+
+        assertThat(runner().migrate()).isEmpty();
+        assertThat(updates).isEmpty();
+        assertThat(output).contains("RDF migration 001-mark is recorded as applied but its changeset file is missing");
     }
 
     @Test

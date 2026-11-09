@@ -163,13 +163,4 @@ public final class OfnContextIndex {
         String namespace = prefixes.get(value.substring(0, colon));
         return namespace == null ? value : namespace + value.substring(colon + 1);
     }
-
-    /** True for an absolute http(s) IRI or a compact IRI whose prefix the context defines. */
-    public boolean isIriOrKnownCurie(String value) {
-        if (value.startsWith("http://") || value.startsWith("https://")) {
-            return !value.contains(" ");
-        }
-        int colon = value.indexOf(':');
-        return colon > 0 && prefixes.containsKey(value.substring(0, colon)) && !value.contains(" ");
-    }
 }

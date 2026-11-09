@@ -20,7 +20,9 @@ import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.exception.EmptyFileException;
 import com.dia.ismdtoolbackend.exception.InSchemeDecisionRequiredException;
 import com.dia.ismdtoolbackend.exception.NkdResourceNotFoundException;
+import com.dia.ismdtoolbackend.exception.OfnConformanceException;
 import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
+import com.dia.ismdtoolbackend.ofn.ConformanceIssue;
 import com.dia.ismdtoolbackend.exception.UnsupportedRdfFormatException;
 import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.service.impl.ReferencedConceptResolutionEngine;
@@ -861,6 +863,27 @@ class OntologyControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Disposition", "attachment; filename=\"ontology_1.ttl\""))
                 .andExpect(content().string("ttl body"));
+    }
+
+    /**
+     * Through the real advice chain: the OFN handler must win over {@code GlobalExceptionHandler}'s catch-all,
+     * which would answer 500 INTERNAL_ERROR without the issues.
+     */
+    @Test
+    void testDownloadOntology_ofnNonconformant_returnsTheOfnErrorWithEveryIssue() throws Exception {
+        when(validationConfig.isEnableOntologyViolationDownload()).thenReturn(true);
+        when(ontologyDownloadService.downloadOntology(1L, "ttl")).thenThrow(new OfnConformanceException(
+                OfnConformanceException.Context.DOWNLOAD, "https://x", List.of(new ConformanceIssue(
+                        ConformanceIssue.Kind.CONCEPT_INCOMPLETE, "https://x/pojem/a", "pojmy[a]",
+                        "pojem není úplný: chybí povinné pole obor-hodnot", null))));
+
+        mockMvc.perform(get("/api/ontology/{ontologyId}/download", 1L)
+                        .param("format", "ttl"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("ONTOLOGY_DOWNLOAD_BLOCKED_BY_OFN"))
+                .andExpect(jsonPath("$.data.vocabularyIri").value("https://x"))
+                .andExpect(jsonPath("$.data.issues[0].conceptIri").value("https://x/pojem/a"))
+                .andExpect(jsonPath("$.data.issues[0].kind").value("CONCEPT_INCOMPLETE"));
     }
 
     @Test

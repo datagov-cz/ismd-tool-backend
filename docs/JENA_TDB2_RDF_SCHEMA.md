@@ -266,14 +266,11 @@ stored data written before the gate existed.
 Ordered, idempotent SPARQL Update changesets in `src/main/resources/db/rdf-changelog/`, applied at startup by
 `RdfMigrationRunner` (after Liquibase, before the outbox relay, the reconciler and the web server). Each runs once
 per vocabulary graph with `?graph` bound; applied changesets are recorded with a checksum in
-`ismd_schema.rdf_migration_log`. Any failure stops startup. Conventions, preconditions and the deploy rule: the
-changelog's `README.md`.
+`ismd_schema.rdf_migration_log`. Any failure stops startup. Conventions, preconditions, the deploy rule, how to
+prove a changeset on an environment's data, and the rollback/backup rule: the changelog's `README.md`.
 
 The changelog is empty: the pre-production data holding pre-OFN shapes was wiped (2026-11) instead of
 migrated, and every write path goes through the OFN write gate.
-
-Read-only check queries for any environment (which triples are not OFN; `NOT COVERED` = no changeset handles it):
-`.planning/ofn-conformity/migration/sparql/`.
 
 ---
 

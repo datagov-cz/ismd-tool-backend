@@ -28,6 +28,6 @@ public class RdfMigrationConfiguration {
                                                  String location,
                                                  @Value("${rdf-migration.update-timeout:PT30M}") Duration updateTimeout) {
         return new RdfMigrationRunner(new RdfChangesetLoader(location), history,
-                new FusekiRdfMigrationTarget(ontologies, tdb2, outbox), Clock.systemDefaultZone(), updateTimeout);
+                new FusekiRdfMigrationTarget(ontologies, tdb2, outbox), Clock.systemUTC(), updateTimeout);
     }
 }

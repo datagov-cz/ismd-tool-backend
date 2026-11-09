@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.utility.upload.OwnedConcepts;
 import com.dia.ismdtoolbackend.controller.dto.RejectedConceptDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
@@ -47,6 +48,8 @@ import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 @RequiredArgsConstructor
 @Slf4j
 class UploadConceptGate {
+
+    static final String WITHOUT_CONCEPT_TYPE = "OFN: chybí typ Pojem/Koncept (skos:Concept, slovníky:pojem)";
 
     private final OntologyDetailExtractor detailExtractor;
     private final NkdLinkDetector nkdLinkDetector;
@@ -138,6 +141,16 @@ class UploadConceptGate {
         }
         return reasons.entrySet().stream()
                 .map(entry -> new RejectedConceptDto(entry.getKey(), "OFN: " + String.join("; ", entry.getValue())))
+                .toList();
+    }
+
+    /**
+     * Owned resources with only an OWL kind and no {@code skos:inScheme}: neither the inScheme decision nor the
+     * OFN check sees them, so they are reported here and pruned like any rejected concept.
+     */
+    static List<RejectedConceptDto> findWithoutConceptType(Model model, String graphName) {
+        return OwnedConcepts.withOnlyAnOwlKind(model, graphName).stream()
+                .map(resource -> new RejectedConceptDto(resource.getURI(), WITHOUT_CONCEPT_TYPE))
                 .toList();
     }
 

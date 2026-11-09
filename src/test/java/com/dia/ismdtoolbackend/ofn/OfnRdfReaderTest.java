@@ -250,6 +250,30 @@ class OfnRdfReaderTest {
         assertThat(rdf.toModel(result.document()).isIsomorphicWith(model)).isTrue();
     }
 
+    /** Blank-node labels differ on every read; the order of nested values must not. */
+    @Test
+    void nestedBlankValues_comeOutInTheSameOrderOnEveryRead() {
+        Model model = vocabularyModel();
+        Resource a = třída(model, "a");
+        for (String url : List.of("https://example.org/z", "https://example.org/a", "https://example.org/m")) {
+            a.addProperty(model.createProperty(OfnIris.DEFINUJICI_NELEGISLATIVNI_ZDROJ), model.createResource()
+                    .addProperty(RDF.type, model.createResource(OfnIris.DIGITALNI_OBJEKT))
+                    .addProperty(model.createProperty(OfnIris.SCHEMA_URL),
+                            model.createTypedLiteral(url, XSDDatatype.XSDanyURI)));
+        }
+        java.io.StringWriter ttl = new java.io.StringWriter();
+        model.write(ttl, "N-TRIPLES");
+
+        java.util.Set<String> orders = new java.util.HashSet<>();
+        for (int read = 0; read < 5; read++) {
+            Model reparsed = ModelFactory.createDefaultModel();
+            reparsed.read(new java.io.StringReader(ttl.toString()), null, "N-TRIPLES");
+            orders.add(concept(reader.readVocabulary(reparsed, V), "a").get("definující-nelegislativní-zdroj").toString());
+        }
+
+        assertThat(orders).hasSize(1);
+    }
+
     @Test
     void readConcepts_reportsAConceptOfAnotherNamespace() {
         Model model = vocabularyModel();

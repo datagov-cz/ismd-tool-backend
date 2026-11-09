@@ -13,8 +13,7 @@ import java.util.Optional;
  *
  * <p>Declaration order is the order shown to the FE.
  * {@link #LITERAL} is the read-side default when an incoming value is
- * malformed/empty/unrecognised — mirrors the write-side default in
- * {@code ConceptCreator.addRangeProperty}.
+ * malformed/empty/unrecognised — mirrors the write-side default in {@link #rangeIri}.
  */
 @Slf4j
 public enum PropertyDataType {

@@ -9,8 +9,7 @@ import java.util.List;
 
 /**
  * Detects resources typed as both a property ({@code owl:DatatypeProperty}) and a relationship
- * ({@code owl:ObjectProperty}). The OWL kind decides the role; the ISMD role marker is derived from it
- * (D4) and never counts here.
+ * ({@code owl:ObjectProperty}). The OWL kind alone decides the role.
  */
 public final class ConceptRoleConflict {
 

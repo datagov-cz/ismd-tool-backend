@@ -1,8 +1,7 @@
 package com.dia.ismdtoolbackend.ofn;
 
 /**
- * RDF IRIs of the OFN slovníky terms the tool writes and reads, and the legacy (pre-OFN) IRIs that
- * readers still accept until the data migration has run. {@code OfnIrisTest} checks every OFN IRI
+ * RDF IRIs of the OFN slovníky terms the tool writes and reads. {@code OfnIrisTest} checks every OFN IRI
  * against the bundled context.
  */
 public final class OfnIris {

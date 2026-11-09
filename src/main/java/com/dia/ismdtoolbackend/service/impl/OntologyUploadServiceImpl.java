@@ -108,6 +108,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             rejectedConcepts.addAll(uploadConceptGate.findInvalid(
                     finalModel, ownedConcepts, domainRangeTargets, publishedConceptIris));
             rejectedConcepts.addAll(uploadConceptGate.findNonConformant(finalModel, graphName));
+            rejectedConcepts.addAll(UploadConceptGate.findWithoutConceptType(finalModel, graphName));
             rejectedConcepts = UploadConceptGate.mergeByConcept(rejectedConcepts);
             roleResolver.excludeRejectedConcepts(finalModel, graphName, rejectedConcepts);
 

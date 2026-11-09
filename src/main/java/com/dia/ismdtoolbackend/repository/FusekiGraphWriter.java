@@ -15,7 +15,9 @@ import org.apache.jena.sparql.modify.request.UpdateDataInsert;
 import org.apache.jena.update.UpdateFactory;
 import org.apache.jena.update.UpdateRequest;
 
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /** Graph and concept writes against Fuseki. Reached through {@link JenaTDB2Repository}. */
 @Slf4j
@@ -100,16 +102,17 @@ final class FusekiGraphWriter {
      *   <li><b>Blank nodes present (digital objects, code lists):</b> blank nodes can't be matched by
      *       identity across the serialize/parse boundary ({@code DELETE DATA} treats a bnode label as
      *       fresh, matching nothing). So we (a) {@code DELETE DATA} the non-blank removed triples,
-     *       (b) {@code DELETE} the concept's one-hop blank substructures by PATTERN, rooted at the
-     *       concept, and (c) {@code INSERT DATA} the new model (fresh bnodes are fine on insert). The
+     *       (b) {@code DELETE} the one-hop blank substructures by PATTERN, rooted at the concept and at
+     *       every subject the additions give blank children (the new IRI of a rename), and (c) {@code INSERT DATA} the new model (fresh bnodes are fine on insert). The
      *       pattern delete is bounded to {@code <concept> ?p ?bn . ?bn ?q ?o} with {@code isBlank(?bn)}
      *       — one hop, blank-only — so it can never reach another concept's data. (Verified: the
      *       editor/creator only ever produce one-level blank structures; no lists/nesting.)</li>
      * </ul>
      *
-     * <p><b>Idempotent on re-apply</b> in both strategies: identity DELETE/INSERT DATA re-runs are
-     * no-ops; the pattern path deletes ALL the concept's blank children before re-inserting, so a
-     * double-apply nets exactly one copy (this is why the blank path deletes by pattern, not by the
+     * <p><b>Idempotent on re-apply</b> in both strategies (the relay re-applies a row whose DONE was lost
+     * after Fuseki committed): identity DELETE/INSERT DATA re-runs are no-ops; the pattern path deletes ALL
+     * blank children of every subject it re-inserts them under before re-inserting, so a double-apply nets
+     * exactly one copy, a rename included (this is why the blank path deletes by pattern, not by the
      * just-inserted bnode identity).
      */
     public void applyConceptDelta(String conceptIri, String graphName, Model removeModel, Model addModel) {
@@ -128,7 +131,9 @@ final class FusekiGraphWriter {
         //     substructures (clears the OLD bnode structures that DATA-delete can't match, AND any
         //     previously-inserted copy on a re-apply).
         if (removeHasBlank || addHasBlank) {
-            blankSubstructureDelete(graphName, conceptIri).getOperations().forEach(request::add);
+            for (String subject : blankParents(conceptIri, addModel)) {
+                blankSubstructureDelete(graphName, subject).getOperations().forEach(request::add);
+            }
         }
         // (c) Insert the additions (blank nodes minted fresh — valid on insert).
         if (addModel != null && !addModel.isEmpty()) {
@@ -143,6 +148,23 @@ final class FusekiGraphWriter {
                 "applying concept delta for " + conceptIri + " to graph " + graphName,
                 "Nepodařilo se aplikovat změnu pojmu do TDB2",
                 conn -> conn.update(request));
+    }
+
+    /**
+     * The concept plus every subject the additions give blank children: on a rename that is the new IRI, whose
+     * children a re-applied delta would otherwise insert a second time.
+     */
+    private static Set<String> blankParents(String conceptIri, Model addModel) {
+        Set<String> subjects = new LinkedHashSet<>();
+        subjects.add(conceptIri);
+        if (addModel != null) {
+            addModel.listStatements().forEach(statement -> {
+                if (statement.getSubject().isURIResource() && statement.getObject().isAnon()) {
+                    subjects.add(statement.getSubject().getURI());
+                }
+            });
+        }
+        return subjects;
     }
 
     private boolean hasBlankNode(Model model) {

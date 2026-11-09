@@ -29,7 +29,7 @@ class RdfMigrationStartupTest {
 
     @Test
     void withNothingPendingTheApplicationStartsWithTheRunner() {
-        try (ConfigurableApplicationContext context = start("rdf-startup-ok", "classpath*:no-rdf-migrations-here")) {
+        try (ConfigurableApplicationContext context = start("rdf-startup-ok", RdfChangesetLoader.DEFAULT_LOCATION)) {
             assertThat(context.getBeansOfType(RdfMigrationRunner.class)).hasSize(1);
         }
     }
