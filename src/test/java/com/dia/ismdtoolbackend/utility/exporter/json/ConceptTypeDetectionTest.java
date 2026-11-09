@@ -70,7 +70,8 @@ class ConceptTypeDetectionTest {
     @DisplayName("Typ subjektu/objektu práva in the OFN vsgov: namespace is detected")
     void vsgovType_mapsToJsonLdType(String typeIri, String expectedJsonLd) {
         OntModel model = createDefaultModel();
-        Resource concept = addConceptWithType(model, "test-vsgov", "Test", TRIDA);
+        Resource concept = addSkosConcept(model, "test-vsgov", "Test");
+        concept.addProperty(RDF.type, OWL2.Class);
         concept.addProperty(RDF.type, model.createResource(typeIri));
         ModelStructure structure = createModelStructure(model);
 
@@ -159,21 +160,6 @@ class ConceptTypeDetectionTest {
         assertThat(types).contains(VLASTNOST_JSON_LD);
     }
 
-    @ParameterizedTest(name = "marker {0} alone")
-    @ValueSource(strings = {TRIDA, VLASTNOST, VZTAH})
-    @DisplayName("A role marker alone names no kind: the kind comes from the OWL type")
-    void roleMarkerAlone_isNotAKind(String marker) {
-        OntModel model = createDefaultModel();
-        Resource concept = addConceptWithType(model, "marker-only", "Marker only", marker);
-        ModelStructure structure = createModelStructure(model);
-
-        Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
-
-        @SuppressWarnings("unchecked")
-        List<String> types = (List<String>) result.get("typ");
-        assertThat(types).doesNotContain(TRIDA_JSON_LD, VLASTNOST_JSON_LD, VZTAH_JSON_LD);
-    }
-
     @Test
     @DisplayName("Multiple types on same concept are all detected")
     void multipleTypes_allDetected() {
@@ -192,7 +178,6 @@ class ConceptTypeDetectionTest {
     }
 
     static Stream<Arguments> mixedPropertyRelationshipSignals() {
-        // The OWL kind decides the role (D4); a disagreeing marker is the OFN gate's concern, not the exporter's.
         return Stream.of(
                 Arguments.of(OWL2.DatatypeProperty.getURI(), OWL2.ObjectProperty.getURI())
         );
@@ -218,30 +203,5 @@ class ConceptTypeDetectionTest {
                 .isThrownBy(() -> processor.processAllConcepts(model, structure))
                 .actual();
         assertThat(all).hasMessageContaining(concept.getURI());
-    }
-
-    static Stream<Arguments> agreeingSignals() {
-        return Stream.of(
-                Arguments.of(OFN_NAMESPACE + VLASTNOST, OWL2.DatatypeProperty.getURI(), VLASTNOST_JSON_LD, VZTAH_JSON_LD),
-                Arguments.of(OFN_NAMESPACE + VZTAH, OWL2.ObjectProperty.getURI(), VZTAH_JSON_LD, VLASTNOST_JSON_LD)
-        );
-    }
-
-    @ParameterizedTest(name = "{0} + {1} is exactly {2}")
-    @MethodSource("agreeingSignals")
-    @DisplayName("Agreeing OFN and OWL types yield the kind exactly once")
-    void agreeingOfnAndOwlTypes_yieldTheKindOnce(String ofnType, String owlType, String expected, String absent) {
-        OntModel model = createDefaultModel();
-        Resource concept = addSkosConcept(model, "agreeing", "Agreeing");
-        concept.addProperty(RDF.type, model.createResource(ofnType));
-        concept.addProperty(RDF.type, model.createResource(owlType));
-        ModelStructure structure = createModelStructure(model);
-
-        Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
-
-        @SuppressWarnings("unchecked")
-        List<String> types = (List<String>) result.get("typ");
-        assertThat(Collections.frequency(types, expected)).isEqualTo(1);
-        assertThat(types).doesNotContain(absent);
     }
 }

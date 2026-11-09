@@ -88,11 +88,11 @@ class OntologyDownloadServiceImplTest {
     private static final Long ONTOLOGY_ID = 1L;
     private static final String GRAPH_NAME = "https://slovník.gov.cz/datový/test-slovník";
 
-    /** An OFN-conformant vocabulary as Fuseki stores it, role marker included (D4). */
+    /** An OFN-conformant vocabulary as Fuseki stores it. */
     private static final String STORED_GRAPH = """
             <https://slovník.gov.cz/datový/test-slovník> a owl:Ontology, skos:ConceptScheme, slovníky:slovník ;
                 skos:prefLabel "Testovací slovník"@cs .
-            pojem:osoba a owl:Class, skos:Concept, slovníky:pojem, slovníky:třída ;
+            pojem:osoba a owl:Class, skos:Concept, slovníky:pojem ;
                 skos:inScheme <https://slovník.gov.cz/datový/test-slovník> ;
                 skos:prefLabel "Osoba"@cs ;
                 slovníky:definující-ustanovení <https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2012/89> ;
@@ -102,7 +102,7 @@ class OntologyDownloadServiceImplTest {
     /** {@link #STORED_GRAPH} with a value OFN cannot express and a Vztah without domain and range. */
     private static final String NONCONFORMANT_GRAPH = STORED_GRAPH + """
             pojem:osoba <https://slovník.gov.cz/datový/test-slovník/pojem/inTezaurus> "true" .
-            pojem:má-adresu a owl:ObjectProperty, skos:Concept, slovníky:pojem, slovníky:vztah ;
+            pojem:má-adresu a owl:ObjectProperty, skos:Concept, slovníky:pojem ;
                 skos:inScheme <https://slovník.gov.cz/datový/test-slovník> ;
                 skos:prefLabel "má adresu"@cs .
             """;
@@ -194,7 +194,8 @@ class OntologyDownloadServiceImplTest {
             assertIsomorphic(STORED_GRAPH, expanded);
             JsonNode document = new ObjectMapper().readTree(json);
             assertThat(document.get("@context").asText()).isEqualTo(OfnSpecification.bundled().contextUrl());
-            assertThat(document.get("pojmy").get(0).get("typ").toString()).contains("Třída", "slovníky:třída");
+            assertThat(document.get("pojmy").get(0).get("typ").toString())
+                    .contains("Třída").doesNotContain("slovníky:třída");
         }
 
         @Test

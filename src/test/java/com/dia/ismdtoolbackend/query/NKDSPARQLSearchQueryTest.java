@@ -1,6 +1,5 @@
 package com.dia.ismdtoolbackend.query;
 
-import com.dia.ismdtoolbackend.ofn.OfnIris;
 
 import com.dia.ismdtoolbackend.enums.RelationType;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
@@ -306,7 +305,7 @@ class NKDSPARQLSearchQueryTest {
     }
 
     @Test
-    void buildConceptSearchQuery_projectsRoleMarkers() {
+    void buildConceptSearchQuery_projectsOwlKinds() {
         String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("test", "cs", 10, 0, null, null, null);
 
         assertThat(query).contains("?roleTrida");
@@ -321,7 +320,6 @@ class NKDSPARQLSearchQueryTest {
         assertThat(query).contains("FILTER(?roleTrida = <http://www.w3.org/2002/07/owl#Class>)");
         assertThat(query).contains("FILTER(?roleVlastnost = <http://www.w3.org/2002/07/owl#DatatypeProperty>)");
         assertThat(query).contains("FILTER(?roleVztah = <http://www.w3.org/2002/07/owl#ObjectProperty>)");
-        assertThat(query).doesNotContain(OfnIris.MARKER_TRIDA, OfnIris.MARKER_VLASTNOST, OfnIris.MARKER_VZTAH);
     }
 
     @Test

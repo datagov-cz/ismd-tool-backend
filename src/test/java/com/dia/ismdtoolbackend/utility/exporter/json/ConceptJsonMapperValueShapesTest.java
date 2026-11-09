@@ -231,7 +231,7 @@ class ConceptJsonMapperValueShapesTest {
         @DisplayName("rdfs:subPropertyOf maps by role: vlastnost to nadřazená-vlastnost, other concepts nowhere")
         void subPropertyByRole() {
             OntModel model = Ttl.parseOnt(HEADER + """
-                    pojem:jméno a slovníky:vlastnost, owl:DatatypeProperty ; rdfs:subPropertyOf pojem:označení .
+                    pojem:jméno a owl:DatatypeProperty ; rdfs:subPropertyOf pojem:označení .
                     pojem:x a skos:Concept ; rdfs:subPropertyOf pojem:označení .
                     """);
             ModelStructure structure = new ModelAnalyzer().analyzeModel(model);
@@ -243,7 +243,7 @@ class ConceptJsonMapperValueShapesTest {
         }
 
         @Test
-        @DisplayName("the parent key follows the OWL kind; NKD concepts carry no role marker")
+        @DisplayName("the parent key follows the OWL kind")
         void subPropertyByOwlKind() {
             OntModel model = Ttl.parseOnt(HEADER + """
                     pojem:jméno a skos:Concept, owl:DatatypeProperty ; rdfs:subPropertyOf pojem:označení .

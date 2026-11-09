@@ -14,8 +14,8 @@ import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 
 /**
  * Read-side tolerance for data ISMD does not own: NKD responses and upload input. Adds the
- * {@code skos:Concept}, role markers and {@code skos:prefLabel} that {@code TurtleFilterUtil} and the
- * detail mappers recognise concepts by, where that data lacks them (NKD has no role markers and often no
+ * {@code skos:Concept}, {@code slovníky:pojem} and {@code skos:prefLabel} that {@code TurtleFilterUtil} and
+ * the detail mappers recognise concepts by, where that data lacks them (NKD often has no
  * {@code skos:Concept}). Stored ISMD data never goes through here: the write gate keeps it OFN-shaped.
  * It changes only the in-memory copy being read; nothing is written.
  */
@@ -28,15 +28,14 @@ final class OutsideDataNormalizer {
     }
 
     /**
-     * Upload input. Infers {@code skos:Concept} and the role markers and converts labels so the concepts
-     * survive {@code TurtleFilterUtil}, but does NOT touch {@code skos:inScheme}: the upload decides scheme
-     * membership itself ({@code InSchemeStamping}).
+     * Upload input. Infers {@code skos:Concept} and {@code slovníky:pojem} and converts labels so the
+     * concepts survive {@code TurtleFilterUtil}, but does NOT touch {@code skos:inScheme}: the upload decides
+     * scheme membership itself ({@code InSchemeStamping}).
      */
     public static int normalizeUploadInput(Model model) {
         int count = 0;
         count += ensureConceptsHaveSkosType(model);
         count += normalizeOwlClassConcepts(model);
-        count += normalizePropertyConcepts(model);
         count += convertLabelsToSkosPrefLabel(model);
         return count;
     }
@@ -106,14 +105,11 @@ final class OutsideDataNormalizer {
     }
 
     /**
-     * Infers OFN role tags ({@code skos:Concept}, {@code slovníky:pojem},
-     * {@code slovníky:třída}) on {@code owl:Class} concepts. Role tags only — does NOT
-     * touch {@code skos:inScheme} (that's the NKD-only derivation step, or the
-     * authoritative upload step).
+     * Infers {@code skos:Concept} and {@code slovníky:pojem} on {@code owl:Class} concepts. Does NOT
+     * touch {@code skos:inScheme} (that's the NKD-only derivation step, or the authoritative upload step).
      */
     private static int normalizeOwlClassConcepts(Model model) {
         Resource slovnikyPojem = model.createResource(OFN_NAMESPACE + POJEM);
-        Resource slovnikyTrida = model.createResource(OFN_NAMESPACE + TRIDA);
         int count = 0;
 
         List<Resource> classesToNormalize = new ArrayList<>();
@@ -135,51 +131,7 @@ final class OutsideDataNormalizer {
                 cls.addProperty(RDF.type, slovnikyPojem);
                 modified = true;
             }
-            if (!cls.hasProperty(RDF.type, slovnikyTrida)) {
-                cls.addProperty(RDF.type, slovnikyTrida);
-                modified = true;
-            }
             if (modified) count++;
-        }
-
-        return count;
-    }
-
-    /**
-     * Infers OFN role tags ({@code slovníky:vztah} on object properties,
-     * {@code slovníky:vlastnost} on datatype properties) for {@code /pojem/} concepts.
-     * Role tags only — does NOT touch {@code skos:inScheme}.
-     */
-    private static int normalizePropertyConcepts(Model model) {
-        Resource slovnikyVztah = model.createResource(OFN_NAMESPACE + VZTAH);
-        Resource slovnikyVlastnost = model.createResource(OFN_NAMESPACE + VLASTNOST);
-        int count = 0;
-
-        List<Resource> objectProperties = new ArrayList<>();
-        ResIterator iter = model.listResourcesWithProperty(RDF.type, OWL2.ObjectProperty);
-        while (iter.hasNext()) {
-            objectProperties.add(iter.next());
-        }
-        for (Resource prop : objectProperties) {
-            if (prop.isURIResource() && prop.getURI().contains("/pojem/")
-                    && !prop.hasProperty(RDF.type, slovnikyVztah)) {
-                prop.addProperty(RDF.type, slovnikyVztah);
-                count++;
-            }
-        }
-
-        List<Resource> datatypeProperties = new ArrayList<>();
-        iter = model.listResourcesWithProperty(RDF.type, OWL2.DatatypeProperty);
-        while (iter.hasNext()) {
-            datatypeProperties.add(iter.next());
-        }
-        for (Resource prop : datatypeProperties) {
-            if (prop.isURIResource() && prop.getURI().contains("/pojem/")
-                    && !prop.hasProperty(RDF.type, OWL2.ObjectProperty)
-                    && !prop.hasProperty(RDF.type, slovnikyVlastnost)) {
-                prop.addProperty(RDF.type, slovnikyVlastnost);
-                count++;
-            }
         }
 
         return count;

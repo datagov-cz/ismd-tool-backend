@@ -6,6 +6,7 @@ import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.vocabulary.OWL2;
 import org.apache.jena.vocabulary.OWL;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
@@ -17,9 +18,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OFN_NAMESPACE;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TRIDA;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VLASTNOST;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VZTAH;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -71,7 +69,7 @@ class OntologyDetailExtractorCrossGraphTest {
                 .anySatisfy(r -> assertThat(r.getIri()).isEqualTo(EXTERNAL_RELATIONSHIP_IRI));
     }
 
-    /** Members are matched by their OWL kind: ones carrying no role marker (NKD shape) surface too. */
+    /** Members are matched by their OWL kind. */
     @Test
     void classDetail_matchesMembersByOwlKindWithoutAMarker() {
         Model model = buildPostMergeModel();
@@ -99,7 +97,7 @@ class OntologyDetailExtractorCrossGraphTest {
         Model model = buildPostMergeModel();
 
         // A relationship whose RANGE is the class (domain points elsewhere).
-        Resource vztahType = model.createResource(OFN_NAMESPACE + VZTAH);
+        Resource vztahType = OWL2.ObjectProperty;
         Resource otherClass = model.createResource("https://example.org/vocab-b/pojem/adresa");
         Resource rangeRel = model.createResource(RANGE_RELATIONSHIP_IRI);
         rangeRel.addProperty(RDF.type, vztahType).addProperty(RDF.type, OWL.ObjectProperty);
@@ -124,7 +122,7 @@ class OntologyDetailExtractorCrossGraphTest {
     void classDetail_dedupesRelationshipWithClassAsBothDomainAndRange() {
         Model model = buildPostMergeModel();
 
-        Resource vztahType = model.createResource(OFN_NAMESPACE + VZTAH);
+        Resource vztahType = OWL2.ObjectProperty;
         Resource reflexive = model.createResource("https://example.org/vocab-b/pojem/zná");
         reflexive.addProperty(RDF.type, vztahType).addProperty(RDF.type, OWL.ObjectProperty);
         reflexive.addProperty(SKOS.prefLabel, "zná", "cs");
@@ -149,9 +147,9 @@ class OntologyDetailExtractorCrossGraphTest {
     private Model buildPostMergeModel() {
         Model model = ModelFactory.createDefaultModel();
 
-        Resource tridaType = model.createResource(OFN_NAMESPACE + TRIDA);
-        Resource vlastnostType = model.createResource(OFN_NAMESPACE + VLASTNOST);
-        Resource vztahType = model.createResource(OFN_NAMESPACE + VZTAH);
+        Resource tridaType = OWL2.Class;
+        Resource vlastnostType = OWL2.DatatypeProperty;
+        Resource vztahType = OWL2.ObjectProperty;
 
         Resource classConcept = model.createResource(CLASS_IRI);
         classConcept.addProperty(RDF.type, tridaType).addProperty(RDF.type, OWL.Class);

@@ -10,8 +10,7 @@ import java.util.*;
 
 /**
  * ISMD's profile on top of OFN: every concept is a Třída, Vlastnost or Vztah (ISMD writes only the
- * Konceptuální model variant), with exactly one OWL kind, and a role marker, when present, matches that
- * kind. The marker is derived from the OWL kind, never the reverse.
+ * Konceptuální model variant), with exactly one OWL kind.
  */
 final class ConceptKindRule {
 
@@ -22,16 +21,12 @@ final class ConceptKindRule {
         List<ConformanceIssue> issues = new ArrayList<>();
         for (String conceptIri : conceptIris) {
             Resource concept = model.createResource(conceptIri);
-            Set<String> types = new TreeSet<>();
+            Set<String> kinds = new TreeSet<>();
             for (RDFNode type : model.listObjectsOfProperty(concept, RDF.type).toList()) {
-                if (type.isURIResource()) {
-                    types.add(type.asResource().getURI());
+                if (type.isURIResource() && OfnIris.OWL_KINDS.contains(type.asResource().getURI())) {
+                    kinds.add(type.asResource().getURI());
                 }
             }
-            Set<String> kinds = new TreeSet<>(types);
-            kinds.retainAll(OfnIris.MARKER_BY_OWL_KIND.keySet());
-            Set<String> markers = new TreeSet<>(types);
-            markers.retainAll(OfnIris.MARKERS);
 
             String location = OfnSpecification.CONCEPTS_KEY + "[" + OfnIris.localName(conceptIri) + "]/typ";
             if (kinds.isEmpty()) {
@@ -40,15 +35,6 @@ final class ConceptKindRule {
             } else if (kinds.size() > 1) {
                 issues.add(new ConformanceIssue(Kind.CONCEPT_EXCLUDED, conceptIri, location,
                         "pojem má více typů zároveň: " + localNames(kinds)));
-            }
-            Set<String> expectedMarkers = new TreeSet<>();
-            kinds.forEach(kind -> expectedMarkers.add(OfnIris.MARKER_BY_OWL_KIND.get(kind)));
-            for (String marker : markers) {
-                if (!expectedMarkers.contains(marker)) {
-                    issues.add(new ConformanceIssue(Kind.CONCEPT_EXCLUDED, conceptIri, location,
-                            "typ slovníky:" + OfnIris.localName(marker) + " neodpovídá OWL typu pojmu "
-                                    + (kinds.isEmpty() ? "(žádný)" : localNames(kinds)), marker));
-                }
             }
         }
         return issues;

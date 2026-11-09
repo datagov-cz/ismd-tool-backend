@@ -5,6 +5,7 @@ import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.Statement;
+import org.apache.jena.vocabulary.OWL2;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
 import org.apache.jena.vocabulary.SKOS;
@@ -41,7 +42,7 @@ class ConceptEditorChangeSetTest extends ConceptEditorTestBase {
         String conceptIri = DEFAULT_NS + "class-1";
         Resource existing = model.createResource(conceptIri);
         existing.addProperty(SKOS.prefLabel, model.createLiteral("Class", "cs"));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
+        existing.addProperty(RDF.type, OWL2.Class);
         existing.addProperty(SKOS.definition, model.createLiteral("Old definition", "cs"));
 
         Model preEdit = ModelFactory.createDefaultModel().add(model);
@@ -66,7 +67,7 @@ class ConceptEditorChangeSetTest extends ConceptEditorTestBase {
         String oldIri = "https://slovnik.gov.cz/pojem/old-class";
         Resource existing = model.createResource(oldIri);
         existing.addProperty(SKOS.prefLabel, model.createLiteral("Old name", "cs"));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
+        existing.addProperty(RDF.type, OWL2.Class);
 
         // An incoming edge: another concept points at the one being renamed.
         Resource other = model.createResource("https://slovnik.gov.cz/pojem/other");
@@ -99,7 +100,7 @@ class ConceptEditorChangeSetTest extends ConceptEditorTestBase {
         String conceptIri = DEFAULT_NS + "class-1";
         Resource existing = model.createResource(conceptIri);
         existing.addProperty(SKOS.prefLabel, model.createLiteral("Class", "cs"));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
+        existing.addProperty(RDF.type, OWL2.Class);
 
         Model preEdit = ModelFactory.createDefaultModel().add(model);
 

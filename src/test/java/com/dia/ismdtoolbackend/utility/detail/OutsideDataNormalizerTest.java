@@ -27,20 +27,20 @@ class OutsideDataNormalizerTest {
     class LocalDetail {
 
         @Test
-        @DisplayName("tags a /pojem/ owl:Class as skos:Concept, slovníky:pojem and slovníky:třída")
+        @DisplayName("tags a /pojem/ owl:Class as skos:Concept and slovníky:pojem")
         void owlClassTagged() {
             Model model = Ttl.parse("pojem:osoba a owl:Class .");
 
             int count = OutsideDataNormalizer.normalizeUploadInput(model);
 
-            assertIsomorphic("pojem:osoba a owl:Class, skos:Concept, slovníky:pojem, slovníky:třída .", model);
+            assertIsomorphic("pojem:osoba a owl:Class, skos:Concept, slovníky:pojem .", model);
             assertThat(count).isEqualTo(1);
         }
 
         @Test
         @DisplayName("leaves a fully tagged class unchanged and counts nothing")
         void taggedClassUnchanged() {
-            String input = "pojem:osoba a owl:Class, skos:Concept, slovníky:pojem, slovníky:třída .";
+            String input = "pojem:osoba a owl:Class, skos:Concept, slovníky:pojem .";
             Model model = Ttl.parse(input);
 
             int count = OutsideDataNormalizer.normalizeUploadInput(model);
@@ -76,23 +76,15 @@ class OutsideDataNormalizerTest {
         }
 
         @Test
-        @DisplayName("tags /pojem/ object properties as vztah and datatype properties as vlastnost")
-        void propertiesTagged() {
-            Model result = normalizedForLocalDetail("""
+        @DisplayName("adds no types to object and datatype properties")
+        void propertiesUntouched() {
+            String input = """
                     pojem:má-adresu a owl:ObjectProperty .
                     pojem:jméno a owl:DatatypeProperty .
-                    pojem:dual a owl:ObjectProperty, owl:DatatypeProperty .
-                    pojem:tagged a owl:ObjectProperty, slovníky:vztah .
                     <https://example.org/model/prop> a owl:ObjectProperty, owl:DatatypeProperty .
-                    """);
+                    """;
 
-            assertIsomorphic("""
-                    pojem:má-adresu a owl:ObjectProperty, slovníky:vztah .
-                    pojem:jméno a owl:DatatypeProperty, slovníky:vlastnost .
-                    pojem:dual a owl:ObjectProperty, owl:DatatypeProperty, slovníky:vztah .
-                    pojem:tagged a owl:ObjectProperty, slovníky:vztah .
-                    <https://example.org/model/prop> a owl:ObjectProperty, owl:DatatypeProperty .
-                    """, result);
+            assertIsomorphic(input, normalizedForLocalDetail(input));
         }
 
         @Test

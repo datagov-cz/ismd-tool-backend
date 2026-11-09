@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import org.apache.jena.vocabulary.OWL2;
 
 import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 import static com.dia.ismdtoolbackend.testsupport.rdf.Ttl.iris;
@@ -48,7 +49,7 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
 
     /** Seeds {@link #CONCEPT} as a class labelled "Třída" plus the given Turtle predicate-object list. */
     private void seedClass(String extraPredicates) {
-        Ttl.add(model, "<" + CONCEPT + "> a ofn:třída ; skos:prefLabel \"Třída\"@cs " + extraPredicates + " .");
+        Ttl.add(model, "<" + CONCEPT + "> a owl:Class ; skos:prefLabel \"Třída\"@cs " + extraPredicates + " .");
     }
 
     private ConceptEditor.EditResult edit() {
@@ -82,7 +83,7 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         void incomingReferencesFollowTheRename() {
             String oldIri = DEFAULT_NS + "pojem/stará-třída";
             Ttl.add(model, """
-                    <%s> a ofn:třída ; skos:prefLabel "Stará třída"@cs .
+                    <%s> a owl:Class ; skos:prefLabel "Stará třída"@cs .
                     <%s> rdfs:domain <%s> .
                     """.formatted(oldIri, DEFAULT_NS + "pojem/vlastnost", oldIri));
             classConceptEditModel.setNameModel(Texts.name("cs", "Nová třída"));
@@ -99,7 +100,7 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         void fieldsEditedInTheSameRequestReplaceTheCopiedValues() {
             String oldIri = DEFAULT_NS + "pojem/stará-třída";
             Ttl.add(model, """
-                    <%s> a ofn:třída, vsgov:typ-objektu-práva, l111:veřejný-údaj ;
+                    <%s> a owl:Class, vsgov:typ-objektu-práva, l111:veřejný-údaj ;
                         skos:prefLabel "Stará třída"@cs ;
                         rdfs:subClassOf <https://example.com/old-broader> .
                     """.formatted(oldIri));
@@ -111,7 +112,7 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
             ConceptEditor.EditResult result = conceptEditor.editConcept(oldIri, classConceptEditModel, model, null);
 
             String newIri = result.newConceptIRI;
-            assertThat(types(model, newIri)).containsExactlyInAnyOrder(OFN_NAMESPACE + TRIDA, OfnIris.TYP_SUBJEKTU_PRAVA);
+            assertThat(types(model, newIri)).containsExactlyInAnyOrder(OWL2.Class.getURI(), OfnIris.TYP_SUBJEKTU_PRAVA);
             assertThat(iris(model, newIri, RDFS.subClassOf)).containsExactly("https://example.com/new-broader");
             assertThat(model.containsResource(model.getResource(oldIri))).isFalse();
         }
@@ -150,7 +151,7 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
             ConceptEditor.EditResult result = edit();
 
             assertThat(result.iriChanged).isFalse();
-            assertThat(types(model, CONCEPT)).containsExactlyInAnyOrder(OFN_NAMESPACE + TRIDA, OfnIris.TYP_SUBJEKTU_PRAVA);
+            assertThat(types(model, CONCEPT)).containsExactlyInAnyOrder(OWL2.Class.getURI(), OfnIris.TYP_SUBJEKTU_PRAVA);
             assertThat(model.getResource(CONCEPT).hasProperty(AGENDA)).isFalse();
             assertThat(iris(model, CONCEPT, SHARING)).containsExactly(SHARING_ITEMS + "nesdílené");
             assertThat(iris(model, CONCEPT, ACQUISITION)).containsExactly(ACQUISITION_ITEMS + "vlastní");
@@ -224,7 +225,7 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
             edit();
 
             Model expected = Ttl.parse("""
-                    <%s> a ofn:třída ; skos:prefLabel "Třída"@cs ;
+                    <%s> a owl:Class ; skos:prefLabel "Třída"@cs ;
                         slovníky:definující-nelegislativní-zdroj [ a do:digitální-objekt ;
                                 schema:url "https://example.com/doc1"^^xsd:anyURI ;
                                 dct:title "Doc 1"@cs ; dct:description "Popis 1"@cs ] ;
@@ -269,7 +270,7 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
             edit();
 
             Model expected = Ttl.parse("""
-                    <%s> a ofn:třída ; skos:prefLabel "Třída"@cs ;
+                    <%s> a owl:Class ; skos:prefLabel "Třída"@cs ;
                         slovníky:definující-nelegislativní-zdroj [ a do:digitální-objekt ;
                                 schema:url "https://example.com/doc2"^^xsd:anyURI ; dct:title "Doc 2"@cs ] .
                     """.formatted(CONCEPT));
@@ -314,7 +315,7 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
             ConceptEditor.EditResult result = edit();
 
             assertThat(model.isIsomorphicWith(Ttl.parse("""
-                    <%s> a ofn:třída ; skos:prefLabel "Nová třída"@cs ;
+                    <%s> a owl:Class ; skos:prefLabel "Nová třída"@cs ;
                         dct:description "New description"@cs ;
                         skos:definition "New definition"@cs ;
                         skos:altLabel "New alt"@cs .
@@ -397,7 +398,7 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
             edit();
 
             assertThat(types(model, CONCEPT))
-                    .containsExactlyInAnyOrder(OFN_NAMESPACE + TRIDA, OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ);
+                    .containsExactlyInAnyOrder(OWL2.Class.getURI(), OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ);
         }
 
         @Test
@@ -409,7 +410,7 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
             edit();
 
             assertThat(types(model, CONCEPT))
-                    .containsExactlyInAnyOrder(OFN_NAMESPACE + TRIDA, OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ);
+                    .containsExactlyInAnyOrder(OWL2.Class.getURI(), OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ);
         }
 
         @Test
@@ -419,7 +420,7 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
 
             edit();
 
-            assertThat(types(model, CONCEPT)).containsExactly(OFN_NAMESPACE + TRIDA);
+            assertThat(types(model, CONCEPT)).containsExactly(OWL2.Class.getURI());
         }
 
         @Test
@@ -439,7 +440,7 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         void renameWithTypeChangeAndNonPublicDropsTheOldClassification() {
             String oldIri = DEFAULT_NS + "pojem/stará";
             Ttl.add(model, """
-                    <%s> a ofn:třída, vsgov:typ-objektu-práva, l111:veřejný-údaj ; skos:prefLabel "Stará"@cs .
+                    <%s> a owl:Class, vsgov:typ-objektu-práva, l111:veřejný-údaj ; skos:prefLabel "Stará"@cs .
                     """.formatted(oldIri));
             classConceptEditModel.setNameModel(Texts.name("cs", "Nová"));
             classConceptEditModel.setType("subjekt");
@@ -448,7 +449,7 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
             ConceptEditor.EditResult result = conceptEditor.editConcept(oldIri, classConceptEditModel, model, null);
 
             assertThat(types(model, result.newConceptIRI))
-                    .containsExactlyInAnyOrder(OFN_NAMESPACE + TRIDA, OfnIris.TYP_SUBJEKTU_PRAVA);
+                    .containsExactlyInAnyOrder(OWL2.Class.getURI(), OfnIris.TYP_SUBJEKTU_PRAVA);
         }
     }
 

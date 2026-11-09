@@ -44,12 +44,12 @@ class TurtleFormatterUtilTest {
         @DisplayName("concepts, labels, descriptions and types unchanged")
         void conceptsUnchanged() {
             String input = VOCABULARY + """
-                    pojem:osoba a owl:Class, skos:Concept, slovníky:pojem, slovníky:třída ;
+                    pojem:osoba a owl:Class, skos:Concept, slovníky:pojem ;
                         skos:prefLabel "Osoba"@cs, "Person"@en ;
                         dct:description "Popis osoby"@cs ;
                         skos:inScheme ex: .
-                    pojem:má-adresu a owl:ObjectProperty, slovníky:vztah .
-                    pojem:jméno a owl:DatatypeProperty, slovníky:vlastnost .
+                    pojem:má-adresu a owl:ObjectProperty .
+                    pojem:jméno a owl:DatatypeProperty .
                     pojem:dual a owl:ObjectProperty, owl:DatatypeProperty .
                     <https://example.org/model/SomeClass> a owl:Class ;
                         rdfs:label "Some Class"@en .
@@ -193,7 +193,7 @@ class TurtleFormatterUtilTest {
         @DisplayName("with its type and NKOD dataset after a Turtle round trip")
         void codeListSurvivesRoundTrip() {
             String input = VOCABULARY + """
-                    pojem:typ-cíle a owl:Class, skos:Concept, slovníky:pojem, slovníky:třída ;
+                    pojem:typ-cíle a owl:Class, skos:Concept, slovníky:pojem ;
                         slovníky:má-instance-definované-číselníkem <https://data.mvcr.gov.cz/zdroj/číselníky/typy-cílů> .
                     <https://data.mvcr.gov.cz/zdroj/číselníky/typy-cílů> a l111:číselník ;
                         l111:má-v-nkod-zastřešující-datovou-sadu <https://data.gov.cz/zdroj/datové-sady/1> .

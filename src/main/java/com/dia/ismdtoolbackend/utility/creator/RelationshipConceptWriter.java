@@ -1,7 +1,6 @@
 package com.dia.ismdtoolbackend.utility.creator;
 
 import com.dia.ismdtoolbackend.models.concept.*;
-import com.dia.ismdtoolbackend.utility.upload.RoleMarkerDerivation;
 import com.dia.ismdtoolbackend.utility.URIGenerator;
 import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import lombok.extern.slf4j.Slf4j;
@@ -43,7 +42,6 @@ final class RelationshipConceptWriter {
         relationshipResource.addProperty(RDF.type, SKOS.Concept);
         relationshipResource.addProperty(RDF.type, OWL2.ObjectProperty);
         relationshipResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + POJEM));
-        RoleMarkerDerivation.derive(relationshipResource);
 
         writers.addCommonMetadata(relationshipResource, relModel);
 

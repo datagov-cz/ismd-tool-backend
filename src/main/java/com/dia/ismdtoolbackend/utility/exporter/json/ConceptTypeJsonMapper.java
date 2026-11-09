@@ -39,9 +39,8 @@ final class ConceptTypeJsonMapper {
     }
 
     /**
-     * Maps a concept's RDF types to JSON type names; the kind comes from the OWL type (the ISMD role
-     * marker is derived from it and not read). A concept typed as both property and relationship is
-     * rejected.
+     * Maps a concept's RDF types to JSON type names; the kind comes from the OWL type. A concept typed as
+     * both property and relationship is rejected.
      */
     List<String> getConceptTypes(Resource concept, OntModel ontModel) {
         if (ConceptRoleConflict.isPropertyAndRelationship(concept)) {

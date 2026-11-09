@@ -58,9 +58,8 @@ public enum ConceptType {
     /**
      * Resolves the concept role from a concept's type set: the OWL kind
      * (owl:Class/DatatypeProperty/ObjectProperty, the source of truth in ISMD and NKD data alike) or the
-     * short OFN JSON-LD label (Třída/Vlastnost/Vztah, what ConceptDetailModel.types carries). The ISMD role
-     * markers are derived from the OWL kind and not read. Falls back to KONCEPT when neither names a role,
-     * so the field is never null. Throws {@link ConflictingConceptTypeException} when the types name more
+     * short OFN JSON-LD label (Třída/Vlastnost/Vztah, what ConceptDetailModel.types carries). Falls back
+     * to KONCEPT when neither names a role, so the field is never null. Throws {@link ConflictingConceptTypeException} when the types name more
      * than one role.
      */
     public static ConceptType fromRdfTypes(List<String> types) {

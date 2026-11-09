@@ -61,7 +61,7 @@ public final class RdfTestModelFactory {
     public static Resource addOwlClass(OntModel model, String localName, String csLabel) {
         Resource concept = addSkosConcept(model, localName, csLabel);
         concept.addProperty(RDF.type, OWL2.Class);
-        concept.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + TRIDA));
+        concept.addProperty(RDF.type, OWL2.Class);
         return concept;
     }
 
@@ -69,7 +69,7 @@ public final class RdfTestModelFactory {
                                               Resource domain, Resource range) {
         Resource concept = addSkosConcept(model, localName, csLabel);
         concept.addProperty(RDF.type, OWL2.ObjectProperty);
-        concept.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + VZTAH));
+        concept.addProperty(RDF.type, OWL2.ObjectProperty);
         if (domain != null) {
             concept.addProperty(RDFS.domain, domain);
         }
@@ -83,7 +83,7 @@ public final class RdfTestModelFactory {
                                                 Resource domain, String xsdRange) {
         Resource concept = addSkosConcept(model, localName, csLabel);
         concept.addProperty(RDF.type, OWL2.DatatypeProperty);
-        concept.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + VLASTNOST));
+        concept.addProperty(RDF.type, OWL2.DatatypeProperty);
         if (domain != null) {
             concept.addProperty(RDFS.domain, domain);
         }

@@ -138,7 +138,7 @@ class FusekiConceptQueriesTest {
         store(GRAPH, """
                 <https://slovník.gov.cz/datový/test-slovník> skos:prefLabel "Testovací slovník"@cs .
                 pojem:osoba skos:inScheme <https://slovník.gov.cz/datový/test-slovník> ;
-                    skos:prefLabel "Osoba"@cs ; a slovníky:třída .
+                    skos:prefLabel "Osoba"@cs ; a owl:Class .
                 pojem:adresa skos:inScheme <https://slovník.gov.cz/datový/jiný-slovník/> .
                 """);
 

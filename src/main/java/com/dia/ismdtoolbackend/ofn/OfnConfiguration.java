@@ -11,14 +11,13 @@ public class OfnConfiguration {
         return OfnSpecification.bundled();
     }
 
-    /** Keeps the ISMD role markers in {@code typ} (D4: kept until the DIA data review). */
     @Bean
     public OfnConformanceGate ofnConformanceGate(OfnSpecification specification) {
-        return new OfnConformanceGate(specification, OfnIris.MARKERS);
+        return new OfnConformanceGate(specification);
     }
 
     @Bean
     public OfnRdfReader ofnRdfReader(OfnSpecification specification) {
-        return new OfnRdfReader(specification, OfnIris.MARKERS);
+        return new OfnRdfReader(specification);
     }
 }

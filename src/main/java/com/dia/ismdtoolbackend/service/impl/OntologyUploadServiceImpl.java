@@ -15,7 +15,6 @@ import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
 import com.dia.ismdtoolbackend.utility.validation.ConceptRoleConflict;
 import com.dia.ismdtoolbackend.utility.upload.ExcludedConceptPruning;
 import com.dia.ismdtoolbackend.utility.upload.InSchemeStamping;
-import com.dia.ismdtoolbackend.utility.upload.RoleMarkerDerivation;
 import com.dia.ismdtoolbackend.utility.upload.UploadGraphNameResolver;
 import com.dia.ismdtoolbackend.utility.upload.UploadIriNormalizer;
 import lombok.RequiredArgsConstructor;
@@ -87,16 +86,13 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             Set<String> chosen = InSchemeStamping.chosen(finalModel, graphName, normalizeMode, conceptsToNormalize);
             InSchemeStamping.stamp(finalModel, graphName, chosen);
 
-            // 4. Role markers derived from each concept's OWL kind (D4).
-            RoleMarkerDerivation.apply(finalModel, graphName);
-
             // A concept typed as both a property and a relationship fails the whole upload.
             List<String> conflictingTypes = ConceptRoleConflict.findPropertyAndRelationship(finalModel);
             if (!conflictingTypes.isEmpty()) {
                 throw new OntologyUploadConflictingTypesException(conflictingTypes);
             }
 
-            // 5. Concept gate. A concept with no single role, one breaking a create/edit rule, one whose
+            // 4. Concept gate. A concept with no single role, one breaking a create/edit rule, one whose
             //    domain/range points at a concept published in NKD, or one failing the OFN shape or
             //    concept-kind tier is not imported: it loses skos:inScheme. A vocabulary that does not
             //    conform itself fails the whole upload. Incomplete concepts are kept as drafts.
@@ -115,13 +111,13 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             rejectedConcepts = UploadConceptGate.mergeByConcept(rejectedConcepts);
             roleResolver.excludeRejectedConcepts(finalModel, graphName, rejectedConcepts);
 
-            // 6. Excluded concepts nothing references are removed, so "no PG row ⇒ no owned RDF" holds.
+            // 5. Excluded concepts nothing references are removed, so "no PG row ⇒ no owned RDF" holds.
             ExcludedConceptPruning.apply(finalModel, graphName);
 
             // Serialized before anything is stored, so a failure here leaves no data behind.
             String ontologyContent = fileReader.convertOntModelToTtl(finalModel);
 
-            // 5. Save RDF data to TDB2 first — if this fails, no metadata exists, clean exit
+            // 6. Save RDF data to TDB2 first — if this fails, no metadata exists, clean exit
             try {
                 jenaTDB2Repository.putOntologyModel(graphName, finalModel);
             } catch (Exception e) {
@@ -129,7 +125,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
                         "Uložení slovníku do RDF úložiště (TDB2) selhalo: " + e.getMessage(), e);
             }
 
-            // 6. Save metadata to PostgreSQL in one transaction. If it fails or does not commit,
+            // 7. Save metadata to PostgreSQL in one transaction. If it fails or does not commit,
             //    PostgreSQL holds nothing of this upload and the catch cleans up TDB2.
             OntologySummaryDto ontology;
             try {
@@ -151,7 +147,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
                         "Uložení metadat slovníku selhalo: " + e.getMessage(), e);
             }
 
-            // 7. Advisory validation, started once the metadata is committed.
+            // 8. Advisory validation, started once the metadata is committed.
             validationRunner.start(ontologyContent, graphName);
 
             return new OntologyUploadResultDto(ontology, rejectedConcepts, correctedIris);

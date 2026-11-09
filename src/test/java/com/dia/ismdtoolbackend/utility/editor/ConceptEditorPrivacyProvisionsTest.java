@@ -7,6 +7,7 @@ import org.apache.jena.rdf.model.Resource;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import org.apache.jena.vocabulary.OWL2;
 
 import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 import static org.apache.jena.vocabulary.RDF.type;
@@ -30,14 +31,14 @@ class ConceptEditorPrivacyProvisionsTest extends ConceptEditorTestBase {
     private Resource seedProperty(String iri) {
         Resource r = model.createResource(iri);
         r.addProperty(org.apache.jena.vocabulary.SKOS.prefLabel, model.createLiteral("Vlastnost", "cs"));
-        r.addProperty(type, model.getResource(OFN_NAMESPACE + VLASTNOST));
+        r.addProperty(type, OWL2.DatatypeProperty);
         return r;
     }
 
     private Resource seedRelationship(String iri) {
         Resource r = model.createResource(iri);
         r.addProperty(org.apache.jena.vocabulary.SKOS.prefLabel, model.createLiteral("Vztah", "cs"));
-        r.addProperty(type, model.getResource(OFN_NAMESPACE + VZTAH));
+        r.addProperty(type, OWL2.ObjectProperty);
         return r;
     }
 

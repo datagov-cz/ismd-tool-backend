@@ -88,8 +88,7 @@ class UploadConceptRoleResolver {
 
     /**
      * Resolves a concept's role from its OWL kind ({@code owl:Class}, {@code owl:DatatypeProperty},
-     * {@code owl:ObjectProperty}). The role marker is derived from the OWL kind (D4), so it never
-     * decides the role: a marker-only concept has no role.
+     * {@code owl:ObjectProperty}).
      *
      * <p>Rejects when no single role can be read: no OWL kind at all, or two at once. Contradictory
      * data is broken input, not something to repair by picking a winner.

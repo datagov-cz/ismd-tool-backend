@@ -16,7 +16,7 @@ import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 @Slf4j
 public class ModelAnalyzer {
 
-    /** Types that make a resource a concept; the kind comes from OWL, never from the ISMD role markers. */
+    /** Types that make a resource a concept; the kind comes from OWL. */
     private static final Set<String> CONCEPT_TYPES = Set.of(
             OfnIris.POJEM, OfnIris.KONCEPT,
             OfnIris.OWL_CLASS, OfnIris.OWL_DATATYPE_PROPERTY, OfnIris.OWL_OBJECT_PROPERTY);
@@ -236,7 +236,7 @@ public class ModelAnalyzer {
         List<String> types = new ArrayList<>();
         types.add(TYPE_SLOVNIK);
 
-        boolean hasOwlKind = OfnIris.MARKER_BY_OWL_KIND.keySet().stream().anyMatch(kind -> hasType(model, kind));
+        boolean hasOwlKind = OfnIris.OWL_KINDS.stream().anyMatch(kind -> hasType(model, kind));
         if (hasOwlKind || hasType(model, OfnIris.POJEM)) {
             types.add(TYPE_TEZAURUS);
         }

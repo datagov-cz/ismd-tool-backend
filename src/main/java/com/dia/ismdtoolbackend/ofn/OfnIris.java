@@ -57,16 +57,9 @@ public final class OfnIris {
     public static final String ZPUSOBY_SDILENI = "https://data.dia.gov.cz/zdroj/číselníky/způsoby-sdílení-údajů/položky/";
     public static final String TYPY_OBSAHU = "https://data.dia.gov.cz/zdroj/číselníky/typy-obsahu-údajů/položky/";
 
-    // ISMD role markers: not OFN terms, always derived from the concept's OWL kind and kept in exports
-    public static final String MARKER_TRIDA = SLOVNIKY + "třída";
-    public static final String MARKER_VLASTNOST = SLOVNIKY + "vlastnost";
-    public static final String MARKER_VZTAH = SLOVNIKY + "vztah";
-    /** The OWL kind each marker stands for. */
-    public static final java.util.Map<String, String> MARKER_BY_OWL_KIND = java.util.Map.of(
-            OWL_CLASS, MARKER_TRIDA,
-            OWL_DATATYPE_PROPERTY, MARKER_VLASTNOST,
-            OWL_OBJECT_PROPERTY, MARKER_VZTAH);
-    public static final java.util.Set<String> MARKERS = java.util.Set.of(MARKER_TRIDA, MARKER_VLASTNOST, MARKER_VZTAH);
+    /** The OWL kinds that make a concept a Třída, Vlastnost or Vztah. */
+    public static final java.util.Set<String> OWL_KINDS = java.util.Set.of(
+            OWL_CLASS, OWL_DATATYPE_PROPERTY, OWL_OBJECT_PROPERTY);
 
     private OfnIris() {
     }

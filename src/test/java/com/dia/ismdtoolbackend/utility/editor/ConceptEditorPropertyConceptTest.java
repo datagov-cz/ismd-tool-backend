@@ -20,7 +20,7 @@ class ConceptEditorPropertyConceptTest extends ConceptEditorTestBase {
     private static final String CONTENT_TYPE_ITEMS = "https://data.dia.gov.cz/zdroj/číselníky/typy-obsahu-údajů/položky/";
 
     private void seedProperty(String extraPredicates) {
-        Ttl.add(model, "<" + CONCEPT + "> a ofn:vlastnost ; skos:prefLabel \"Vlastnost\"@cs " + extraPredicates + " .");
+        Ttl.add(model, "<" + CONCEPT + "> a owl:DatatypeProperty ; skos:prefLabel \"Vlastnost\"@cs " + extraPredicates + " .");
     }
 
     @Test
@@ -42,7 +42,7 @@ class ConceptEditorPropertyConceptTest extends ConceptEditorTestBase {
 
         assertThat(result.iriChanged).isFalse();
         assertThat(model.isIsomorphicWith(Ttl.parse("""
-                <%s> a ofn:vlastnost ; skos:prefLabel "Vlastnost"@cs ;
+                <%s> a owl:DatatypeProperty ; skos:prefLabel "Vlastnost"@cs ;
                     rdfs:domain <https://example.com/new-domain> ;
                     rdfs:range xsd:string ;
                     rdfs:subPropertyOf <https://example.com/new-super> ;

@@ -29,7 +29,7 @@ class OntologyDetailExtractorIdentifierTest {
                 @prefix dct:  <http://purl.org/dc/terms/> .
                 @prefix ofn:  <%s> .
                 <%s> a <http://www.w3.org/2002/07/owl#Ontology> ; skos:prefLabel "Slovník"@cs .
-                <%s> a ofn:třída, owl:Class ; skos:inScheme <%s> ; skos:prefLabel "Osoba"@cs ; dct:identifier %s .
+                <%s> a owl:Class ; skos:inScheme <%s> ; skos:prefLabel "Osoba"@cs ; dct:identifier %s .
                 """.formatted(OFN_NAMESPACE, ONTOLOGY, PERSON, ONTOLOGY, identifierTurtle), Lang.TURTLE).parse(model);
         return model;
     }

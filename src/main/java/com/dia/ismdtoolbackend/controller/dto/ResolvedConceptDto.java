@@ -16,7 +16,7 @@ import java.util.Map;
  * is {@code null} and the FE navigates by {@code iri}.
  *
  * <p>{@code resolvedDomain} and {@code resolvedRange} are populated only when the
- * resolved concept is a relationship (rdf:type {@code …/vztah}); they carry the
+ * resolved concept is a relationship ({@code owl:ObjectProperty}); they carry the
  * fully-resolved {@code rdfs:domain} / {@code rdfs:range} target concepts so the
  * FE can render and navigate to the related classes without a second resolve
  * round-trip. They are {@code null} for non-relationships and for relationships

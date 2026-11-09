@@ -23,7 +23,7 @@ class ConceptEditorRelayReplayTest extends ConceptEditorTestBase {
     private static final String GRAPH = "https://slovník.gov.cz/datový/test-slovník";
     private static final String OLD = GRAPH + "/pojem/třída";
     private static final String SOURCES = """
-            <%s> a ofn:třída, owl:Class ; skos:prefLabel "Třída"@cs ; skos:inScheme <%s> ;
+            <%s> a owl:Class ; skos:prefLabel "Třída"@cs ; skos:inScheme <%s> ;
                 slovníky:definující-nelegislativní-zdroj [ a do:digitální-objekt ;
                     schema:url "https://example.com/d1"^^xsd:anyURI ; dct:title "D1"@cs ] ;
                 slovníky:související-nelegislativní-zdroj [ a do:digitální-objekt ;

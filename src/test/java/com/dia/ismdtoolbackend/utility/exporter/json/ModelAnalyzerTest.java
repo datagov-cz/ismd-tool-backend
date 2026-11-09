@@ -153,7 +153,7 @@ class ModelAnalyzerTest {
     class Concepts {
 
         @Test
-        @DisplayName("maps every named resource of a concept type by IRI, skipping blank nodes, other types and marker-only resources")
+        @DisplayName("maps every named resource of a concept type by IRI, skipping blank nodes and other types")
         void resourceMapHoldsNamedConcepts() {
             ModelStructure structure = analyze("""
                     ex: a owl:Ontology .
@@ -165,7 +165,6 @@ class ModelAnalyzerTest {
                     [ a skos:Concept ] .
                     pojem:f a rdfs:Class .
                     pojem:g a "literal" .
-                    pojem:h a slovníky:třída .
                     """);
 
             assertThat(structure.getResourceMap().keySet()).containsExactlyInAnyOrder(
@@ -179,12 +178,9 @@ class ModelAnalyzerTest {
                 "owl:Class                     | Slovník,Tezaurus,Konceptuální model",
                 "owl:DatatypeProperty          | Slovník,Tezaurus,Konceptuální model",
                 "owl:ObjectProperty            | Slovník,Tezaurus,Konceptuální model",
-                "slovníky:třída                | Slovník",
-                "slovníky:vlastnost            | Slovník",
-                "slovníky:vztah                | Slovník",
                 "slovníky:typ-subjektu-práva   | Slovník",
         })
-        @DisplayName("vocabulary types follow the OWL kinds present; markers alone count for nothing")
+        @DisplayName("vocabulary types follow the OWL kinds present")
         void vocabularyTypes(String conceptType, String expected) {
             ModelStructure structure = analyze("ex: a owl:Ontology . pojem:x a " + conceptType + " .");
 

@@ -19,7 +19,7 @@ class ConceptEditorErrorHandlingTest extends ConceptEditorTestBase {
     private static final String RENAMED_IRI = DEFAULT_NS + "pojem/id-1";
 
     private void seedOldClass() {
-        Ttl.add(model, "<" + OLD_IRI + "> a ofn:třída ; skos:prefLabel \"Old name\"@cs .");
+        Ttl.add(model, "<" + OLD_IRI + "> a owl:Class ; skos:prefLabel \"Old name\"@cs .");
         classConceptEditModel.setNameModel(Texts.name("cs", "New name"));
         classConceptEditModel.setIdentifier("ID-1");
     }
@@ -59,7 +59,7 @@ class ConceptEditorErrorHandlingTest extends ConceptEditorTestBase {
     @Test
     void validGraphNameIsTheNamespaceOfGeneratedConceptIris() {
         String conceptIri = DEFAULT_NS + "pojem/třída";
-        Ttl.add(model, "<" + conceptIri + "> a ofn:třída ; skos:prefLabel \"Třída\"@cs .");
+        Ttl.add(model, "<" + conceptIri + "> a owl:Class ; skos:prefLabel \"Třída\"@cs .");
         classConceptEditModel.setBroaderConcept(java.util.List.of("Rodič"));
 
         conceptEditor.editConcept(conceptIri, classConceptEditModel, model, "https://custom.cz/vocab/");
@@ -71,7 +71,7 @@ class ConceptEditorErrorHandlingTest extends ConceptEditorTestBase {
     @Test
     void invalidGraphNameFallsBackToTheDefaultNamespace() {
         String conceptIri = DEFAULT_NS + "pojem/třída";
-        Ttl.add(model, "<" + conceptIri + "> a ofn:třída ; skos:prefLabel \"Třída\"@cs .");
+        Ttl.add(model, "<" + conceptIri + "> a owl:Class ; skos:prefLabel \"Třída\"@cs .");
         classConceptEditModel.setBroaderConcept(java.util.List.of("Rodič"));
 
         conceptEditor.editConcept(conceptIri, classConceptEditModel, model, "not an iri");

@@ -94,7 +94,7 @@ class ConceptCreatorTest {
             String iri = GRAPH + "/pojem/id-123";
             assertThat(created.getURI()).isEqualTo(iri);
             assertModelIs(created, """
-                    <%s> a skos:Concept, ofn:pojem, owl:Class, ofn:třída, vsgov:typ-subjektu-práva, l111:veřejný-údaj ;
+                    <%s> a skos:Concept, ofn:pojem, owl:Class, vsgov:typ-subjektu-práva, l111:veřejný-údaj ;
                         skos:prefLabel "Test class"@cs ;
                         dct:description "Test description"@cs ;
                         skos:definition "Test definition"@cs ;
@@ -109,7 +109,7 @@ class ConceptCreatorTest {
 
             assertThat(created.getURI()).isEqualTo(DEFAULT_NS + "pojem/věc");
             assertThat(types(created.getModel(), created.getURI())).containsExactlyInAnyOrder(
-                    SKOS.Concept.getURI(), OFN_NAMESPACE + POJEM, OWL2.Class.getURI(), OFN_NAMESPACE + TRIDA,
+                    SKOS.Concept.getURI(), OFN_NAMESPACE + POJEM, OWL2.Class.getURI(),
                     OfnIris.TYP_OBJEKTU_PRAVA);
             assertThat(created.hasProperty(SKOS.inScheme)).isFalse();
         }
@@ -119,7 +119,7 @@ class ConceptCreatorTest {
             Resource created = conceptCreator.createSingleConcept(ConceptModels.trida("Věc", m -> m.setType("jiný")));
 
             assertThat(types(created.getModel(), created.getURI())).containsExactlyInAnyOrder(
-                    SKOS.Concept.getURI(), OFN_NAMESPACE + POJEM, OWL2.Class.getURI(), OFN_NAMESPACE + TRIDA);
+                    SKOS.Concept.getURI(), OFN_NAMESPACE + POJEM, OWL2.Class.getURI());
         }
 
         @Test
@@ -127,7 +127,7 @@ class ConceptCreatorTest {
             Resource created = conceptCreator.createSingleConcept(ConceptModels.trida("Věc"));
 
             assertThat(types(created.getModel(), created.getURI())).containsExactlyInAnyOrder(
-                    SKOS.Concept.getURI(), OFN_NAMESPACE + POJEM, OWL2.Class.getURI(), OFN_NAMESPACE + TRIDA);
+                    SKOS.Concept.getURI(), OFN_NAMESPACE + POJEM, OWL2.Class.getURI());
         }
 
         @Test
@@ -168,7 +168,7 @@ class ConceptCreatorTest {
             Resource created = conceptCreator.createSingleConcept(model);
 
             assertModelIs(created, """
-                    <%s> a skos:Concept, ofn:pojem, owl:Class, ofn:třída, vsgov:typ-objektu-práva ;
+                    <%s> a skos:Concept, ofn:pojem, owl:Class, vsgov:typ-objektu-práva ;
                         skos:prefLabel "Osoba"@cs ; dct:description "Popis"@cs ;
                         skos:definition "Definice"@cs ; skos:altLabel "Alias"@cs .
                     """.formatted(DEFAULT_NS + "pojem/osoba"));
@@ -191,7 +191,7 @@ class ConceptCreatorTest {
             Resource created = conceptCreator.createSingleConcept(model);
 
             assertModelIs(created, """
-                    <%s> a skos:Concept, ofn:pojem, owl:Class, ofn:třída, vsgov:typ-objektu-práva ;
+                    <%s> a skos:Concept, ofn:pojem, owl:Class, vsgov:typ-objektu-práva ;
                         skos:prefLabel "Osoba"@cs ; skos:altLabel "Person"@en .
                     """.formatted(DEFAULT_NS + "pojem/osoba"));
         }
@@ -279,7 +279,7 @@ class ConceptCreatorTest {
             }));
 
             assertModelIs(created, """
-                    <%1$s> a skos:Concept, ofn:pojem, owl:Class, ofn:třída, vsgov:typ-objektu-práva ;
+                    <%1$s> a skos:Concept, ofn:pojem, owl:Class, vsgov:typ-objektu-práva ;
                         skos:prefLabel "Cíl"@cs ;
                         ofn:%2$s <%3$s> .
                     <%3$s> a l111:%4$s ; l111:%5$s <%6$s> .
@@ -415,7 +415,7 @@ class ConceptCreatorTest {
             }));
 
             assertModelIs(created, """
-                    <%s> a skos:Concept, ofn:pojem, owl:Class, ofn:třída, vsgov:typ-subjektu-práva ;
+                    <%s> a skos:Concept, ofn:pojem, owl:Class, vsgov:typ-subjektu-práva ;
                         skos:prefLabel "Třída"@cs ;
                         slovníky:definující-nelegislativní-zdroj [ a do:digitální-objekt ;
                                 schema:url "https://example.org/doc1"^^xsd:anyURI ;
@@ -513,7 +513,7 @@ class ConceptCreatorTest {
 
             String iri = GRAPH + "/pojem/hmotnost";
             assertModelIs(created, """
-                    <%1$s> a skos:Concept, owl:DatatypeProperty, ofn:pojem, ofn:vlastnost, l111:veřejný-údaj ;
+                    <%1$s> a skos:Concept, owl:DatatypeProperty, ofn:pojem, l111:veřejný-údaj ;
                         skos:prefLabel "Hmotnost"@cs ;
                         skos:inScheme <%2$s> ;
                         rdfs:domain <%2$s/pojem/vozidlo> ;
@@ -549,8 +549,8 @@ class ConceptCreatorTest {
             }));
 
             assertThat(types(created.getModel(), created.getURI()))
-                    .contains(OFN_NAMESPACE + VLASTNOST, OWL2.DatatypeProperty.getURI())
-                    .doesNotContain(OWL2.ObjectProperty.getURI(), OFN_NAMESPACE + VZTAH);
+                    .contains(OWL2.DatatypeProperty.getURI())
+                    .doesNotContain(OWL2.ObjectProperty.getURI());
         }
 
         @Test
@@ -594,7 +594,7 @@ class ConceptCreatorTest {
             Resource created = conceptCreator.createSingleConcept(model);
 
             assertModelIs(created, """
-                    <%1$s/pojem/řídí> a skos:Concept, owl:ObjectProperty, ofn:pojem, ofn:vztah, l111:veřejný-údaj ;
+                    <%1$s/pojem/řídí> a skos:Concept, owl:ObjectProperty, ofn:pojem, l111:veřejný-údaj ;
                         skos:prefLabel "Řídí"@cs ;
                         skos:inScheme <%1$s/> ;
                         rdfs:domain <https://example.org/pojem/řidič> ;

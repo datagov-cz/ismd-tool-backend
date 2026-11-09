@@ -33,7 +33,7 @@ class ConceptEditorGovernanceTest extends ConceptEditorTestBase {
     private static final Property DEFINING_NON_LEGAL = Ttl.property(OFN_NAMESPACE + DEFINUJICI_NELEGISLATIVNI_ZDROJ);
 
     private void seedProperty(String extraPredicates) {
-        Ttl.add(model, "<" + CONCEPT + "> a ofn:vlastnost ; skos:prefLabel \"Vlastnost\"@cs "
+        Ttl.add(model, "<" + CONCEPT + "> a owl:DatatypeProperty ; skos:prefLabel \"Vlastnost\"@cs "
                 + extraPredicates + " .");
     }
 
@@ -197,7 +197,7 @@ class ConceptEditorGovernanceTest extends ConceptEditorTestBase {
             edit();
 
             assertThat(model.isIsomorphicWith(Ttl.parse("""
-                    <%s> a ofn:vlastnost ; skos:prefLabel "Vlastnost"@cs ;
+                    <%s> a owl:DatatypeProperty ; skos:prefLabel "Vlastnost"@cs ;
                         slovníky:definující-nelegislativní-zdroj [ a do:digitální-objekt ;
                                 schema:url "https://example.com/doc"^^xsd:anyURI ] .
                     """.formatted(CONCEPT))))

@@ -22,11 +22,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
+import org.apache.jena.vocabulary.OWL2;
 
 import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OFN_NAMESPACE;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TRIDA;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VLASTNOST;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VZTAH;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -165,9 +163,9 @@ class OntologyDetailExtractorRefTest {
         Model model = ModelFactory.createDefaultModel();
 
         Resource owlOntology = model.createResource("http://www.w3.org/2002/07/owl#Ontology");
-        Resource tridaType = model.createResource(OFN_NAMESPACE + TRIDA);
-        Resource vlastnostType = model.createResource(OFN_NAMESPACE + VLASTNOST);
-        Resource vztahType = model.createResource(OFN_NAMESPACE + VZTAH);
+        Resource tridaType = OWL2.Class;
+        Resource vlastnostType = OWL2.DatatypeProperty;
+        Resource vztahType = OWL2.ObjectProperty;
         Property inScheme = model.createProperty("http://www.w3.org/2004/02/skos/core#inScheme");
 
         Resource ontology = model.createResource(ONTOLOGY_IRI);

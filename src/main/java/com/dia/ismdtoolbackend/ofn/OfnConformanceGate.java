@@ -42,19 +42,12 @@ public class OfnConformanceGate {
     private final OfnContextIndex context;
     private final String idKey;
     private final String typeKey;
-    private final Set<String> toleratedTypeIris;
 
     public OfnConformanceGate(OfnSpecification specification) {
-        this(specification, Set.of());
-    }
-
-    /** @param toleratedTypeIris type IRIs kept in {@code typ} (as IRIs or compact IRIs) without an issue */
-    public OfnConformanceGate(OfnSpecification specification, Set<String> toleratedTypeIris) {
         this.specification = specification;
         this.context = specification.contextIndex();
         this.idKey = context.idAlias();
         this.typeKey = context.typeAlias();
-        this.toleratedTypeIris = Set.copyOf(toleratedTypeIris);
     }
 
     public GateResult apply(ObjectNode vocabulary) {
@@ -118,10 +111,6 @@ public class OfnConformanceGate {
         Deque<Scope> result = new ArrayDeque<>(scopes);
         ArrayNode kept = JsonNodeFactory.instance.arrayNode();
         for (JsonNode type : asList(types)) {
-            if (type.isTextual() && toleratedTypeIris.contains(context.expand(type.asText()))) {
-                kept.add(type);
-                continue;
-            }
             Optional<Term> typeTerm = type.isTextual()
                     ? OfnContextIndex.resolve(scopes, type.asText())
                     : Optional.empty();

@@ -18,7 +18,7 @@ class ConceptEditorRelationshipConceptTest extends ConceptEditorTestBase {
     private static final String ITEMS = "https://data.dia.gov.cz/zdroj/číselníky/";
 
     private void seedRelationship(String extraPredicates) {
-        Ttl.add(model, "<" + CONCEPT + "> a ofn:vztah ; skos:prefLabel \"Vztah\"@cs " + extraPredicates + " .");
+        Ttl.add(model, "<" + CONCEPT + "> a owl:ObjectProperty ; skos:prefLabel \"Vztah\"@cs " + extraPredicates + " .");
     }
 
     @Test
@@ -45,7 +45,7 @@ class ConceptEditorRelationshipConceptTest extends ConceptEditorTestBase {
 
         assertThat(result.iriChanged).isFalse();
         assertThat(model.isIsomorphicWith(Ttl.parse("""
-                <%s> a ofn:vztah ; skos:prefLabel "Vztah"@cs ;
+                <%s> a owl:ObjectProperty ; skos:prefLabel "Vztah"@cs ;
                     rdfs:domain <https://example.com/new-domain> ;
                     rdfs:range <https://example.com/new-range> ;
                     rdfs:subPropertyOf <https://example.com/new-super> ;

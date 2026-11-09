@@ -16,9 +16,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OFN_NAMESPACE;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TRIDA;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VLASTNOST;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VZTAH;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -51,7 +48,7 @@ class OntologyDetailExtractorMemberIndexTest {
     @Test
     void selfReferencingRelationshipListedOnce() {
         Model model = ontologyWithClasses();
-        Resource rel = member(model, ONTOLOGY_IRI + "/pojem/zná", VZTAH, "zná");
+        Resource rel = member(model, ONTOLOGY_IRI + "/pojem/zná", OWL.ObjectProperty, "zná");
         rel.addProperty(RDFS.domain, model.createResource(CLASS_IRI));
         rel.addProperty(RDFS.range, model.createResource(CLASS_IRI));
 
@@ -67,7 +64,7 @@ class OntologyDetailExtractorMemberIndexTest {
     @Test
     void relationshipAttachesToDomainAndRange() {
         Model model = ontologyWithClasses();
-        Resource rel = member(model, ONTOLOGY_IRI + "/pojem/bydlí-v", VZTAH, "bydlí v");
+        Resource rel = member(model, ONTOLOGY_IRI + "/pojem/bydlí-v", OWL.ObjectProperty, "bydlí v");
         rel.addProperty(RDFS.domain, model.createResource(CLASS_IRI));
         rel.addProperty(RDFS.range, model.createResource(OTHER_CLASS_IRI));
 
@@ -105,7 +102,7 @@ class OntologyDetailExtractorMemberIndexTest {
     @Test
     void propertyAttachesByDomainOnly() {
         Model model = ontologyWithClasses();
-        Resource prop = member(model, ONTOLOGY_IRI + "/pojem/věk", VLASTNOST, "věk");
+        Resource prop = member(model, ONTOLOGY_IRI + "/pojem/věk", OWL.DatatypeProperty, "věk");
         prop.addProperty(RDFS.domain, model.createResource(CLASS_IRI));
         prop.addProperty(RDFS.range, model.createResource(OTHER_CLASS_IRI));
 
@@ -122,9 +119,9 @@ class OntologyDetailExtractorMemberIndexTest {
     @Test
     void propertiesAndRelationshipsDoNotCrossBuckets() {
         Model model = ontologyWithClasses();
-        member(model, ONTOLOGY_IRI + "/pojem/věk", VLASTNOST, "věk")
+        member(model, ONTOLOGY_IRI + "/pojem/věk", OWL.DatatypeProperty, "věk")
                 .addProperty(RDFS.domain, model.createResource(CLASS_IRI));
-        member(model, ONTOLOGY_IRI + "/pojem/bydlí-v", VZTAH, "bydlí v")
+        member(model, ONTOLOGY_IRI + "/pojem/bydlí-v", OWL.ObjectProperty, "bydlí v")
                 .addProperty(RDFS.domain, model.createResource(CLASS_IRI));
 
         OntologyDetailModel.ConceptDetailModel klass = classDetail(model);
@@ -139,7 +136,7 @@ class OntologyDetailExtractorMemberIndexTest {
     @Test
     void memberWithoutDomainIsSkipped() {
         Model model = ontologyWithClasses();
-        member(model, ONTOLOGY_IRI + "/pojem/bez-oboru", VLASTNOST, "bez oboru");
+        member(model, ONTOLOGY_IRI + "/pojem/bez-oboru", OWL.DatatypeProperty, "bez oboru");
 
         OntologyDetailModel.ConceptDetailModel klass = classDetail(model);
 
@@ -164,16 +161,6 @@ class OntologyDetailExtractorMemberIndexTest {
                 .orElseThrow(() -> new AssertionError("concept not in detail: " + iri));
     }
 
-    /** The OWL kind that goes with an ISMD role marker; a stored concept always carries both. */
-    private static Resource owlKind(String ofnType) {
-        return switch (ofnType) {
-            case TRIDA -> OWL.Class;
-            case VLASTNOST -> OWL.DatatypeProperty;
-            case VZTAH -> OWL.ObjectProperty;
-            default -> throw new IllegalArgumentException(ofnType);
-        };
-    }
-
     private static Model ontologyWithClasses() {
         Model model = ModelFactory.createDefaultModel();
         Resource ontology = model.createResource(ONTOLOGY_IRI);
@@ -181,16 +168,16 @@ class OntologyDetailExtractorMemberIndexTest {
 
         for (String iri : new String[]{CLASS_IRI, OTHER_CLASS_IRI}) {
             Resource klass = model.createResource(iri);
-            klass.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + TRIDA)).addProperty(RDF.type, OWL.Class);
+            klass.addProperty(RDF.type, OWL.Class);
             klass.addProperty(SKOS.prefLabel, iri.substring(iri.lastIndexOf('/') + 1), "cs");
             klass.addProperty(SKOS.inScheme, ontology);
         }
         return model;
     }
 
-    private static Resource member(Model model, String iri, String ofnType, String label) {
+    private static Resource member(Model model, String iri, Resource owlKind, String label) {
         Resource r = model.createResource(iri);
-        r.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + ofnType)).addProperty(RDF.type, owlKind(ofnType));
+        r.addProperty(RDF.type, owlKind);
         r.addProperty(SKOS.prefLabel, label, "cs");
         r.addProperty(SKOS.inScheme, model.createResource(ONTOLOGY_IRI));
         return r;

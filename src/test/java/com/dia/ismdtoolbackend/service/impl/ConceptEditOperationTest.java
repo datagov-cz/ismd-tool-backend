@@ -443,7 +443,7 @@ class ConceptEditOperationTest {
                         .addProperty(RDF.type, SKOS.Concept)
                         .addProperty(RDF.type, graph.createResource(OfnIris.POJEM))
                         .addProperty(RDF.type, OWL2.Class)
-                        .addProperty(RDF.type, graph.createResource(OfnIris.MARKER_TRIDA))
+                        .addProperty(RDF.type, OWL2.Class)
                         .addProperty(SKOS.inScheme, graph.createResource(OWNED_GRAPH))
                         .addProperty(SKOS.prefLabel, "Osoba", "cs");
                 when(conceptMetadataRepository.findWithLockById(CONCEPT_ID)).thenReturn(Optional.of(concept));

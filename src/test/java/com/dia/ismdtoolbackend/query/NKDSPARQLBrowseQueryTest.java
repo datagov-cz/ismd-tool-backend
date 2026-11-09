@@ -1,6 +1,5 @@
 package com.dia.ismdtoolbackend.query;
 
-import com.dia.ismdtoolbackend.ofn.OfnIris;
 import org.apache.jena.query.QueryExecution;
 import org.apache.jena.query.QueryExecutionFactory;
 import org.apache.jena.rdf.model.Model;
@@ -41,7 +40,7 @@ class NKDSPARQLBrowseQueryTest {
         Resource scheme = data.createResource(ONTOLOGY);
         Map<String, Resource> types = Map.of(
                 "class", OWL2.Class, "datatype", OWL2.DatatypeProperty, "object", OWL2.ObjectProperty,
-                "markerOnly", data.createResource(OfnIris.MARKER_TRIDA));
+                "conceptOnly", SKOS.Concept);
         types.forEach((name, type) -> data.createResource("https://example.org/pojem/" + name)
                 .addProperty(SKOS.inScheme, scheme).addProperty(RDF.type, type));
 
@@ -57,7 +56,7 @@ class NKDSPARQLBrowseQueryTest {
                 entry("class", List.of("roleTrida")),
                 entry("datatype", List.of("roleVlastnost")),
                 entry("object", List.of("roleVztah")),
-                entry("markerOnly", List.of()));
+                entry("conceptOnly", List.of()));
     }
 
     @Test

@@ -56,11 +56,11 @@ class OntologyDetailExtractorBatchTest {
                 @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
                 @prefix ofn:  <%s> .
                 <%s> a <http://www.w3.org/2002/07/owl#Ontology> ; skos:prefLabel "Slovník"@cs .
-                <%s> a ofn:třída, owl:Class ; skos:inScheme <%s> ; skos:prefLabel "Osoba"@cs .
-                <%s> a ofn:třída, owl:Class ; skos:inScheme <%s> ; skos:prefLabel "Adresa"@cs .
-                <%s> a ofn:vlastnost, owl:DatatypeProperty ; skos:inScheme <%s> ; skos:prefLabel "věk"@cs ;
+                <%s> a owl:Class ; skos:inScheme <%s> ; skos:prefLabel "Osoba"@cs .
+                <%s> a owl:Class ; skos:inScheme <%s> ; skos:prefLabel "Adresa"@cs .
+                <%s> a owl:DatatypeProperty ; skos:inScheme <%s> ; skos:prefLabel "věk"@cs ;
                     rdfs:domain <%s> ; rdfs:range xsd:integer .
-                <%s> a ofn:vztah, owl:ObjectProperty ; skos:inScheme <%s> ; skos:prefLabel "bydlí na"@cs ;
+                <%s> a owl:ObjectProperty ; skos:inScheme <%s> ; skos:prefLabel "bydlí na"@cs ;
                     rdfs:domain <%s> ; rdfs:range <%s> .
                 """.formatted(OFN_NAMESPACE, ONTOLOGY, PERSON, ONTOLOGY, ADDRESS, ONTOLOGY, AGE, ONTOLOGY, PERSON,
                 LIVES_AT, ONTOLOGY, PERSON, ADDRESS), Lang.TURTLE).parse(model);

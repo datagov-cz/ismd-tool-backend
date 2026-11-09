@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.service;
 
 import com.dia.ismdtoolbackend.controller.dto.RejectedConceptDto;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.params.ParameterizedTest;
 import com.dia.ismdtoolbackend.exception.EmptyFileException;
@@ -537,7 +538,7 @@ class OntologyUploadServiceImplTest {
     // row (which downstream consumers read as "absent" — a VZTAH imported that way once
     // vanished from the diagram projector).
 
-    /** A concept carrying only the ISMD role marker, no OWL kind: the marker never decides the role (D4). */
+    /** A concept carrying an ISMD role marker instead of its OWL kind. */
     private byte[] ofnRoleTaggedTtl(String roleTag) {
         return String.format(
                 "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
@@ -557,7 +558,7 @@ class OntologyUploadServiceImplTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"vztah", "vlastnost", "třída"})
-    void testUploadFromFile_roleMarkerWithoutOwlKind_isRejected(String marker) throws Exception {
+    void testUploadFromFile_roleMarkerInsteadOfOwlKind_isRejected(String marker) throws Exception {
         String userId = "user123";
         when(multipartFile.getBytes()).thenReturn(
                 ofnRoleTaggedTtl("https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/" + marker));
@@ -569,9 +570,37 @@ class OntologyUploadServiceImplTest {
                 ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
 
         assertThat(result.rejectedConcepts())
-                .as("A marker without its OWL kind declares no role: the OWL kind decides (D4)")
+                .as("A role marker is no OWL kind and no OFN type")
                 .extracting(RejectedConceptDto::iri)
                 .containsExactly(DECISION_C1);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"třída, owl:Class", "vlastnost, owl:DatatypeProperty", "vztah, owl:ObjectProperty"})
+    void testUploadFromFile_roleMarkerNextToItsOwlKind_isRejectedAsNonOfn(String marker, String owlKind)
+            throws Exception {
+        String userId = "user123";
+        when(multipartFile.getBytes()).thenReturn(String.format(
+                "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
+                        + " @prefix skos: <http://www.w3.org/2004/02/skos/core#> ."
+                        + " <%1$s> a owl:Ontology, skos:ConceptScheme, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> ."
+                        + " <%2$s> a <%3$s>, skos:Concept, %4$s, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/%5$s> ;"
+                        + " skos:prefLabel \"C1\"@cs ; skos:inScheme <%1$s> .",
+                DECISION_ONTOLOGY, DECISION_C1, DECISION_POJEM, owlKind, marker).getBytes());
+        when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
+        when(multipartFile.isEmpty()).thenReturn(false);
+        stubPersistenceForDecisionFlow(userId, false);
+
+        OntologyUploadResultDto result =
+                ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
+
+        assertThat(result.rejectedConcepts())
+                .as("ISMD role markers are not OFN types")
+                .singleElement()
+                .satisfies(rejected -> {
+                    assertThat(rejected.iri()).isEqualTo(DECISION_C1);
+                    assertThat(rejected.reason()).contains("není definován v kontextu OFN");
+                });
     }
 
     @Test
@@ -620,49 +649,6 @@ class OntologyUploadServiceImplTest {
         assertThat(OntologyUploadServiceFixture.roleRejectionReason(both))
                 .as("A contradiction must name both roles it declared, so the file's author can fix it")
                 .isEqualTo("conflicting types: VLASTNOST + VZTAH");
-    }
-
-    /**
-     * The contradiction must be caught in the OFN role-tag form too, not just the OWL one —
-     * otherwise the guard is sidestepped by whichever vocabulary the file happens to use.
-     */
-    @Test
-    void resolveConceptType_bothOfnRoleTags_isRejected() {
-        OntModel model = org.apache.jena.rdf.model.ModelFactory.createOntologyModel();
-        org.apache.jena.rdf.model.Resource both = model.createResource(DECISION_C1);
-        both.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(DECISION_POJEM));
-        both.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(
-                "https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/vlastnost"));
-        both.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(
-                "https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/vztah"));
-
-        ConceptType resolved = OntologyUploadServiceFixture.resolveConceptType(both);
-
-        assertThat(resolved)
-                .as("A concept carrying both the vlastnost and vztah OFN role tags "
-                + "declares two roles and must be dropped")
-                .isNull();
-    }
-
-    /**
-     * The OFN role tag and its OWL equivalent describe the SAME role — that is agreement,
-     * not a contradiction, and must not trip the multi-role guard.
-     */
-    @Test
-    void resolveConceptType_ofnTagAndMatchingOwlType_isNotAContradiction() {
-        OntModel model = org.apache.jena.rdf.model.ModelFactory.createOntologyModel();
-        org.apache.jena.rdf.model.Resource rel = model.createResource(DECISION_C1);
-        rel.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(DECISION_POJEM));
-        rel.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(
-                "https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/vztah"));
-        rel.addProperty(org.apache.jena.vocabulary.RDF.type, org.apache.jena.vocabulary.OWL2.ObjectProperty);
-
-        ConceptType resolved = OntologyUploadServiceFixture.resolveConceptType(rel);
-
-        assertThat(resolved)
-                .as("slovníky:vztah + owl:ObjectProperty is one role stated twice — the normal shape "
-                        + "once the marker is derived from the OWL kind, and it must resolve normally")
-                .isEqualTo(ConceptType.VZTAH);
     }
 
     @Test

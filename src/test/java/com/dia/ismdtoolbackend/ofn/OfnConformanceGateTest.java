@@ -106,19 +106,7 @@ class OfnConformanceGateTest {
     }
 
     @Test
-    void toleratedMarkerType_isKept_withoutIssue() {
-        OfnConformanceGate markerGate = new OfnConformanceGate(OfnSpecification.bundled(), OfnIris.MARKERS);
-        ObjectNode a = třída("a");
-        ((ArrayNode) a.get("typ")).add("slovníky:třída");
-
-        GateResult result = markerGate.apply(vocabulary(a));
-
-        assertThat(types(concept(result, "a"))).contains("slovníky:třída");
-        assertThat(result.issues()).isEmpty();
-    }
-
-    @Test
-    void markerType_isDropped_whenNotTolerated() {
+    void roleMarkerType_isDropped() {
         ObjectNode a = třída("a");
         ((ArrayNode) a.get("typ")).add("slovníky:třída");
 

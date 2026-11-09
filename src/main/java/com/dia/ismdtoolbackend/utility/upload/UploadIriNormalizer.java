@@ -38,7 +38,7 @@ public final class UploadIriNormalizer {
             OWL2.Class, OWL2.DatatypeProperty, OWL2.ObjectProperty);
 
     private static final Set<String> RENAMED_OFN_TYPES = Set.of(
-            OFN_NAMESPACE + POJEM, OFN_NAMESPACE + TRIDA, OFN_NAMESPACE + VZTAH, OFN_NAMESPACE + VLASTNOST);
+            OFN_NAMESPACE + POJEM);
 
     private static final Set<String> REFERENCE_PREDICATES = Set.of(
             SKOS.exactMatch.getURI(), RDFS.subClassOf.getURI(), RDFS.subPropertyOf.getURI(),

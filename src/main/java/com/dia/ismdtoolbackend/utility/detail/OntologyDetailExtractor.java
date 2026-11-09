@@ -86,7 +86,7 @@ public class OntologyDetailExtractor {
         workingModel.setNsPrefixes(rawModel.getNsPrefixMap());
         workingModel.add(rawModel);
 
-        // Outside data may lack skos:Concept and the role markers; TurtleFilterUtil would strip such
+        // Outside data may lack skos:Concept and slovníky:pojem; TurtleFilterUtil would strip such
         // concepts as vocabulary noise, so they are inferred before filtering.
         int normalized = switch (source) {
             case STORED -> 0;

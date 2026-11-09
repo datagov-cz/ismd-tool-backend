@@ -38,15 +38,12 @@ public final class OfnRdfReader {
     private final OfnTermIndex terms;
     private final String idKey;
     private final String typeKey;
-    private final Set<String> toleratedTypeIris;
 
-    /** @param toleratedTypeIris type IRIs written to {@code typ} as compact IRIs although the context lacks them */
-    public OfnRdfReader(OfnSpecification specification, Set<String> toleratedTypeIris) {
+    public OfnRdfReader(OfnSpecification specification) {
         this.specification = specification;
         this.terms = new OfnTermIndex(specification);
         this.idKey = specification.contextIndex().idAlias();
         this.typeKey = specification.contextIndex().typeAlias();
-        this.toleratedTypeIris = Set.copyOf(toleratedTypeIris);
     }
 
     /**
@@ -171,30 +168,24 @@ public final class OfnRdfReader {
                                          String conceptIri, Level level) {
             Deque<Scope> lookup = new ArrayDeque<>(scopes);
             List<Term> known = new ArrayList<>();
-            List<String> tolerated = new ArrayList<>();
             for (Statement statement : subject.listProperties(RDF.type).toList()) {
                 RDFNode type = statement.getObject();
                 Optional<Term> term = type.isURIResource() ? terms.typeTerm(lookup, type.asResource().getURI()) : Optional.empty();
                 if (term.isPresent()) {
                     known.add(term.get());
-                } else if (type.isURIResource() && toleratedTypeIris.contains(type.asResource().getURI())) {
-                    tolerated.add(terms.compactIri(type.asResource().getURI()));
                 } else {
                     issue(conceptIri, path(location, typeKey), "typ " + label(type) + " není definován v kontextu OFN", type);
                 }
             }
             known.sort(Comparator.comparingInt((Term term) -> terms.order(term.name())));
-            Collections.sort(tolerated);
             known.stream().map(Term::nested).filter(Objects::nonNull).forEach(scopes::push);
 
-            List<String> names = new ArrayList<>(known.stream().map(Term::name).toList());
-            List<String> all = new ArrayList<>(names);
-            all.addAll(tolerated);
-            if (level == Level.NESTED && all.size() == 1) {
-                out.put(typeKey, all.get(0));
-            } else if (!all.isEmpty()) {
+            List<String> names = known.stream().map(Term::name).toList();
+            if (level == Level.NESTED && names.size() == 1) {
+                out.put(typeKey, names.get(0));
+            } else if (!names.isEmpty()) {
                 ArrayNode array = out.putArray(typeKey);
-                all.forEach(array::add);
+                names.forEach(array::add);
             }
             return names;
         }

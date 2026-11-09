@@ -26,8 +26,8 @@ class OfnRdfReaderTest {
     private static final String NS = V + "/pojem/";
 
     private final OfnSpecification specification = OfnSpecification.bundled();
-    private final OfnRdfReader reader = new OfnRdfReader(specification, OfnIris.MARKERS);
-    private final OfnConformanceGate gate = new OfnConformanceGate(specification, OfnIris.MARKERS);
+    private final OfnRdfReader reader = new OfnRdfReader(specification);
+    private final OfnConformanceGate gate = new OfnConformanceGate(specification);
     private final OfnRdf rdf = new OfnRdf(specification);
 
     // ------------------------------------------------------------ golden round trip
@@ -53,17 +53,28 @@ class OfnRdfReaderTest {
     // ------------------------------------------------------------ shapes
 
     @Test
-    void conformantClass_hasNoIssues_andKeepsItsMarker() {
+    void conformantClass_hasNoIssues() {
         Model model = vocabularyModel();
-        Resource a = třída(model, "a");
-        a.addProperty(RDF.type, model.createResource(OfnIris.MARKER_TRIDA));
+        třída(model, "a");
 
         OfnRdfReader.Result result = reader.readVocabulary(model, V);
 
         assertThat(result.issues()).isEmpty();
-        assertThat(texts(concept(result, "a").get("typ")))
-                .containsExactly("Koncept", "Pojem", "Třída", "slovníky:třída");
+        assertThat(texts(concept(result, "a").get("typ"))).containsExactly("Koncept", "Pojem", "Třída");
         assertThat(rdf.toModel(result.document()).isIsomorphicWith(model)).isTrue();
+    }
+
+    @Test
+    void roleMarker_isReported_asATypeOutsideTheContext() {
+        Model model = vocabularyModel();
+        Resource a = třída(model, "a");
+        a.addProperty(RDF.type, model.createResource(OfnIris.SLOVNIKY + "třída"));
+
+        OfnRdfReader.Result result = reader.readVocabulary(model, V);
+
+        assertThat(result.issues()).singleElement()
+                .satisfies(issue -> assertThat(issue.message()).contains("není definován v kontextu OFN"));
+        assertThat(texts(concept(result, "a").get("typ"))).containsExactly("Koncept", "Pojem", "Třída");
     }
 
     @Test

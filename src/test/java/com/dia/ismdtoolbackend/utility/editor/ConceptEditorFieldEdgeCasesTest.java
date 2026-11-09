@@ -17,6 +17,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import org.apache.jena.vocabulary.OWL2;
 
 import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -63,14 +64,14 @@ class ConceptEditorFieldEdgeCasesTest {
     private Resource seedClass(String iri) {
         Resource r = model.createResource(iri);
         r.addProperty(SKOS.prefLabel, model.createLiteral("Třída", "cs"));
-        r.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
+        r.addProperty(RDF.type, OWL2.Class);
         return r;
     }
 
     private Resource seedProperty(String iri) {
         Resource r = model.createResource(iri);
         r.addProperty(SKOS.prefLabel, model.createLiteral("Vlastnost", "cs"));
-        r.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + VLASTNOST));
+        r.addProperty(RDF.type, OWL2.DatatypeProperty);
         return r;
     }
 
@@ -462,7 +463,7 @@ class ConceptEditorFieldEdgeCasesTest {
         String iri = DEFAULT_NS + "super-clear";
         Resource r = model.createResource(iri);
         r.addProperty(SKOS.prefLabel, model.createLiteral("Vztah", "cs"));
-        r.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + VZTAH));
+        r.addProperty(RDF.type, OWL2.ObjectProperty);
         r.addProperty(RDFS.subPropertyOf, model.createResource(DEFAULT_NS + "super"));
         RelationshipConceptEditModel m = relationshipModel();
         m.setSuperRelation(List.of());

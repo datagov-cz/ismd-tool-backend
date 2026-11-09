@@ -21,9 +21,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OFN_NAMESPACE;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VLASTNOST;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VZTAH;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -73,7 +70,7 @@ class IsmdFusekiSearchTest {
         @DisplayName("concept rows carry their graph and role; ontology rows carry neither")
         void classifiesRows() {
             when(repository.searchByText("osoba", List.of(GRAPH), 10, null)).thenReturn(List.of(
-                    row(OSOBA, SKOS_CONCEPT + "|" + OFN_NAMESPACE + VLASTNOST + "|" + "http://www.w3.org/2002/07/owl#DatatypeProperty"),
+                    row(OSOBA, SKOS_CONCEPT + "|" + "http://www.w3.org/2002/07/owl#DatatypeProperty"),
                     row(GRAPH, "http://www.w3.org/2004/02/skos/core#ConceptScheme|" + OWL_ONTOLOGY),
                     row(ADRESA, null)));
 
@@ -95,7 +92,7 @@ class IsmdFusekiSearchTest {
         @DisplayName("a dual-typed concept fails the search and names the concept")
         void dualTypedRowThrowsNamingTheConcept() {
             when(repository.searchByText("osoba", List.of(GRAPH), 10, null)).thenReturn(List.of(
-                    row(ADRESA, OFN_NAMESPACE + VZTAH + "|" + OWL_OBJECT_PROPERTY),
+                    row(ADRESA, OWL_OBJECT_PROPERTY),
                     row(OSOBA, "http://www.w3.org/2002/07/owl#DatatypeProperty" + "|" + OWL_OBJECT_PROPERTY)));
 
             assertThatThrownBy(() -> search.searchFuseki("osoba", List.of(GRAPH), 10, null))
@@ -139,14 +136,6 @@ class IsmdFusekiSearchTest {
             assertThatThrownBy(() -> IsmdFusekiSearch.conceptTypeByRdfTypes(
                     "http://www.w3.org/2002/07/owl#DatatypeProperty" + "|" + OWL_OBJECT_PROPERTY))
                     .isInstanceOf(ConflictingConceptTypeException.class);
-        }
-
-        @Test
-        @DisplayName("role markers alone name no role; the OWL kind does")
-        void markersAreNotRead() {
-            assertThat(IsmdFusekiSearch.conceptTypeByRdfTypes(SKOS_CONCEPT + "|" + OFN_NAMESPACE + VZTAH)).isNull();
-            assertThat(IsmdFusekiSearch.conceptTypeByRdfTypes(
-                    OFN_NAMESPACE + VLASTNOST + "|" + OFN_NAMESPACE + VZTAH)).isNull();
         }
     }
 

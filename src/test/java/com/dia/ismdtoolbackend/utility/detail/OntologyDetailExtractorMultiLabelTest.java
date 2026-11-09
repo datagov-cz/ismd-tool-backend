@@ -7,6 +7,7 @@ import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.vocabulary.OWL2;
 import org.apache.jena.vocabulary.OWL;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.SKOS;
@@ -17,7 +18,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OFN_NAMESPACE;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TRIDA;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
@@ -79,7 +79,7 @@ class OntologyDetailExtractorMultiLabelTest {
         Model model = ModelFactory.createDefaultModel();
 
         Resource owlOntology = model.createResource("http://www.w3.org/2002/07/owl#Ontology");
-        Resource tridaType = model.createResource(OFN_NAMESPACE + TRIDA);
+        Resource tridaType = OWL2.Class;
         Property inScheme = model.createProperty("http://www.w3.org/2004/02/skos/core#inScheme");
 
         Resource ontology = model.createResource(ONTOLOGY_IRI);

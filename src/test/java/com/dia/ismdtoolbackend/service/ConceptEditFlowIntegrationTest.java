@@ -75,7 +75,7 @@ class ConceptEditFlowIntegrationTest {
         concept.addProperty(RDF.type, SKOS.Concept);
         concept.addProperty(RDF.type, model.createResource(OfnIris.POJEM));
         concept.addProperty(RDF.type, OWL2.Class);
-        concept.addProperty(RDF.type, model.createResource(OfnIris.MARKER_TRIDA));
+        concept.addProperty(RDF.type, OWL2.Class);
 
         ConceptMetadataEntity entity = new ConceptMetadataEntity();
         entity.setId(CONCEPT_ID);
