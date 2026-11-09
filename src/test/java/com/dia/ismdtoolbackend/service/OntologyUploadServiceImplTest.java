@@ -833,8 +833,8 @@ class OntologyUploadServiceImplTest {
                 @prefix owl: <http://www.w3.org/2002/07/owl#> .
                 @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
                 @prefix ofn: <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/> .
-                <%1$s> a owl:Ontology, skos:ConceptScheme .
-                <%1$s/pojem/a> a ofn:pojem, owl:Class ; skos:inScheme <%1$s> .
+                <%1$s> a owl:Ontology, skos:ConceptScheme, ofn:slovník .
+                <%1$s/pojem/a> a ofn:pojem, skos:Concept, owl:Class ; skos:prefLabel "A"@cs ; skos:inScheme <%1$s> .
                 """.formatted(graphName)).getBytes());
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(publishedResourceUtil.checkPublishedResourcesInNKD(any(), any())).thenReturn(List.of(graphName));
