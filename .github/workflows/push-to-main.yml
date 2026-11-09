@@ -39,36 +39,57 @@ jobs:
       
       - name: Determine version and create tag
         id: determine-version
+        env:
+          # Through env, never ${{ }} inside the script: the message is free text
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          IMAGE_REPO: ${{ github.repository_owner }}/ismd-tool-backend
         run: |
-          # Check if this is a release PR merge by looking at the PR title
-          PR_TITLE="${{ github.event.head_commit.message }}"
-          
-          if [[ "$PR_TITLE" =~ Release\ v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
-            VERSION="${BASH_REMATCH[1]}"
-            echo "Detected release version: $VERSION"
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
-            echo "should_build=true" >> $GITHUB_OUTPUT
-            
-            # Create and push the tag (idempotent)
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            
-            TAG_NAME="v$VERSION"
-            if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
-              echo "Tag $TAG_NAME already exists locally, skipping creation"
-            elif git ls-remote --tags origin | grep -q "refs/tags/$TAG_NAME"; then
-              echo "Tag $TAG_NAME already exists remotely, fetching it"
-              git fetch origin "refs/tags/$TAG_NAME:refs/tags/$TAG_NAME"
-            else
-              echo "Creating new tag $TAG_NAME"
-              git tag "$TAG_NAME"
-              git push origin "$TAG_NAME"
-              echo "Created and pushed tag $TAG_NAME"
-            fi
-          else
-            echo "Not a release PR, skipping tag creation"
-            echo "should_build=false" >> $GITHUB_OUTPUT
+          # A release is a commit with a line that STARTS with "Release vX.Y.Z": the squash
+          # subject, or a line of a merge commit's body. 'Revert "Release v1.2.3"' does not match.
+          RELEASE_LINE=$(printf '%s\n' "$COMMIT_MESSAGE" | grep -m1 -oE '^Release v[0-9]+\.[0-9]+\.[0-9]+' || true)
+
+          if [ -z "$RELEASE_LINE" ]; then
+            echo "Not a release commit, skipping tag creation"
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+
+          VERSION="${RELEASE_LINE#Release v}"
+          TAG_NAME="v$VERSION"
+          echo "Detected release version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git fetch --no-tags origin "refs/tags/$TAG_NAME:refs/tags/$TAG_NAME" 2>/dev/null || true
+          if TAG_COMMIT=$(git rev-parse -q --verify "refs/tags/$TAG_NAME^{commit}"); then
+            if [ "$TAG_COMMIT" != "$GITHUB_SHA" ]; then
+              echo "::error::Tag $TAG_NAME already exists on $TAG_COMMIT, not on this commit ($GITHUB_SHA). Bump the version; a released version is never rebuilt from different code."
+              exit 1
+            fi
+
+            # Same commit (a re-run): rebuild only if the image never made it to the registry
+            OWNER_REPO=$(echo "$IMAGE_REPO" | tr '[:upper:]' '[:lower:]')
+            TOKEN=$(curl -fsS "https://ghcr.io/token?scope=repository:${OWNER_REPO}:pull" | jq -r .token)
+            STATUS=$(curl -s -o /dev/null -w '%{http_code}' -I \
+              -H "Authorization: Bearer $TOKEN" \
+              -H "Accept: application/vnd.oci.image.index.v1+json,application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.docker.distribution.manifest.v2+json" \
+              "https://ghcr.io/v2/${OWNER_REPO}/manifests/${VERSION}")
+            if [ "$STATUS" = "200" ]; then
+              echo "::notice::Tag $TAG_NAME and image ${OWNER_REPO}:${VERSION} already exist for this commit; skipping the build"
+              echo "should_build=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "Tag $TAG_NAME exists on this commit but the image is missing (HTTP $STATUS); building it"
+          else
+            echo "Creating new tag $TAG_NAME"
+            git tag "$TAG_NAME"
+            git push origin "$TAG_NAME"
+            echo "Created and pushed tag $TAG_NAME"
+          fi
+
+          echo "should_build=true" >> "$GITHUB_OUTPUT"
   
   # Build Docker image for main branch
   build-docker:

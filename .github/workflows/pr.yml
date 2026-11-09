@@ -1,24 +1,53 @@
 name: PR Workflow
 
 on:
+  # No workflow-level path filter: a filtered-out PR never reports "PR gate", and a required check
+  # that never reports blocks the merge. PRs that only touch the side images (Fuseki, Keycloak) or
+  # change no files (sync PRs) skip the backend jobs through the `changes` job instead.
   pull_request:
-    # Side images (Fuseki, Keycloak) have their own build/deploy workflows; a PR that
-    # only touches them does not need the backend test suite.
-    paths-ignore:
-      - 'docker/fuseki/**'
-      - 'docker/keycloak/**'
     types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
   pull-requests: write
-  packages: write
+  packages: read
 
 jobs:
+  changes:
+    name: Detect backend changes
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.diff.outputs.backend }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Diff against the base branch
+        id: diff
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags origin "$BASE_REF"
+          CHANGED=$(git diff --name-only "origin/${BASE_REF}...HEAD")
+          echo "Changed files:"
+          printf '%s\n' "${CHANGED:-<none>}"
+
+          # Side images have their own build/deploy workflows
+          if printf '%s\n' "$CHANGED" | grep -v -E '^docker/(fuseki|keycloak)/' | grep -q .; then
+            echo "backend=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No backend changes; backend jobs will be skipped"
+            echo "backend=false" >> "$GITHUB_OUTPUT"
+          fi
+
   # Fails a PR whose migrations the previous app version cannot tolerate, so rolling the container
   # image back to the prior tag never needs a database rollback. See docs/MIGRATION_ROLLBACK_AUDIT.md
   check-migration-compat:
     name: Migration Backward Compatibility
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -27,11 +56,15 @@ jobs:
           fetch-depth: 0
 
       - name: Check migrations are backward-compatible
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          git fetch origin "${{ github.base_ref }}" --depth=0 2>/dev/null || true
-          .github/scripts/check-migration-compat.sh "origin/${{ github.base_ref }}"
+          git fetch origin "$BASE_REF" --depth=0 2>/dev/null || true
+          .github/scripts/check-migration-compat.sh "origin/${BASE_REF}"
 
   run-tests:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
     # Coverage thresholds come from pom.xml. A JACOCO_*_MINIMUM repository variable overrides one
     # without a PR; an unset variable passes "" and keeps the pom value.
     uses: ./.github/workflows/reusable-test.yml
@@ -44,8 +77,35 @@ jobs:
     secrets: inherit
 
   validate-docker-build:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    # reusable-docker-build.yml declares packages: write (its push path needs it), and a called
+    # workflow may not request more than its caller grants. It runs here with push: false.
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/reusable-docker-build.yml
     with:
       branch: ${{ github.base_ref }}
       push: false
     secrets: inherit
+
+  # The single required status check. Job names above can change without editing the rulesets.
+  # Skipped jobs pass (side-image-only and empty sync PRs); failed or cancelled jobs fail the gate.
+  pr-gate:
+    name: PR gate
+    if: always()
+    needs: [changes, check-migration-compat, run-tests, validate-docker-build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check job results
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Job results: $RESULTS"
+          for r in $RESULTS; do
+            case "$r" in
+              success|skipped) ;;
+              *) echo "::error::A required job ended with '$r'"; exit 1 ;;
+            esac
+          done
