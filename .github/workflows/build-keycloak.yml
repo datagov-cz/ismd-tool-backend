@@ -37,6 +37,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
         with:
+          # On dispatch, build the selected branch's code, not whatever branch the run was started from
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.ref }}
           fetch-depth: 0
 
       - name: Login to GitHub Container Registry
@@ -52,11 +54,14 @@ jobs:
 
       - name: Determine branch
         id: branch
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_BRANCH: ${{ inputs.branch }}
         run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "branch=${{ inputs.branch }}" >> $GITHUB_OUTPUT
+          if [ "$EVENT_NAME" == "workflow_dispatch" ]; then
+            echo "branch=$INPUT_BRANCH" >> $GITHUB_OUTPUT
           else
-            echo "branch=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "branch=$GITHUB_REF_NAME" >> $GITHUB_OUTPUT
           fi
 
       - name: Get version info
@@ -94,7 +99,7 @@ jobs:
 
           docker build \
             -f docker/keycloak/Dockerfile \
-            --label "org.opencontainers.image.revision=${{ github.sha }}" \
+            --label "org.opencontainers.image.revision=$(git rev-parse HEAD)" \
             -t "${IMAGE_NAME}:${VERSION}" \
             -t "${IMAGE_NAME}:latest" \
             docker/keycloak
