@@ -90,11 +90,55 @@ jobs:
       push: false
     secrets: inherit
 
+  # Uploads the resolved Maven tree, transitive dependencies included, for the PR's base and
+  # head commits. Without it GitHub only parses pom.xml: direct dependencies, and none whose
+  # version comes from the Spring Boot BOM, so dependency review cannot see them.
+  dependency-submission:
+    name: Dependency submission
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # dependency snapshot API
+    steps:
+      - name: Checkout base
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+          persist-credentials: false
+
+      - name: Checkout head
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: head
+          persist-credentials: false
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Submit base snapshot
+        uses: advanced-security/maven-dependency-submission-action@v6
+        with:
+          directory: ${{ github.workspace }}/base
+          snapshot-sha: ${{ github.event.pull_request.base.sha }}
+          snapshot-ref: refs/heads/${{ github.base_ref }}
+
+      - name: Submit head snapshot
+        uses: advanced-security/maven-dependency-submission-action@v6
+        with:
+          directory: ${{ github.workspace }}/head
+          snapshot-sha: ${{ github.event.pull_request.head.sha }}
+          snapshot-ref: refs/heads/${{ github.head_ref }}
+
   # Fails a PR that adds, or upgrades to, a dependency with a known high or critical
-  # vulnerability. It compares the base and head manifests, so dependencies that are already
-  # vulnerable on the base branch don't block. Image-level CVEs stay with trivy.yml (report only).
+  # vulnerability. It compares the base and head dependency graphs, so dependencies that are
+  # already vulnerable on the base branch don't block. Image-level CVEs stay with trivy.yml.
   dependency-review:
     name: Dependency review
+    needs: dependency-submission
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -103,13 +147,14 @@ jobs:
         uses: actions/dependency-review-action@v5.0.0
         with:
           fail-on-severity: high
+          retry-on-snapshot-warnings: true
 
   # The single required status check. Job names above can change without editing the rulesets.
   # Skipped jobs pass (side-image-only and empty sync PRs); failed or cancelled jobs fail the gate.
   pr-gate:
     name: PR gate
     if: always()
-    needs: [changes, check-migration-compat, run-tests, validate-docker-build, dependency-review]
+    needs: [changes, check-migration-compat, run-tests, validate-docker-build, dependency-submission, dependency-review]
     runs-on: ubuntu-latest
     steps:
       - name: Check job results
