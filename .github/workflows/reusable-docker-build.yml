@@ -44,22 +44,38 @@ jobs:
 
       - name: Set up repository path
         id: repo-setup
+        # Inputs reach the script through env, never as ${{ }} inside run:.
+        env:
+          REPOSITORY: ${{ github.repository }}
+          INPUT_BRANCH: ${{ inputs.branch }}
         run: |
-          # Convert repository name to lowercase and set as base path
-          REPO_PATH=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          
-          # Append branch suffix for non-main branches
-          if [ "${{ inputs.branch }}" != "main" ]; then
-            REPO_PATH="${REPO_PATH}-${{ inputs.branch }}"
+          if ! [[ "$INPUT_BRANCH" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+            echo "::error::branch input has characters outside [A-Za-z0-9._/-]"
+            exit 1
           fi
-          
-          echo "REPO_PATH=${REPO_PATH}" >> $GITHUB_ENV
+
+          # Append branch suffix for non-main branches
+          REPO_PATH="$REPOSITORY"
+          if [ "$INPUT_BRANCH" != "main" ]; then
+            REPO_PATH="${REPO_PATH}-${INPUT_BRANCH}"
+          fi
+
+          # Image names must be lowercase
+          REPO_PATH=$(echo "$REPO_PATH" | tr '[:upper:]' '[:lower:]')
+          echo "REPO_PATH=${REPO_PATH}" >> "$GITHUB_ENV"
 
       - name: Get version info
         id: version
+        env:
+          INPUT_BRANCH: ${{ inputs.branch }}
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          if [ -n "${{ inputs.version }}" ]; then
-            VERSION="${{ inputs.version }}"
+          if [ -n "$INPUT_VERSION" ]; then
+            if ! [[ "$INPUT_VERSION" =~ ^[0-9A-Za-z._-]+$ ]]; then
+              echo "::error::version input has characters outside [0-9A-Za-z._-]"
+              exit 1
+            fi
+            VERSION="$INPUT_VERSION"
           else
             TAG=$(git describe --tags --abbrev=0 --match "v[0-9]*" 2>/dev/null || echo "")
             if [ -z "$TAG" ]; then
@@ -68,7 +84,7 @@ jobs:
               BASE_VERSION=$(echo "$TAG" | sed 's/^v//')
             fi
             
-            if [ "${{ inputs.branch }}" = "main" ]; then
+            if [ "$INPUT_BRANCH" = "main" ]; then
               VERSION="$BASE_VERSION"
             else
               VERSION="${BASE_VERSION}-$(git rev-parse --short HEAD)"
@@ -81,12 +97,15 @@ jobs:
           echo "git_sha=$GIT_SHA" >> $GITHUB_OUTPUT
 
       - name: Build and push Docker image
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          PUSH: ${{ inputs.push }}
         run: |
-          IMAGE_TAG="ghcr.io/${{ env.REPO_PATH }}:${{ steps.version.outputs.version }}"
-          LATEST_TAG="ghcr.io/${{ env.REPO_PATH }}:latest"
+          IMAGE_TAG="ghcr.io/${REPO_PATH}:${VERSION}"
+          LATEST_TAG="ghcr.io/${REPO_PATH}:latest"
 
           PUSH_FLAG=""
-          if [ "${{ inputs.push }}" = "true" ]; then
+          if [ "$PUSH" = "true" ]; then
             PUSH_FLAG="--push"
           fi
 
@@ -95,7 +114,7 @@ jobs:
           # Note: --platform with multiple arches requires --push (a local
           # --load can only hold a single platform), so build-only validation
           # runs amd64-only.
-          if [ "${{ inputs.push }}" = "true" ]; then
+          if [ "$PUSH" = "true" ]; then
             PLATFORM_FLAG="--platform linux/amd64,linux/arm64"
           else
             PLATFORM_FLAG="--platform linux/amd64"
