@@ -90,12 +90,26 @@ jobs:
       push: false
     secrets: inherit
 
+  # Fails a PR that adds, or upgrades to, a dependency with a known high or critical
+  # vulnerability. It compares the base and head manifests, so dependencies that are already
+  # vulnerable on the base branch don't block. Image-level CVEs stay with trivy.yml (report only).
+  dependency-review:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@v5.0.0
+        with:
+          fail-on-severity: high
+
   # The single required status check. Job names above can change without editing the rulesets.
   # Skipped jobs pass (side-image-only and empty sync PRs); failed or cancelled jobs fail the gate.
   pr-gate:
     name: PR gate
     if: always()
-    needs: [changes, check-migration-compat, run-tests, validate-docker-build]
+    needs: [changes, check-migration-compat, run-tests, validate-docker-build, dependency-review]
     runs-on: ubuntu-latest
     steps:
       - name: Check job results
