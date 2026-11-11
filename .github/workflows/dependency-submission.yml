@@ -1,11 +1,12 @@
 name: Maven Dependency Submission
 
-# Submits the resolved Maven dependency graph to GitHub so Dependabot
-# alerts and dependency review reflect the real transitive tree.
+# Submits the resolved Maven dependency graph, transitive dependencies included, so Dependabot
+# alerts and the PR workflow's dependency review see the real tree. Runs on every push to dev
+# and main, so the base commit of a PR always has a snapshot to compare against.
 
 on:
   push:
-    branches: [main]
+    branches: [dev, main]
   workflow_dispatch:
 
 permissions:
@@ -24,5 +25,8 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      # The correlator must match the PR workflow's, so dependency review pairs the snapshots.
       - name: Submit dependency snapshot
         uses: advanced-security/maven-dependency-submission-action@v6
+        with:
+          correlator: maven-dependencies
