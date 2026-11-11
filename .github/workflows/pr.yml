@@ -90,27 +90,20 @@ jobs:
       push: false
     secrets: inherit
 
-  # Uploads the resolved Maven tree, transitive dependencies included, for the PR's base and
-  # head commits. Without it GitHub only parses pom.xml: direct dependencies, and none whose
-  # version comes from the Spring Boot BOM, so dependency review cannot see them.
+  # Uploads the resolved Maven tree, transitive dependencies included, for the PR's head commit.
+  # Without it GitHub only parses pom.xml: direct dependencies, and none whose version comes
+  # from the Spring Boot BOM. The base commit's snapshot comes from dependency-submission.yml,
+  # which runs on every push to dev and main.
   dependency-submission:
     name: Dependency submission
     runs-on: ubuntu-latest
     permissions:
       contents: write # dependency snapshot API
     steps:
-      - name: Checkout base
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.pull_request.base.sha }}
-          path: base
-          persist-credentials: false
-
-      - name: Checkout head
+      - name: Checkout
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-          path: head
           persist-credentials: false
 
       - name: Set up JDK 17
@@ -119,19 +112,12 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Submit base snapshot
-        uses: advanced-security/maven-dependency-submission-action@v6
-        with:
-          directory: ${{ github.workspace }}/base
-          snapshot-sha: ${{ github.event.pull_request.base.sha }}
-          snapshot-ref: refs/heads/${{ github.base_ref }}
-
+      # On pull_request the action links the snapshot to the head SHA, whatever snapshot-sha says.
+      # The correlator must match dependency-submission.yml, so review pairs the snapshots.
       - name: Submit head snapshot
         uses: advanced-security/maven-dependency-submission-action@v6
         with:
-          directory: ${{ github.workspace }}/head
-          snapshot-sha: ${{ github.event.pull_request.head.sha }}
-          snapshot-ref: refs/heads/${{ github.head_ref }}
+          correlator: maven-dependencies
 
   # Fails a PR that adds, or upgrades to, a dependency with a known high or critical
   # vulnerability. It compares the base and head dependency graphs, so dependencies that are
