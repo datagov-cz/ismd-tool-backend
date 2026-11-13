@@ -206,8 +206,8 @@ class ConceptResolutionProjectionTest {
         @DisplayName("relationships get domain/range stubs; other concepts do not")
         void relationshipStubs() {
             Model m = Ttl.parse("""
-                    pojem:bydlí-v a slovníky:vztah ; rdfs:domain pojem:osoba ; rdfs:range pojem:adresa .
-                    pojem:osoba a slovníky:třída ; rdfs:domain pojem:adresa .
+                    pojem:bydlí-v a owl:ObjectProperty ; rdfs:domain pojem:osoba ; rdfs:range pojem:adresa .
+                    pojem:osoba a owl:Class ; rdfs:domain pojem:adresa .
                     """);
 
             Map<String, ResolvedConceptDto> out = ConceptResolutionProjection

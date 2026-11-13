@@ -19,7 +19,7 @@ class ConceptEditorErrorHandlingTest extends ConceptEditorTestBase {
     private static final String RENAMED_IRI = DEFAULT_NS + "pojem/id-1";
 
     private void seedOldClass() {
-        Ttl.add(model, "<" + OLD_IRI + "> a ofn:třída ; skos:prefLabel \"Old name\"@cs .");
+        Ttl.add(model, "<" + OLD_IRI + "> a owl:Class ; skos:prefLabel \"Old name\"@cs .");
         classConceptEditModel.setNameModel(Texts.name("cs", "New name"));
         classConceptEditModel.setIdentifier("ID-1");
     }
@@ -57,26 +57,26 @@ class ConceptEditorErrorHandlingTest extends ConceptEditorTestBase {
     }
 
     @Test
-    void validGraphNameIsTheNamespaceOfVocabularyPredicates() {
+    void validGraphNameIsTheNamespaceOfGeneratedConceptIris() {
         String conceptIri = DEFAULT_NS + "pojem/třída";
-        Ttl.add(model, "<" + conceptIri + "> a ofn:třída ; skos:prefLabel \"Třída\"@cs .");
-        classConceptEditModel.setInTezaurus(Boolean.TRUE);
+        Ttl.add(model, "<" + conceptIri + "> a owl:Class ; skos:prefLabel \"Třída\"@cs .");
+        classConceptEditModel.setBroaderConcept(java.util.List.of("Rodič"));
 
         conceptEditor.editConcept(conceptIri, classConceptEditModel, model, "https://custom.cz/vocab/");
 
-        assertThat(literals(model, conceptIri, Ttl.property("https://custom.cz/vocab/inTezaurus")))
-                .containsExactly("true");
-        assertThat(model.getResource(conceptIri).hasProperty(Ttl.property(DEFAULT_NS + "inTezaurus"))).isFalse();
+        assertThat(Ttl.iris(model, conceptIri, org.apache.jena.vocabulary.RDFS.subClassOf))
+                .containsExactly("https://custom.cz/vocab/pojem/rodič");
     }
 
     @Test
     void invalidGraphNameFallsBackToTheDefaultNamespace() {
         String conceptIri = DEFAULT_NS + "pojem/třída";
-        Ttl.add(model, "<" + conceptIri + "> a ofn:třída ; skos:prefLabel \"Třída\"@cs .");
-        classConceptEditModel.setInTezaurus(Boolean.FALSE);
+        Ttl.add(model, "<" + conceptIri + "> a owl:Class ; skos:prefLabel \"Třída\"@cs .");
+        classConceptEditModel.setBroaderConcept(java.util.List.of("Rodič"));
 
         conceptEditor.editConcept(conceptIri, classConceptEditModel, model, "not an iri");
 
-        assertThat(literals(model, conceptIri, Ttl.property(DEFAULT_NS + "inTezaurus"))).containsExactly("false");
+        assertThat(Ttl.iris(model, conceptIri, org.apache.jena.vocabulary.RDFS.subClassOf))
+                .containsExactly(DEFAULT_NS + "pojem/rodič");
     }
 }

@@ -30,10 +30,10 @@ class ConceptEditorGovernanceTest extends ConceptEditorTestBase {
     private static final Property SHARING = Ttl.property(OFN_NAMESPACE + ZPUSOB_SDILENI);
     private static final Property ACQUISITION = Ttl.property(OFN_NAMESPACE + ZPUSOB_ZISKANI);
     private static final Property CONTENT_TYPE = Ttl.property(OFN_NAMESPACE + TYP_OBSAHU);
-    private static final Property DEFINING_NON_LEGAL = Ttl.property(DEFAULT_NS + DEFINUJICI_NELEGISLATIVNI_ZDROJ);
+    private static final Property DEFINING_NON_LEGAL = Ttl.property(OFN_NAMESPACE + DEFINUJICI_NELEGISLATIVNI_ZDROJ);
 
     private void seedProperty(String extraPredicates) {
-        Ttl.add(model, "<" + CONCEPT + "> a ofn:vlastnost ; skos:prefLabel \"Vlastnost\"@cs "
+        Ttl.add(model, "<" + CONCEPT + "> a owl:DatatypeProperty ; skos:prefLabel \"Vlastnost\"@cs "
                 + extraPredicates + " .");
     }
 
@@ -102,10 +102,23 @@ class ConceptEditorGovernanceTest extends ConceptEditorTestBase {
 
         @Test
         void unchangedPpdfFlagStagesNothing() {
-            seedProperty("; a104:%s \"true\"".formatted(JE_PPDF_LONG));
+            seedProperty("; a104:%s true".formatted(JE_PPDF_LONG));
             propertyConceptEditModel.setIsInPPDF(Boolean.TRUE);
 
             assertThat(edit().changesCount).isZero();
+        }
+
+        @Test
+        void ppdfFlagStoredAsAStringIsRewrittenAsABoolean() {
+            seedProperty("; a104:%s \"true\"".formatted(JE_PPDF_LONG));
+            propertyConceptEditModel.setIsInPPDF(Boolean.TRUE);
+
+            edit();
+
+            assertThat(model.getResource(CONCEPT).listProperties(PPDF).toList())
+                    .singleElement()
+                    .satisfies(statement -> assertThat(statement.getLiteral().getDatatypeURI())
+                            .isEqualTo("http://www.w3.org/2001/XMLSchema#boolean"));
         }
 
         @Test
@@ -154,7 +167,7 @@ class ConceptEditorGovernanceTest extends ConceptEditorTestBase {
 
         @Test
         void emptyListRemovesTheSourceLinks() {
-            seedProperty("; sl:%s [ a <%s> ; <%s> <https://example.com/doc> ]"
+            seedProperty("; slovníky:%s [ a <%s> ; <%s> \"https://example.com/doc\"^^xsd:anyURI ]"
                     .formatted(DEFINUJICI_NELEGISLATIVNI_ZDROJ, DIGITALNI_OBJEKT, SCHEMA_URL));
             propertyConceptEditModel.setDefiningNonLegalSource(List.of());
 
@@ -165,7 +178,7 @@ class ConceptEditorGovernanceTest extends ConceptEditorTestBase {
 
         @Test
         void emptyListRemovesTheSourceLinksAlsoWhenTheEditRenames() {
-            seedProperty("; sl:%s [ a <%s> ; <%s> <https://example.com/doc> ]"
+            seedProperty("; slovníky:%s [ a <%s> ; <%s> \"https://example.com/doc\"^^xsd:anyURI ]"
                     .formatted(DEFINUJICI_NELEGISLATIVNI_ZDROJ, DIGITALNI_OBJEKT, SCHEMA_URL));
             renameTo("Nová vlastnost");
             propertyConceptEditModel.setDefiningNonLegalSource(List.of());
@@ -184,9 +197,10 @@ class ConceptEditorGovernanceTest extends ConceptEditorTestBase {
             edit();
 
             assertThat(model.isIsomorphicWith(Ttl.parse("""
-                    <%s> a ofn:vlastnost ; skos:prefLabel "Vlastnost"@cs ;
-                        sl:%s [ a <%s> ; <%s> <https://example.com/doc> ] .
-                    """.formatted(CONCEPT, DEFINUJICI_NELEGISLATIVNI_ZDROJ, DIGITALNI_OBJEKT, SCHEMA_URL))))
+                    <%s> a owl:DatatypeProperty ; skos:prefLabel "Vlastnost"@cs ;
+                        slovníky:definující-nelegislativní-zdroj [ a do:digitální-objekt ;
+                                schema:url "https://example.com/doc"^^xsd:anyURI ] .
+                    """.formatted(CONCEPT))))
                     .isTrue();
         }
     }

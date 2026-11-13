@@ -1,4 +1,4 @@
-package com.dia.ismdtoolbackend.utility.validation;
+package com.dia.ismdtoolbackend.utility.upload;
 
 import com.dia.ismdtoolbackend.exception.OntologyUploadIriCollisionException;
 import com.dia.ismdtoolbackend.utility.UtilityMethods;
@@ -24,11 +24,11 @@ import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 /**
  * Strips trailing slashes from the IRIs of an uploaded vocabulary, in place, so an uploaded
  * vocabulary gets the same IRIs as one entered through create/edit
- * (see {@link ConceptIriNormalizer}).
+ * (see {@link com.dia.ismdtoolbackend.utility.validation.ConceptIriNormalizer}).
  *
  * <p>Renames the vocabulary and its concepts, which also rewrites every reference to them
  * inside the file, and strips the IRIs a concept references through the fields
- * {@link ConceptIriNormalizer} covers. Non-legal source URLs and code-list IRIs are left as
+ * {@link com.dia.ismdtoolbackend.utility.validation.ConceptIriNormalizer} covers. Non-legal source URLs and code-list IRIs are left as
  * supplied.
  */
 public final class UploadIriNormalizer {
@@ -38,7 +38,7 @@ public final class UploadIriNormalizer {
             OWL2.Class, OWL2.DatatypeProperty, OWL2.ObjectProperty);
 
     private static final Set<String> RENAMED_OFN_TYPES = Set.of(
-            OFN_NAMESPACE + POJEM, OFN_NAMESPACE + TRIDA, OFN_NAMESPACE + VZTAH, OFN_NAMESPACE + VLASTNOST);
+            OFN_NAMESPACE + POJEM);
 
     private static final Set<String> REFERENCE_PREDICATES = Set.of(
             SKOS.exactMatch.getURI(), RDFS.subClassOf.getURI(), RDFS.subPropertyOf.getURI(),

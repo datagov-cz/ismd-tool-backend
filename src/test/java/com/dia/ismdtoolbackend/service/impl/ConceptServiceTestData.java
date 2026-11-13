@@ -16,7 +16,7 @@ import org.apache.jena.vocabulary.RDFS;
 final class ConceptServiceTestData {
 
     static final Long CONCEPT_ID = 1L;
-    static final String CONCEPT_IRI = "http://example.org/pojem/test-concept";
+    static final String CONCEPT_IRI = "http://example.org/test-ontology/pojem/test-concept";
     static final String GRAPH_NAME = "http://example.org/test-ontology";
     static final String USER_ID = "user123";
     static final String CONCEPT_NAME = "Test Concept";

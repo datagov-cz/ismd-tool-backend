@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Pins that the OFN transforms leave the caller's model untouched.
  *
- * <p>{@code OFNTypeNormalizer} mutates the model it is handed, and callers pass models they do not
+ * <p>{@code OutsideDataNormalizer} mutates the model it is handed, and callers pass models they do not
  * own: {@code fetchPublishedOntology} passes the {@code @Cacheable} raw NKD model, and
  * {@code getConceptDetail} extracts from the same {@code rawModel} it hands to the {@code @Cacheable}
  * {@code canonicalLocalConcept}. Mutating either corrupts a cache entry or makes the response depend
@@ -57,14 +57,14 @@ class OntologyDetailExtractorInputImmutabilityTest {
     }
 
     @Test
-    void applyOFNTransformations_leavesTheCallersModelUnchanged() {
+    void applyOFNTransformationsForUpload_leavesTheCallersModelUnchanged() {
         Model rawModel = buildNonCanonicalModel();
         Model pristine = ModelFactory.createDefaultModel().add(rawModel);
 
-        extractor.applyOFNTransformations(rawModel);
+        extractor.applyOFNTransformationsForUpload(rawModel);
 
         assertThat(rawModel.isIsomorphicWith(pristine))
-                .as("applyOFNTransformations must not mutate the model it is given")
+                .as("applyOFNTransformationsForUpload must not mutate the model it is given")
                 .isTrue();
     }
 
@@ -84,11 +84,19 @@ class OntologyDetailExtractorInputImmutabilityTest {
      * The transform still has to do its job — a guard that only checked "input unchanged"
      * would pass if the transform became a no-op.
      */
+    /** Stored ISMD data is OFN-shaped by the write gate: its transform infers nothing. */
     @Test
-    void applyOFNTransformations_stillNormalizesIntoTheReturnedModel() {
+    void applyOFNTransformations_ofStoredDataInfersNothing() {
+        Model processed = extractor.applyOFNTransformations(buildNonCanonicalModel());
+
+        assertThat(processed.contains(processed.getResource(CONCEPT_IRI), SKOS.prefLabel)).isFalse();
+    }
+
+    @Test
+    void applyOFNTransformationsForUpload_stillNormalizesIntoTheReturnedModel() {
         Model rawModel = buildNonCanonicalModel();
 
-        Model processed = extractor.applyOFNTransformations(rawModel);
+        Model processed = extractor.applyOFNTransformationsForUpload(rawModel);
 
         assertThat(processed.contains(processed.getResource(CONCEPT_IRI), SKOS.prefLabel))
                 .as("the returned model carries the normalized skos:prefLabel")

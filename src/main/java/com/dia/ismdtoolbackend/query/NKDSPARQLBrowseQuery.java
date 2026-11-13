@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.query;
 
+import com.dia.ismdtoolbackend.ofn.OfnIris;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 
 import java.util.List;
@@ -10,9 +11,6 @@ import static com.dia.ismdtoolbackend.constants.VocabularyConstants.DATUM_A_CAS;
 import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OFN_NAMESPACE;
 import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OKAMZIK_POSLEDNI_ZMENY;
 import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OKAMZIK_VYTVORENI;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TRIDA;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VLASTNOST;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VZTAH;
 
 /**
  * SPARQL queries for browsing NKD ontologies (no text-search filter).
@@ -29,10 +27,10 @@ public class NKDSPARQLBrowseQuery {
             PREFIX dcterms: <http://purl.org/dc/terms/>
             """;
 
-    // NKD concepts carry either the OFN role tag or the plain OWL type, so role detection accepts both.
-    private static final String OWL_CLASS = "http://www.w3.org/2002/07/owl#Class";
-    private static final String OWL_OBJECT_PROPERTY = "http://www.w3.org/2002/07/owl#ObjectProperty";
-    private static final String OWL_DATATYPE_PROPERTY = "http://www.w3.org/2002/07/owl#DatatypeProperty";
+    // A concept's role is its OWL kind.
+    private static final String OWL_CLASS = OfnIris.OWL_CLASS;
+    private static final String OWL_OBJECT_PROPERTY = OfnIris.OWL_OBJECT_PROPERTY;
+    private static final String OWL_DATATYPE_PROPERTY = OfnIris.OWL_DATATYPE_PROPERTY;
 
     /**
      * Returns ontology IRIs alphabetically by {@code skos:prefLabel} in the given
@@ -168,7 +166,7 @@ public class NKDSPARQLBrowseQuery {
      *
      * <p>Label follows the same precedence as the rest of the browse queries: the {@code sortLang}
      * literal if present, else any-language. Role is projected as three independent OPTIONAL binds,
-     * each accepting the OFN role tag or the equivalent OWL type — the same shape
+     * one per OWL kind — the same shape
      * {@link NKDSPARQLSearchQuery} uses, kept deliberately free of type-narrowing joins that the
      * Virtuoso planner mishandles.
      */
@@ -187,15 +185,12 @@ public class NKDSPARQLBrowseQuery {
                   OPTIONAL { ?concept skos:prefLabel ?anyLabel }
                   BIND(COALESCE(?prefLabel, ?anyLabel) AS ?label)
 
-                  OPTIONAL { ?concept a ?roleTrida .     FILTER(?roleTrida IN (<%s>, <%s>)) }
-                  OPTIONAL { ?concept a ?roleVlastnost . FILTER(?roleVlastnost IN (<%s>, <%s>)) }
-                  OPTIONAL { ?concept a ?roleVztah .     FILTER(?roleVztah IN (<%s>, <%s>)) }
+                  OPTIONAL { ?concept a ?roleTrida .     FILTER(?roleTrida = <%s>) }
+                  OPTIONAL { ?concept a ?roleVlastnost . FILTER(?roleVlastnost = <%s>) }
+                  OPTIONAL { ?concept a ?roleVztah .     FILTER(?roleVztah = <%s>) }
                 }
                 ORDER BY ?label ?concept
-                """.formatted(ontologyIri, safeLang,
-                OFN_NAMESPACE + TRIDA, OWL_CLASS,
-                OFN_NAMESPACE + VLASTNOST, OWL_DATATYPE_PROPERTY,
-                OFN_NAMESPACE + VZTAH, OWL_OBJECT_PROPERTY);
+                """.formatted(ontologyIri, safeLang, OWL_CLASS, OWL_DATATYPE_PROPERTY, OWL_OBJECT_PROPERTY);
     }
 
     /**

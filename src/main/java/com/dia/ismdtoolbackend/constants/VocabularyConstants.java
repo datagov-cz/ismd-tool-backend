@@ -27,9 +27,6 @@ public class VocabularyConstants {
 
     // =============== CORE VOCABULARY TERMS ===============
     public static final String POJEM = "pojem";
-    public static final String TRIDA = "třída";
-    public static final String VZTAH = "vztah";
-    public static final String VLASTNOST = "vlastnost";
     public static final String TSP = "typ-subjektu-práva";
     public static final String TOP = "typ-objektu-práva";
     public static final String UDAJ = "údaj";

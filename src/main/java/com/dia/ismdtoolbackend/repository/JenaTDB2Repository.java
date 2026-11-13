@@ -35,16 +35,16 @@ public class JenaTDB2Repository {
 
     /**
      * The single source of truth for "is this concept OWNED by the scheme it declares".
-     * A concept is owned if it carries {@code skos:inScheme ?scheme} AND its IRI is a
-     * string prefix-match of that scheme. This is the same gate the live resolver
-     * ({@link #fetchConceptResolutions}) and the upload write-gate
-     * ({@code OFNTypeNormalizer.isOwnedConcept}) use; the PG↔TDB2 reconciler MUST use the
+     * A concept is owned if it carries {@code skos:inScheme ?scheme} AND its IRI lies under
+     * {@code <scheme>/}. This is the same gate the live resolver
+     * ({@link #fetchConceptResolutions}) and the upload ({@code OfnIris.isOwnedBy}) use; the
+     * PG↔TDB2 reconciler MUST use the
      * exact same predicate or it would invent (and, with auto-repair, delete) phantom
      * orphans. Bind {@code ?concept} before interpolating. See
      * {@code pg_tdb2_dual_write_consistency} / the reconciler plan §6.
      */
     public static final String OWNED_CONCEPT_PATTERN =
-            " ?concept skos:inScheme ?scheme . FILTER(STRSTARTS(STR(?concept), STR(?scheme))) ";
+            " ?concept skos:inScheme ?scheme . FILTER(STRSTARTS(STR(?concept), CONCAT(STR(?scheme), \"/\"))) ";
 
     private final FusekiConnectionConfig connectionConfig;
     private final FusekiSparqlExecutor executor;
@@ -103,6 +103,11 @@ public class JenaTDB2Repository {
                 "checking concept existence in graph " + graphName + " for " + conceptUri,
                 "Nepodařilo se ověřit existenci pojmu v grafu",
                 conn -> conceptNotFoundInGraph(conn, conceptUri, graphName));
+    }
+
+    /** True when the graph holds any triple with the concept as subject. */
+    public boolean conceptFoundInGraph(String conceptUri, String graphName) {
+        return !conceptNotFoundInGraph(conceptUri, graphName);
     }
 
     static boolean conceptNotFoundInGraph(RDFConnection conn, String conceptUri, String graphName) {
@@ -285,6 +290,11 @@ public class JenaTDB2Repository {
 
     public void deleteGraph(String graphName) {
         graphWriter.deleteGraph(graphName);
+    }
+
+    /** Runs one SPARQL Update request as is (used by the RDF migration runner). Throws on failure. */
+    public void executeUpdate(String label, String sparqlUpdate) {
+        executor.executeVoid(label, "Nepodařilo se provést migraci RDF dat", conn -> conn.update(sparqlUpdate));
     }
 
     // Concept-level reads, delegated to FusekiConceptQueries.

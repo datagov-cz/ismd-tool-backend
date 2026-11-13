@@ -104,7 +104,7 @@ class IsmdFusekiSearch {
 
     /**
      * Extracts the concept role from a pipe-separated rdf:type set produced by
-     * Fuseki text search. Returns null when no specific role marker resolves, so
+     * Fuseki text search. Returns null when no OWL kind resolves, so
      * the PG-authoritative type can still backfill (KONCEPT is a terminal
      * fallback for the projection endpoint, not a search signal).
      */

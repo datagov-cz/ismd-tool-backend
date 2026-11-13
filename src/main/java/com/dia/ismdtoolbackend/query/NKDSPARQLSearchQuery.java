@@ -2,14 +2,11 @@ package com.dia.ismdtoolbackend.query;
 
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.RelationType;
+import com.dia.ismdtoolbackend.ofn.OfnIris;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OFN_NAMESPACE;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TRIDA;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VLASTNOST;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VZTAH;
 
 public class NKDSPARQLSearchQuery {
 
@@ -22,9 +19,9 @@ public class NKDSPARQLSearchQuery {
             PREFIX bif: <bif:>
             """;
 
-    private static final String OWL_CLASS = "http://www.w3.org/2002/07/owl#Class";
-    private static final String OWL_OBJECT_PROPERTY = "http://www.w3.org/2002/07/owl#ObjectProperty";
-    private static final String OWL_DATATYPE_PROPERTY = "http://www.w3.org/2002/07/owl#DatatypeProperty";
+    private static final String OWL_CLASS = OfnIris.OWL_CLASS;
+    private static final String OWL_OBJECT_PROPERTY = OfnIris.OWL_OBJECT_PROPERTY;
+    private static final String OWL_DATATYPE_PROPERTY = OfnIris.OWL_DATATYPE_PROPERTY;
 
     /**
      * Builds a SPARQL SELECT query that lists every {@code owl:Ontology} IRI in NKD.
@@ -170,8 +167,8 @@ public class NKDSPARQLSearchQuery {
         appendResourceSubquery(query, searchTerm, ontologyIris, relationTypes, conceptTypeFilter, limit, offset);
 
         // Project the concept's role so callers can populate conceptType even when
-        // the request didn't narrow by role. Three independent OPTIONAL binds (one
-        // per role, each accepting the OFN role tag or the matching OWL type).
+        // the request didn't narrow by role. Three independent OPTIONAL binds, one
+        // per OWL kind.
         query.append("""
 
                   OPTIONAL {
@@ -189,14 +186,11 @@ public class NKDSPARQLSearchQuery {
                   OPTIONAL { ?resource skos:definition ?definition }
                   OPTIONAL { ?resource dcterms:modified ?modified }
 
-                  OPTIONAL { ?resource a ?roleTrida .     FILTER(?roleTrida IN (<%s>, <%s>)) }
-                  OPTIONAL { ?resource a ?roleVlastnost . FILTER(?roleVlastnost IN (<%s>, <%s>)) }
-                  OPTIONAL { ?resource a ?roleVztah .     FILTER(?roleVztah IN (<%s>, <%s>)) }
+                  OPTIONAL { ?resource a ?roleTrida .     FILTER(?roleTrida = <%s>) }
+                  OPTIONAL { ?resource a ?roleVlastnost . FILTER(?roleVlastnost = <%s>) }
+                  OPTIONAL { ?resource a ?roleVztah .     FILTER(?roleVztah = <%s>) }
                 }
-                """.formatted(safeLang,
-                        OFN_NAMESPACE + TRIDA, OWL_CLASS,
-                        OFN_NAMESPACE + VLASTNOST, OWL_DATATYPE_PROPERTY,
-                        OFN_NAMESPACE + VZTAH, OWL_OBJECT_PROPERTY));
+                """.formatted(safeLang, OWL_CLASS, OWL_DATATYPE_PROPERTY, OWL_OBJECT_PROPERTY));
 
         return query.toString();
     }
@@ -336,23 +330,9 @@ public class NKDSPARQLSearchQuery {
         return "FILTER EXISTS " + getRelationPattern(type);
     }
 
-    // KONCEPT is the generic base type every concept carries, so it is not a
-    // role narrowing — a role filter never resolves to it.
-    private static String ofnRoleFragment(ConceptType type) {
-        return switch (type) {
-            case TRIDA -> TRIDA;
-            case VLASTNOST -> VLASTNOST;
-            case VZTAH -> VZTAH;
-            case KONCEPT -> throw new IllegalArgumentException("KONCEPT is not a role-narrowing type");
-        };
-    }
-
     /**
-     * Returns the OWL type that semantically matches an OFN concept role.
-     * {@link OWL2} classes are the upstream truth in OWL ontologies; the OFN role
-     * tags (slovníky:třída/vlastnost/vztah) are added by ISMD on import. NKD
-     * carries the OWL types verbatim but does NOT add the OFN tags — so the role
-     * filter must accept either.
+     * The OWL type of a concept role. KONCEPT is the generic base type every concept carries, so it is
+     * not a role narrowing.
      */
     private static String owlTypeIri(ConceptType type) {
         return switch (type) {
@@ -363,15 +343,9 @@ public class NKDSPARQLSearchQuery {
         };
     }
 
-    /**
-     * SPARQL clause that matches concepts whose rdf:type set contains either the
-     * OFN role IRI (ISMD-published data) or the matching OWL type (NKD data).
-     */
+    /** SPARQL clause that keeps concepts of the role's OWL type. */
     private static String buildRoleFilter(ConceptType type) {
-        String ofnIri = OFN_NAMESPACE + ofnRoleFragment(type);
-        String owlIri = owlTypeIri(type);
-        return "FILTER(EXISTS { ?resource a <" + ofnIri + "> }"
-                + " || EXISTS { ?resource a <" + owlIri + "> })";
+        return "FILTER EXISTS { ?resource a <" + owlTypeIri(type) + "> }";
     }
 
     private static String getRelationPattern(RelationType type) {

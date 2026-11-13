@@ -41,10 +41,10 @@ class JsonExporterContextConformanceTest {
             ex: slovníky:okamžik-vytvoření [ a čas:časový-okamžik ; čas:datum-a-čas "2025-01-01T10:00:00Z" ] ;
                 slovníky:okamžik-poslední-změny [ a čas:časový-okamžik ; čas:datum "2025-02-01"^^xsd:date ] .
 
-            pojem:subjekt a skos:Concept, slovníky:pojem, owl:Class, slovníky:třída ;
+            pojem:subjekt a skos:Concept, slovníky:pojem, owl:Class ;
                 skos:prefLabel "Subjekt"@cs .
 
-            pojem:osoba a skos:Concept, slovníky:pojem, owl:Class, slovníky:třída ;
+            pojem:osoba a skos:Concept, slovníky:pojem, owl:Class ;
                 skos:prefLabel "Osoba"@cs, "Person"@en ;
                 skos:altLabel "Člověk"@cs, "Fyzická osoba"@cs ;
                 skos:definition "Fyzická osoba."@cs ;
@@ -69,16 +69,16 @@ class JsonExporterContextConformanceTest {
             <https://example.org/číselníky/osoby> a l111:číselník ;
                 l111:má-v-nkod-zastřešující-datovou-sadu <https://data.gov.cz/zdroj/datové-sady/1> .
 
-            pojem:má-sídlo a skos:Concept, slovníky:pojem, owl:ObjectProperty, slovníky:vztah ;
+            pojem:má-sídlo a skos:Concept, slovníky:pojem, owl:ObjectProperty ;
                 skos:prefLabel "má sídlo"@cs .
 
-            pojem:má-adresu a skos:Concept, slovníky:pojem, owl:ObjectProperty, slovníky:vztah ;
+            pojem:má-adresu a skos:Concept, slovníky:pojem, owl:ObjectProperty ;
                 skos:prefLabel "má adresu"@cs ;
                 rdfs:domain pojem:osoba ;
                 rdfs:range pojem:subjekt ;
                 rdfs:subPropertyOf pojem:má-sídlo .
 
-            pojem:rodné-číslo a skos:Concept, slovníky:pojem, owl:DatatypeProperty, slovníky:vlastnost,
+            pojem:rodné-číslo a skos:Concept, slovníky:pojem, owl:DatatypeProperty,
                     l111:neveřejný-údaj ;
                 skos:prefLabel "Rodné číslo"@cs ;
                 rdfs:domain pojem:osoba ;
@@ -230,12 +230,11 @@ class JsonExporterContextConformanceTest {
 
     @ParameterizedTest(name = "{0} ⇒ vocabulary types {1}")
     @CsvSource(delimiter = '|', value = {
-            "slovníky:pojem                             | Slovník,Tezaurus",
-            "slovníky:pojem, owl:Class, slovníky:třída  | Slovník,Tezaurus,Konceptuální model",
-            "slovníky:pojem, slovníky:vztah             | Slovník,Tezaurus,Konceptuální model",
-            "slovníky:typ-objektu-práva                 | Slovník,Tezaurus,Konceptuální model",
-            "slovníky:pojem, slovníky:vlastnost         | Slovník,Tezaurus,Konceptuální model",
-            "skos:Concept                               | Slovník",
+            "slovníky:pojem                       | Slovník,Tezaurus",
+            "slovníky:pojem, owl:Class            | Slovník,Tezaurus,Konceptuální model",
+            "slovníky:pojem, owl:ObjectProperty   | Slovník,Tezaurus,Konceptuální model",
+            "slovníky:pojem, owl:DatatypeProperty | Slovník,Tezaurus,Konceptuální model",
+            "skos:Concept                         | Slovník",
     })
     @DisplayName("Vocabulary types follow the concept roles and are context terms")
     void vocabularyTypesFollowConceptRoles(String conceptTypes, String expectedTypes) {
@@ -253,13 +252,10 @@ class JsonExporterContextConformanceTest {
             "slovníky:pojem                                 | slovníky:pojem, skos:Concept",
             "skos:Concept                                   | slovníky:pojem, skos:Concept",
             "owl:Class                                      | slovníky:pojem, skos:Concept, owl:Class",
-            "slovníky:třída                                 | slovníky:pojem, skos:Concept, owl:Class",
             "owl:ObjectProperty                             | slovníky:pojem, skos:Concept, owl:ObjectProperty",
-            "slovníky:vztah                                 | slovníky:pojem, skos:Concept, owl:ObjectProperty",
             "owl:DatatypeProperty                           | slovníky:pojem, skos:Concept, owl:DatatypeProperty",
-            "slovníky:vlastnost                             | slovníky:pojem, skos:Concept, owl:DatatypeProperty",
-            "slovníky:třída, slovníky:typ-subjektu-práva    | slovníky:pojem, skos:Concept, owl:Class, vsgov:typ-subjektu-práva",
-            "slovníky:třída, slovníky:typ-objektu-práva     | slovníky:pojem, skos:Concept, owl:Class, vsgov:typ-objektu-práva",
+            "owl:Class, slovníky:typ-subjektu-práva         | slovníky:pojem, skos:Concept, owl:Class, vsgov:typ-subjektu-práva",
+            "owl:Class, slovníky:typ-objektu-práva          | slovníky:pojem, skos:Concept, owl:Class, vsgov:typ-objektu-práva",
             "slovníky:pojem, l111:veřejný-údaj              | slovníky:pojem, skos:Concept, l111:veřejný-údaj",
             "slovníky:pojem, l111:neveřejný-údaj            | slovníky:pojem, skos:Concept, l111:neveřejný-údaj",
     })
@@ -281,7 +277,7 @@ class JsonExporterContextConformanceTest {
     @DisplayName("A concept typed as both vztah and vlastnost fails the export")
     void propertyAndRelationshipConflictFailsExport() {
         assertThatThrownBy(() -> exporter.exportToJson(Ttl.parseOnt(VOCABULARY_HEADER
-                + "pojem:x a slovníky:vztah, slovníky:vlastnost ; skos:prefLabel \"X\"@cs .")))
+                + "pojem:x a owl:ObjectProperty, owl:DatatypeProperty ; skos:prefLabel \"X\"@cs .")))
                 .isInstanceOf(JsonExportException.class)
                 .hasMessageContaining(Ttl.POJEM + "x");
     }

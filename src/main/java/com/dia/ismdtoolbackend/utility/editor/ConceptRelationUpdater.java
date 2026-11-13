@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
-import com.dia.ismdtoolbackend.utility.DataTypeConverter;
+import com.dia.ismdtoolbackend.enums.PropertyDataType;
 import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import org.apache.jena.rdf.model.*;
 import org.apache.jena.vocabulary.RDFS;
@@ -51,21 +51,17 @@ class ConceptRelationUpdater {
                                        Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
         if (broaderConcept == null) return;
 
-        Property hierarchyProp = model.createProperty(iriFactory.getEffectiveNamespace() + "nadřazená-třída");
         Set<String> oldBroader = getResourceURIs(oldConcept, RDFS.subClassOf);
         Set<String> newBroader = parseBroaderConcepts(broaderConcept);
 
         if (broaderConcept.isEmpty() || newBroader.isEmpty()) {
             if (!oldBroader.isEmpty()) {
                 removeAllByPredicate(newConcept, RDFS.subClassOf, toRemove, toAdd);
-                removeAllByPredicate(newConcept, hierarchyProp, toRemove, toAdd);
             }
         } else if (!oldBroader.equals(newBroader)) {
             removeAllByPredicate(newConcept, RDFS.subClassOf, toRemove, toAdd);
-            removeAllByPredicate(newConcept, hierarchyProp, toRemove, toAdd);
             for (String broader : newBroader) {
                 toAdd.add(model.createStatement(newConcept, RDFS.subClassOf, model.createResource(broader)));
-                toAdd.add(model.createStatement(newConcept, hierarchyProp, model.createResource(broader)));
             }
         }
     }
@@ -96,17 +92,9 @@ class ConceptRelationUpdater {
                                       Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
         if (dataType == null) return;
 
+        // Same resolution as create; a cleared datatype means rdfs:Literal (a Vlastnost always has a range).
         String oldRangeURI = getResourceURI(oldConcept, RDFS.range);
-
-        if (dataType.trim().isEmpty()) {
-            if (oldRangeURI != null) {
-                removeAllByPredicate(newConcept, RDFS.range, toRemove, toAdd);
-            }
-            return;
-        }
-
-        String xsdTypeURI = DataTypeConverter.getXSDTypeURI(dataType.trim());
-        String newRangeURI = xsdTypeURI != null ? xsdTypeURI : RDFS.Literal.getURI();
+        String newRangeURI = PropertyDataType.rangeIri(dataType);
 
         if (!Objects.equals(oldRangeURI, newRangeURI)) {
             removeAllByPredicate(newConcept, RDFS.range, toRemove, toAdd);

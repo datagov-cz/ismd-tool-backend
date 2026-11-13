@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.Collections;
 import java.util.List;
@@ -34,9 +35,6 @@ class ConceptTypeDetectionTest {
 
     static Stream<Arguments> ofnTypeProvider() {
         return Stream.of(
-                Arguments.of(TRIDA, TRIDA_JSON_LD, "třída"),
-                Arguments.of(VZTAH, VZTAH_JSON_LD, "vztah"),
-                Arguments.of(VLASTNOST, VLASTNOST_JSON_LD, "vlastnost"),
                 Arguments.of(TSP, TSP_JSON_LD, "typ-subjektu-práva"),
                 Arguments.of(TOP, TOP_JSON_LD, "typ-objektu-práva")
         );
@@ -58,6 +56,41 @@ class ConceptTypeDetectionTest {
         assertThat(types).as("Should always contain Pojem").contains(POJEM_JSON_LD);
         assertThat(types).as("Should always contain Koncept").contains("Koncept");
         assertThat(types).as("Should contain " + expectedJsonLd).contains(expectedJsonLd);
+    }
+
+    static Stream<Arguments> vsgovTypeProvider() {
+        return Stream.of(
+                Arguments.of(com.dia.ismdtoolbackend.ofn.OfnIris.TYP_SUBJEKTU_PRAVA, TSP_JSON_LD),
+                Arguments.of(com.dia.ismdtoolbackend.ofn.OfnIris.TYP_OBJEKTU_PRAVA, TOP_JSON_LD)
+        );
+    }
+
+    @ParameterizedTest(name = "OFN vsgov type {0} maps to {1}")
+    @MethodSource("vsgovTypeProvider")
+    @DisplayName("Typ subjektu/objektu práva in the OFN vsgov: namespace is detected")
+    void vsgovType_mapsToJsonLdType(String typeIri, String expectedJsonLd) {
+        OntModel model = createDefaultModel();
+        Resource concept = addSkosConcept(model, "test-vsgov", "Test");
+        concept.addProperty(RDF.type, OWL2.Class);
+        concept.addProperty(RDF.type, model.createResource(typeIri));
+        ModelStructure structure = createModelStructure(model);
+
+        Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
+
+        @SuppressWarnings("unchecked")
+        List<String> types = (List<String>) result.get("typ");
+        assertThat(types).containsOnlyOnce(expectedJsonLd);
+    }
+
+    @Test
+    @DisplayName("A concept typed only with the OFN vsgov: type is a concept")
+    void vsgovOnlyConceptIsDetected() {
+        OntModel model = createDefaultModel();
+        Resource concept = model.createResource("https://example.org/pojem/osoba");
+        concept.addProperty(RDF.type, model.createResource(com.dia.ismdtoolbackend.ofn.OfnIris.TYP_SUBJEKTU_PRAVA));
+
+        assertThat(new ConceptTypeJsonMapper().isConceptResource(concept,
+                new ConceptTypeJsonMapper().getConceptTypes(model))).isTrue();
     }
 
     static Stream<Arguments> legalTypeProvider() {
@@ -128,11 +161,11 @@ class ConceptTypeDetectionTest {
     }
 
     @Test
-    @DisplayName("Multiple OFN types on same concept are all detected")
+    @DisplayName("Multiple types on same concept are all detected")
     void multipleTypes_allDetected() {
         OntModel model = createDefaultModel();
         Resource concept = addSkosConcept(model, "multi", "Multi");
-        concept.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + TRIDA));
+        concept.addProperty(RDF.type, OWL2.Class);
         concept.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + TSP));
         ModelStructure structure = createModelStructure(model);
 
@@ -146,9 +179,6 @@ class ConceptTypeDetectionTest {
 
     static Stream<Arguments> mixedPropertyRelationshipSignals() {
         return Stream.of(
-                Arguments.of(OFN_NAMESPACE + VLASTNOST, OWL2.ObjectProperty.getURI()),
-                Arguments.of(OFN_NAMESPACE + VZTAH, OWL2.DatatypeProperty.getURI()),
-                Arguments.of(OFN_NAMESPACE + VLASTNOST, OFN_NAMESPACE + VZTAH),
                 Arguments.of(OWL2.DatatypeProperty.getURI(), OWL2.ObjectProperty.getURI())
         );
     }
@@ -173,30 +203,5 @@ class ConceptTypeDetectionTest {
                 .isThrownBy(() -> processor.processAllConcepts(model, structure))
                 .actual();
         assertThat(all).hasMessageContaining(concept.getURI());
-    }
-
-    static Stream<Arguments> agreeingSignals() {
-        return Stream.of(
-                Arguments.of(OFN_NAMESPACE + VLASTNOST, OWL2.DatatypeProperty.getURI(), VLASTNOST_JSON_LD, VZTAH_JSON_LD),
-                Arguments.of(OFN_NAMESPACE + VZTAH, OWL2.ObjectProperty.getURI(), VZTAH_JSON_LD, VLASTNOST_JSON_LD)
-        );
-    }
-
-    @ParameterizedTest(name = "{0} + {1} is exactly {2}")
-    @MethodSource("agreeingSignals")
-    @DisplayName("Agreeing OFN and OWL types yield the kind exactly once")
-    void agreeingOfnAndOwlTypes_yieldTheKindOnce(String ofnType, String owlType, String expected, String absent) {
-        OntModel model = createDefaultModel();
-        Resource concept = addSkosConcept(model, "agreeing", "Agreeing");
-        concept.addProperty(RDF.type, model.createResource(ofnType));
-        concept.addProperty(RDF.type, model.createResource(owlType));
-        ModelStructure structure = createModelStructure(model);
-
-        Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
-
-        @SuppressWarnings("unchecked")
-        List<String> types = (List<String>) result.get("typ");
-        assertThat(Collections.frequency(types, expected)).isEqualTo(1);
-        assertThat(types).doesNotContain(absent);
     }
 }

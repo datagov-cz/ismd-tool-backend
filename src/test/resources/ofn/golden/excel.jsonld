@@ -1,0 +1,828 @@
+{
+    "@context": "https://ofn.gov.cz/slovníky/2026-02-26/kompletní/kontext.jsonld",
+    "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat",
+    "typ": [
+        "Slovník",
+        "Tezaurus",
+        "Konceptuální model"
+    ],
+    "název": {
+        "cs": "Příkladový slovník z metodiky popisu dat"
+    },
+    "popis": {
+        "cs": "Ukázkový slovník zákona o silničním provozu z metodiky. Jedná se o příklad popisu; není garantován soulad tohoto slovníku s aktuálními zákony a jinými zdroji z této oblasti."
+    },
+    "vytvořeno": {
+        "typ": "Časový okamžik",
+        "datum_a_čas": "2026-01-15T10:30:00+01:00"
+    },
+    "aktualizováno": {
+        "typ": "Časový okamžik",
+        "datum_a_čas": "2026-01-15T10:30:00+01:00"
+    },
+    "pojmy": [
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/věk-na-řp-s",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vlastnost",
+                "Neveřejný údaj"
+            ],
+            "název": {
+                "cs": "Věk na ŘP S"
+            },
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidičský-průkaz",
+            "obor-hodnot": "xsd:integer",
+            "způsoby-sdílení-údaje": [
+                "způsoby-sdílení:poskytované-na-žádost"
+            ],
+            "typ-obsahu-údaje": "typy-obsahu:evidenční",
+            "ustanovení-dokládající-neveřejnost-údaje": [
+                "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2000/361/2024-07-01/dokument/norma/cast_1/hlava_3/dil_2/par_103/odst_1"
+            ]
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/je-věk-na-řp-nad-18-i",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vlastnost"
+            ],
+            "název": {
+                "cs": "Je věk na ŘP nad 18? I"
+            },
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidičský-průkaz",
+            "obor-hodnot": "xsd:boolean",
+            "způsoby-sdílení-údaje": [
+                "způsoby-sdílení:veřejně-přístupné"
+            ],
+            "způsob-získání-údaje": "způsoby-získání:provozní",
+            "typ-obsahu-údaje": "typy-obsahu:identifikační"
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidič",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Třída",
+                "Typ subjektu práva"
+            ],
+            "název": {
+                "cs": "Řidič"
+            },
+            "alternativní-název": {
+                "cs": [
+                    "řidič auta"
+                ]
+            },
+            "popis": {
+                "cs": "Řidič je tedy i cyklista, nejen řidič motorových vozidel – neváže se na něj nutně řidičské oprávnění."
+            },
+            "definice": {
+                "cs": "účastník provozu na pozemních komunikacích, který řídí motorové nebo nemotorové vozidlo anebo tramvaj; řidičem je i jezdec na zvířeti"
+            },
+            "definující-ustanovení-právního-předpisu": [
+                "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2000/361/2024-04-01/dokument/norma/cast_1/hlava_1/par_2/pism_d"
+            ],
+            "nadřazená-třída": [
+                "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/účastník-provozu-na-pozemních-komunikacích"
+            ],
+            "agenda": "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A998",
+            "agendový-informační-systém": "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/1234"
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/název-obecního-úřadu-obce-s-rozšířenou-působností",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vlastnost",
+                "Veřejný údaj"
+            ],
+            "název": {
+                "cs": "Název obecního úřadu obce s rozšířenou působností"
+            },
+            "popis": {
+                "cs": "Řidičský průkaz obsahuje název úřadu, který řidičský průkaz vydal (což je vždy obecní úřad obce s rozšířenou působností)."
+            },
+            "definující-ustanovení-právního-předpisu": [
+                "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2000/361/2024-10-01/dokument/norma/cast_1/hlava_3/dil_2/par_105/odst_1/pism_i"
+            ],
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/obecní-úřad-obce-s-rozšířenou-působností",
+            "obor-hodnot": "http://www.w3.org/2000/01/rdf-schema#Literal",
+            "je-sdílen-v-ppdf": true
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/datum-p",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vlastnost"
+            ],
+            "název": {
+                "cs": "Datum P"
+            },
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidičský-průkaz",
+            "obor-hodnot": "xsd:date",
+            "způsob-získání-údaje": "způsoby-získání:základních-registrů"
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/účastník-provozu-na-pozemních-komunikacích",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Třída",
+                "Typ subjektu práva"
+            ],
+            "název": {
+                "cs": "Účastník provozu na pozemních komunikacích"
+            },
+            "definice": {
+                "cs": "každý, kdo se přímým způsobem účastní provozu na pozemních komunikacích"
+            },
+            "definující-ustanovení-právního-předpisu": [
+                "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2000/361/2024-07-01/dokument/norma/cast_1/hlava_1/par_2/pism_a"
+            ],
+            "agenda": "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A998",
+            "agendový-informační-systém": "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/998"
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/datum-s",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vlastnost"
+            ],
+            "název": {
+                "cs": "Datum S"
+            },
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidičský-průkaz",
+            "obor-hodnot": "xsd:date",
+            "způsob-získání-údaje": "způsoby-získání:základních-registrů"
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidičský-průkaz",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Třída",
+                "Typ objektu práva"
+            ],
+            "název": {
+                "cs": "Řidičský průkaz"
+            },
+            "alternativní-název": {
+                "cs": [
+                    "řidičák",
+                    "ŘP"
+                ]
+            },
+            "definice": {
+                "cs": "Řidičský průkaz je veřejná listina, která osvědčuje řidičské oprávnění držitele a jeho rozsah a kterou držitel prokazuje své jméno, příjmení a podobu, jakož i další údaje v ní zapsané podle tohoto zákona."
+            },
+            "definující-ustanovení-právního-předpisu": [
+                "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2000/361/2024-07-01/dokument/norma/cast_1/hlava_3/dil_2/par_103/odst_1"
+            ]
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/je-věk-na-řp-nad-18-p",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vlastnost"
+            ],
+            "název": {
+                "cs": "Je věk na ŘP nad 18? P"
+            },
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidičský-průkaz",
+            "obor-hodnot": "xsd:boolean",
+            "způsoby-sdílení-údaje": [
+                "způsoby-sdílení:veřejně-přístupné"
+            ],
+            "způsob-získání-údaje": "způsoby-získání:provozní",
+            "typ-obsahu-údaje": "typy-obsahu:identifikační"
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/desetinné-číslo-i",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vlastnost"
+            ],
+            "název": {
+                "cs": "Desetinné číslo I"
+            },
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidičský-průkaz",
+            "obor-hodnot": "xsd:double",
+            "způsoby-sdílení-údaje": [
+                "způsoby-sdílení:zpřístupňované-pro-výkon-agendy"
+            ],
+            "typ-obsahu-údaje": "typy-obsahu:statistické"
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/desetinné-číslo-p",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vlastnost"
+            ],
+            "název": {
+                "cs": "Desetinné číslo P"
+            },
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidičský-průkaz",
+            "obor-hodnot": "xsd:double",
+            "způsoby-sdílení-údaje": [
+                "způsoby-sdílení:zpřístupňované-pro-výkon-agendy"
+            ],
+            "typ-obsahu-údaje": "typy-obsahu:statistické"
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/vozidlo",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Třída",
+                "Typ objektu práva"
+            ],
+            "název": {
+                "cs": "Vozidlo"
+            },
+            "definice": {
+                "cs": "motorové vozidlo, nemotorové vozidlo nebo tramvaj"
+            },
+            "definující-ustanovení-právního-předpisu": [
+                "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2000/361/2024-07-01/dokument/norma/cast_1/hlava_1/par_2/pism_f"
+            ],
+            "definující-nelegislativní-zdroj": [
+                {
+                    "typ": "Digitální objekt",
+                    "url": "https://www.mdcr.cz/"
+                }
+            ]
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/drží-řidičský-průkaz",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vztah",
+                "Neveřejný údaj"
+            ],
+            "název": {
+                "cs": "drží řidičský průkaz"
+            },
+            "popis": {
+                "cs": "Z definice vyplývá, že řidiči, kteří jsou evidováni v registru řidičů, mohou být držiteli řidičského průkazu."
+            },
+            "definice": {
+                "cs": "Registr řidičů obsahuje a) osobní údaje o řidiči motorového vozidla uvedené v řidičském průkazu a v mezinárodním řidičském průkazu, včetně digitalizované fotografie a digitalizovaného podpisu řidiče,"
+            },
+            "definující-ustanovení-právního-předpisu": [
+                "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2000/361/2024-07-01/dokument/norma/cast_1/hlava_4/par_119/odst_2/pism_a"
+            ],
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidič-evidovaný-v-registru-řidičů",
+            "obor-hodnot": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidičský-průkaz",
+            "způsoby-sdílení-údaje": [
+                "způsoby-sdílení:veřejně-přístupné"
+            ],
+            "způsob-získání-údaje": "způsoby-získání:vlastní",
+            "typ-obsahu-údaje": "typy-obsahu:statistické",
+            "ustanovení-dokládající-neveřejnost-údaje": [
+                "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2000/361/2024-07-01/dokument/norma/cast_1/hlava_3/dil_2/par_105/odst_1/pism_c"
+            ],
+            "je-sdílen-v-ppdf": false
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/je-věk-na-řp-nad-18-s",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vlastnost"
+            ],
+            "název": {
+                "cs": "Je věk na ŘP nad 18? S"
+            },
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidičský-průkaz",
+            "obor-hodnot": "xsd:boolean",
+            "způsoby-sdílení-údaje": [
+                "způsoby-sdílení:veřejně-přístupné"
+            ],
+            "způsob-získání-údaje": "způsoby-získání:provozní",
+            "typ-obsahu-údaje": "typy-obsahu:identifikační"
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/url-s",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vlastnost"
+            ],
+            "název": {
+                "cs": "URL S"
+            },
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidičský-průkaz",
+            "obor-hodnot": "xsd:anyURI",
+            "způsob-získání-údaje": "způsoby-získání:vlastní"
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/url-p",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vlastnost"
+            ],
+            "název": {
+                "cs": "URL P"
+            },
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidičský-průkaz",
+            "obor-hodnot": "xsd:anyURI",
+            "způsob-získání-údaje": "způsoby-získání:vlastní"
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/rodné-číslo-držitele-řidičského-průkazu-subclass",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vlastnost"
+            ],
+            "název": {
+                "cs": "Rodné číslo držitele řidičského průkazu subclass"
+            },
+            "související-nelegislativní-zdroj": [
+                {
+                    "typ": "Digitální objekt",
+                    "url": "https://ofn.gov.cz/slovníky/draft2/cs/#360-2023"
+                },
+                {
+                    "typ": "Digitální objekt",
+                    "název": {
+                        "cs": "Směrnice EU"
+                    }
+                }
+            ],
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidičský-průkaz",
+            "obor-hodnot": "http://www.w3.org/2000/01/rdf-schema#Literal",
+            "nadřazená-vlastnost": [
+                "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/rodné-číslo-držitele-řidičského-průkazu"
+            ]
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/název-obecního-úřadu-obce-s-rozšířenou-působností-copy",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vlastnost",
+                "Veřejný údaj"
+            ],
+            "název": {
+                "cs": "Název obecního úřadu obce s rozšířenou působností (copy)"
+            },
+            "popis": {
+                "cs": "Řidičský průkaz obsahuje název úřadu, který řidičský průkaz vydal (což je vždy obecní úřad obce s rozšířenou působností)."
+            },
+            "definující-ustanovení-právního-předpisu": [
+                "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2000/361/2024-10-01/dokument/norma/cast_1/hlava_3/dil_2/par_105/odst_1/pism_i"
+            ],
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/obecní-úřad-obce-s-rozšířenou-působností",
+            "obor-hodnot": "http://www.w3.org/2000/01/rdf-schema#Literal",
+            "je-sdílen-v-ppdf": true
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/příjmení-držitele-řidičského-průkazu",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vlastnost",
+                "Neveřejný údaj"
+            ],
+            "název": {
+                "cs": "Příjmení držitele řidičského průkazu"
+            },
+            "alternativní-název": {
+                "cs": [
+                    "příjmení řidiče"
+                ]
+            },
+            "popis": {
+                "cs": "Řidičský průkaz obsahuje mj. jméno a příjmení držitele."
+            },
+            "definující-ustanovení-právního-předpisu": [
+                "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2000/361/2024-07-01/dokument/norma/cast_1/hlava_3/dil_2/par_105/odst_1/pism_a"
+            ],
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidičský-průkaz",
+            "obor-hodnot": "http://www.w3.org/2000/01/rdf-schema#Literal",
+            "je-sdílen-v-ppdf": true,
+            "ustanovení-dokládající-neveřejnost-údaje": [
+                "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2000/361/2024-07-01/dokument/norma/cast_1/hlava_3/dil_2/par_105/odst_1/pism_c"
+            ]
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/čas-s",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vlastnost"
+            ],
+            "název": {
+                "cs": "Čas S"
+            },
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidičský-průkaz",
+            "obor-hodnot": "xsd:time",
+            "způsoby-sdílení-údaje": [
+                "způsoby-sdílení:nesdílené"
+            ]
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/url-i",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vlastnost"
+            ],
+            "název": {
+                "cs": "URL I"
+            },
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidičský-průkaz",
+            "obor-hodnot": "xsd:anyURI",
+            "způsob-získání-údaje": "způsoby-získání:vlastní"
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/čas-p",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vlastnost"
+            ],
+            "název": {
+                "cs": "Čas P"
+            },
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidičský-průkaz",
+            "obor-hodnot": "xsd:time",
+            "způsoby-sdílení-údaje": [
+                "způsoby-sdílení:nesdílené"
+            ]
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řídí-vozidlo",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vztah",
+                "Veřejný údaj"
+            ],
+            "název": {
+                "cs": "řídí vozidlo"
+            },
+            "definice": {
+                "cs": "řidič je účastník provozu na pozemních komunikacích, který řídí motorové nebo nemotorové vozidlo anebo tramvaj; řidičem je i jezdec na zvířeti"
+            },
+            "definující-ustanovení-právního-předpisu": [
+                "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2000/361/2024-04-01/dokument/norma/cast_1/hlava_1/par_2/pism_d"
+            ],
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidič",
+            "obor-hodnot": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/vozidlo",
+            "způsoby-sdílení-údaje": [
+                "způsoby-sdílení:zpřístupňované-pro-výkon-agendy"
+            ],
+            "způsob-získání-údaje": "způsoby-získání:základních-registrů",
+            "je-sdílen-v-ppdf": false
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/text-i",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vlastnost"
+            ],
+            "název": {
+                "cs": "Text I"
+            },
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidičský-průkaz",
+            "obor-hodnot": "http://www.w3.org/2000/01/rdf-schema#Literal",
+            "způsob-získání-údaje": "způsoby-získání:jiných-agend"
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidič-evidovaný-v-registru-řidičů",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Třída",
+                "Typ subjektu práva"
+            ],
+            "název": {
+                "cs": "Řidič evidovaný v registru řidičů"
+            },
+            "definice": {
+                "cs": "Registr řidičů obsahuje a) osobní údaje o řidiči motorového vozidla uvedené v řidičském průkazu a v mezinárodním řidičském průkazu, včetně digitalizované fotografie a digitalizovaného podpisu řidiče,"
+            },
+            "definující-ustanovení-právního-předpisu": [
+                "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2000/361/2024-07-01/dokument/norma/cast_1/hlava_4/par_119/odst_2/pism_a"
+            ],
+            "nadřazená-třída": [
+                "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidič"
+            ],
+            "agenda": "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A998",
+            "agendový-informační-systém": "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/1234"
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/obecní-úřad-obce-s-rozšířenou-působností",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Třída",
+                "Typ subjektu práva"
+            ],
+            "název": {
+                "cs": "Obecní úřad obce s rozšířenou působností"
+            },
+            "popis": {
+                "cs": "Úřad vydávající řidičský průkaz je vždy obecním úřadem obce s rozšířenou působností."
+            },
+            "ekvivalentní-pojem": [
+                "https://slovník.gov.cz/legislativní/sbírka/128/2000/pojem/obecní-úřad-obce",
+                "https://slovník.gov.cz/legislativní/sbírka/128/2000/pojem/obecní-úřad-obce-s-rozšířenou-působností"
+            ],
+            "definující-ustanovení-právního-předpisu": [
+                "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2000/361/2024-10-01/dokument/norma/cast_1/hlava_3/dil_2/par_109/odst_3"
+            ]
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/text-p",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vlastnost"
+            ],
+            "název": {
+                "cs": "Text P"
+            },
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidičský-průkaz",
+            "obor-hodnot": "http://www.w3.org/2000/01/rdf-schema#Literal",
+            "způsob-získání-údaje": "způsoby-získání:jiných-agend"
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/desetinné-číslo-s",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vlastnost"
+            ],
+            "název": {
+                "cs": "Desetinné číslo S"
+            },
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidičský-průkaz",
+            "obor-hodnot": "xsd:double",
+            "způsoby-sdílení-údaje": [
+                "způsoby-sdílení:zpřístupňované-pro-výkon-agendy"
+            ],
+            "typ-obsahu-údaje": "typy-obsahu:statistické"
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/datum-a-čas-p",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vlastnost"
+            ],
+            "název": {
+                "cs": "Datum a čas P"
+            },
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidičský-průkaz",
+            "obor-hodnot": "xsd:dateTimeStamp"
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/datum-a-čas-s",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vlastnost"
+            ],
+            "název": {
+                "cs": "Datum a čas S"
+            },
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidičský-průkaz",
+            "obor-hodnot": "xsd:dateTimeStamp"
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/test-s",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vlastnost"
+            ],
+            "název": {
+                "cs": "Test S"
+            },
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidičský-průkaz",
+            "obor-hodnot": "http://www.w3.org/2000/01/rdf-schema#Literal",
+            "způsob-získání-údaje": "způsoby-získání:jiných-agend"
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/jméno-držitele-řidičského-průkazu",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vlastnost",
+                "Neveřejný údaj"
+            ],
+            "název": {
+                "cs": "Jméno držitele řidičského průkazu"
+            },
+            "alternativní-název": {
+                "cs": [
+                    "jméno řidiče"
+                ]
+            },
+            "popis": {
+                "cs": "Řidičský průkaz obsahuje mj. jméno a příjmení držitele."
+            },
+            "definující-ustanovení-právního-předpisu": [
+                "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2000/361/2024-07-01/dokument/norma/cast_1/hlava_3/dil_2/par_105/odst_1/pism_a"
+            ],
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidičský-průkaz",
+            "obor-hodnot": "xsd:string",
+            "je-sdílen-v-ppdf": true,
+            "ustanovení-dokládající-neveřejnost-údaje": [
+                "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2000/361/2024-07-01/dokument/norma/cast_1/hlava_3/dil_2/par_105/odst_1/pism_c"
+            ]
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/věk-na-řp-i",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vlastnost"
+            ],
+            "název": {
+                "cs": "Věk na ŘP I"
+            },
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidičský-průkaz",
+            "obor-hodnot": "xsd:integer",
+            "způsoby-sdílení-údaje": [
+                "způsoby-sdílení:poskytované-na-žádost"
+            ],
+            "typ-obsahu-údaje": "typy-obsahu:evidenční"
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/datum-a-čas-i",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vlastnost"
+            ],
+            "název": {
+                "cs": "Datum a čas I"
+            },
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidičský-průkaz",
+            "obor-hodnot": "xsd:dateTimeStamp"
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/vydává-řidičský-průkaz",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vztah"
+            ],
+            "název": {
+                "cs": "vydává řidičský průkaz"
+            },
+            "popis": {
+                "cs": "Z definice vyplývá, že řidiči, kteří jsou evidováni v registru řidičů, mohou být držiteli řidičského průkazu."
+            },
+            "definice": {
+                "cs": "Řidičský průkaz vydá příslušný obecní úřad obce s rozšířenou působností na žádost držitele řidičského oprávnění."
+            },
+            "definující-ustanovení-právního-předpisu": [
+                "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2000/361/2024-10-01/dokument/norma/cast_1/hlava_3/dil_2/par_109/odst_3"
+            ],
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/obecní-úřad-obce-s-rozšířenou-působností",
+            "obor-hodnot": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidičský-průkaz",
+            "způsoby-sdílení-údaje": [
+                "způsoby-sdílení:poskytované-na-žádost"
+            ],
+            "způsob-získání-údaje": "způsoby-získání:provozní",
+            "typ-obsahu-údaje": "typy-obsahu:identifikační"
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/sídlí-na-adrese",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vztah"
+            ],
+            "název": {
+                "cs": "sídlí na adrese"
+            },
+            "popis": {
+                "cs": "Sídlo úřadu vydávajícího průkaz (obecním úřadem ORP) se nachází na nějaké adrese. Adresa je obecně definována v zákoně o základních registrech."
+            },
+            "definující-ustanovení-právního-předpisu": [
+                "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2000/361/2024-10-01/dokument/norma/cast_1/hlava_3/dil_2/par_105/odst_1/pism_i"
+            ],
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/obecní-úřad-obce-s-rozšířenou-působností",
+            "obor-hodnot": "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/adresa",
+            "způsoby-sdílení-údaje": [
+                "způsoby-sdílení:nesdílené"
+            ],
+            "způsob-získání-údaje": "způsoby-získání:jiných-agend",
+            "typ-obsahu-údaje": "typy-obsahu:evidenční",
+            "je-sdílen-v-ppdf": true
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/čas-i",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vlastnost"
+            ],
+            "název": {
+                "cs": "Čas I"
+            },
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidičský-průkaz",
+            "obor-hodnot": "xsd:time",
+            "způsoby-sdílení-údaje": [
+                "způsoby-sdílení:nesdílené"
+            ]
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/věk-na-řp-p",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vlastnost",
+                "Neveřejný údaj"
+            ],
+            "název": {
+                "cs": "Věk na ŘP P"
+            },
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidičský-průkaz",
+            "obor-hodnot": "xsd:integer",
+            "způsoby-sdílení-údaje": [
+                "způsoby-sdílení:poskytované-na-žádost"
+            ],
+            "typ-obsahu-údaje": "typy-obsahu:evidenční",
+            "ustanovení-dokládající-neveřejnost-údaje": [
+                "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2000/361/2024-07-01/dokument/norma/cast_1/hlava_3/dil_2/par_103/odst_1"
+            ]
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/datum-i",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vlastnost"
+            ],
+            "název": {
+                "cs": "Datum I"
+            },
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidičský-průkaz",
+            "obor-hodnot": "xsd:date",
+            "způsob-získání-údaje": "způsoby-získání:základních-registrů"
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/rodné-číslo-držitele-řidičského-průkazu",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vlastnost"
+            ],
+            "název": {
+                "cs": "Rodné číslo držitele řidičského průkazu"
+            },
+            "definující-nelegislativní-zdroj": [
+                {
+                    "typ": "Digitální objekt",
+                    "název": {
+                        "cs": "Směrnice EU"
+                    }
+                }
+            ],
+            "související-nelegislativní-zdroj": [
+                {
+                    "typ": "Digitální objekt",
+                    "url": "https://ofn.gov.cz/slovníky/draft2/cs/#360-2023"
+                }
+            ],
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidičský-průkaz",
+            "obor-hodnot": "xsd:date"
+        },
+        {
+            "iri": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řídí-vozidlo-s-řidičským-průkazem",
+            "typ": [
+                "Pojem",
+                "Koncept",
+                "Vztah",
+                "Veřejný údaj"
+            ],
+            "název": {
+                "cs": "řídí vozidlo s řidičským průkazem"
+            },
+            "definiční-obor": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řidič-evidovaný-v-registru-řidičů",
+            "obor-hodnot": "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/vozidlo",
+            "nadřazený-vztah": [
+                "https://slovník.gov.cz/příkladový-slovník-z-metodiky-popisu-dat/pojem/řídí-vozidlo"
+            ],
+            "je-sdílen-v-ppdf": false
+        }
+    ]
+}

@@ -1,5 +1,9 @@
 package com.dia.ismdtoolbackend.service;
 
+import com.dia.ismdtoolbackend.controller.dto.RejectedConceptDto;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.ParameterizedTest;
 import com.dia.ismdtoolbackend.exception.EmptyFileException;
 import com.dia.ismdtoolbackend.exception.OntologyUploadConflictingTypesException;
 import com.dia.ismdtoolbackend.exception.OntologyUploadException;
@@ -198,7 +202,7 @@ class OntologyUploadServiceImplTest {
     void testUploadFromFile_WithOntologyIRI() throws Exception {
         String userId = "user123";
         String ontologyIRI = "http://example.org/test-ontology";
-        byte[] fileContent = String.format("@prefix owl: <http://www.w3.org/2002/07/owl#> . <%s> a owl:Ontology .", ontologyIRI).getBytes();
+        byte[] fileContent = String.format("@prefix owl: <http://www.w3.org/2002/07/owl#> . <%s> a owl:Ontology, <http://www.w3.org/2004/02/skos/core#ConceptScheme>, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> .", ontologyIRI).getBytes();
 
         when(multipartFile.getBytes()).thenReturn(fileContent);
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
@@ -230,7 +234,7 @@ class OntologyUploadServiceImplTest {
     void upload_runsValidationOnTheInjectedExecutor_notTheCommonPool() throws Exception {
         String ontologyIRI = "http://example.org/test-ontology";
         when(multipartFile.getBytes()).thenReturn(String.format(
-                "@prefix owl: <http://www.w3.org/2002/07/owl#> . <%s> a owl:Ontology .", ontologyIRI).getBytes());
+                "@prefix owl: <http://www.w3.org/2002/07/owl#> . <%s> a owl:Ontology, <http://www.w3.org/2004/02/skos/core#ConceptScheme>, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> .", ontologyIRI).getBytes());
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
 
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
@@ -316,9 +320,9 @@ class OntologyUploadServiceImplTest {
         // dropped by the concept-type guard before the ownership check under test is reached.
         String ttl = String.format(
                 "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
-                        + " <%s> a owl:Ontology ."
-                        + " <%s> a <%s>, owl:Class ."
-                        + " <%s> a <%s>, owl:Class .",
+                        + " <%s> a owl:Ontology, <http://www.w3.org/2004/02/skos/core#ConceptScheme>, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> ."
+                        + " <%s> a <%s>, <http://www.w3.org/2004/02/skos/core#Concept>, owl:Class ."
+                        + " <%s> a <%s>, <http://www.w3.org/2004/02/skos/core#Concept>, owl:Class .",
                 ontologyIRI, ownedConcept, pojem, alienConcept, pojem);
 
         when(multipartFile.getBytes()).thenReturn(ttl.getBytes());
@@ -369,9 +373,9 @@ class OntologyUploadServiceImplTest {
     private byte[] twoMissingInSchemeTtl() {
         return String.format(
                 "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
-                        + " <%s> a owl:Ontology ."
-                        + " <%s> a <%s>, owl:Class ."
-                        + " <%s> a <%s>, owl:Class .",
+                        + " <%s> a owl:Ontology, <http://www.w3.org/2004/02/skos/core#ConceptScheme>, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> ."
+                        + " <%s> a <%s>, <http://www.w3.org/2004/02/skos/core#Concept>, owl:Class ."
+                        + " <%s> a <%s>, <http://www.w3.org/2004/02/skos/core#Concept>, owl:Class .",
                 DECISION_ONTOLOGY, DECISION_C1, DECISION_POJEM, DECISION_C2, DECISION_POJEM
         ).getBytes();
     }
@@ -486,7 +490,7 @@ class OntologyUploadServiceImplTest {
         byte[] ttl = String.format(
                 "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
                         + " @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> ."
-                        + " <%s> a owl:Ontology ."
+                        + " <%s> a owl:Ontology, <http://www.w3.org/2004/02/skos/core#ConceptScheme>, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> ."
                         + " <%s> a <%s> ; rdfs:subClassOf <%s> ."
                         + " <%s> a <%s> .",
                 DECISION_ONTOLOGY, DECISION_C1, DECISION_POJEM, DECISION_C2, DECISION_C2, DECISION_POJEM
@@ -534,12 +538,12 @@ class OntologyUploadServiceImplTest {
     // row (which downstream consumers read as "absent" — a VZTAH imported that way once
     // vanished from the diagram projector).
 
-    /** An OFN concept carrying the role tag but no matching OWL type — the null-type case. */
+    /** A concept carrying an ISMD role marker instead of its OWL kind. */
     private byte[] ofnRoleTaggedTtl(String roleTag) {
         return String.format(
                 "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
                         + " @prefix skos: <http://www.w3.org/2004/02/skos/core#> ."
-                        + " <%s> a owl:Ontology ."
+                        + " <%s> a owl:Ontology, <http://www.w3.org/2004/02/skos/core#ConceptScheme>, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> ."
                         + " <%s> a <%s>, <%s> ; skos:inScheme <%s> .",
                 DECISION_ONTOLOGY, DECISION_C1, DECISION_POJEM, roleTag, DECISION_ONTOLOGY
         ).getBytes();
@@ -552,40 +556,83 @@ class OntologyUploadServiceImplTest {
         return captor.getValue();
     }
 
-    @Test
-    void testUploadFromFile_ofnRoleTagVztah_resolvesToVztahWithoutOwlType() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"vztah", "vlastnost", "třída"})
+    void testUploadFromFile_roleMarkerInsteadOfOwlKind_isRejected(String marker) throws Exception {
         String userId = "user123";
         when(multipartFile.getBytes()).thenReturn(
-                ofnRoleTaggedTtl("https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/vztah"));
+                ofnRoleTaggedTtl("https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/" + marker));
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
-        stubPersistenceForDecisionFlow(userId, true);
+        stubPersistenceForDecisionFlow(userId, false);
 
-        ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
+        OntologyUploadResultDto result =
+                ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
 
-        List<ConceptMetadataEntity> saved = capturedSavedConcepts();
-        assertThat(saved).as("The role-tagged concept must be owned").hasSize(1);
-        assertThat(saved.get(0).getConceptType())
-                .as("An OFN vztah role tag must resolve even with no owl:ObjectProperty")
-                .isEqualTo(ConceptType.VZTAH);
+        assertThat(result.rejectedConcepts())
+                .as("A role marker is no OWL kind and no OFN type")
+                .extracting(RejectedConceptDto::iri)
+                .containsExactly(DECISION_C1);
     }
 
-    @Test
-    void testUploadFromFile_ofnRoleTagVlastnost_resolvesToVlastnostWithoutOwlType() throws Exception {
+    @ParameterizedTest
+    @CsvSource({"třída, owl:Class", "vlastnost, owl:DatatypeProperty", "vztah, owl:ObjectProperty"})
+    void testUploadFromFile_roleMarkerNextToItsOwlKind_isRejectedAsNonOfn(String marker, String owlKind)
+            throws Exception {
         String userId = "user123";
-        when(multipartFile.getBytes()).thenReturn(
-                ofnRoleTaggedTtl("https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/vlastnost"));
+        when(multipartFile.getBytes()).thenReturn(String.format(
+                "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
+                        + " @prefix skos: <http://www.w3.org/2004/02/skos/core#> ."
+                        + " <%1$s> a owl:Ontology, skos:ConceptScheme, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> ."
+                        + " <%2$s> a <%3$s>, skos:Concept, %4$s, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/%5$s> ;"
+                        + " skos:prefLabel \"C1\"@cs ; skos:inScheme <%1$s> .",
+                DECISION_ONTOLOGY, DECISION_C1, DECISION_POJEM, owlKind, marker).getBytes());
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
-        stubPersistenceForDecisionFlow(userId, true);
+        stubPersistenceForDecisionFlow(userId, false);
 
-        ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
+        OntologyUploadResultDto result =
+                ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
 
-        List<ConceptMetadataEntity> saved = capturedSavedConcepts();
-        assertThat(saved).as("The role-tagged concept must be owned").hasSize(1);
-        assertThat(saved.get(0).getConceptType())
-                .as("An OFN vlastnost role tag must resolve even with no owl:DatatypeProperty")
-                .isEqualTo(ConceptType.VLASTNOST);
+        assertThat(result.rejectedConcepts())
+                .as("ISMD role markers are not OFN types")
+                .singleElement()
+                .satisfies(rejected -> {
+                    assertThat(rejected.iri()).isEqualTo(DECISION_C1);
+                    assertThat(rejected.reason()).contains("není definován v kontextu OFN");
+                });
+    }
+
+    /** A plain OWL resource (no Pojem/Koncept, no inScheme) is reported and pruned, not stored silently. */
+    @Test
+    void testUploadFromFile_owlKindWithoutConceptTypeOrScheme_isRejectedAndPruned() throws Exception {
+        String userId = "user123";
+        when(multipartFile.getBytes()).thenReturn(String.format(
+                "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
+                        + " @prefix skos: <http://www.w3.org/2004/02/skos/core#> ."
+                        + " @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> ."
+                        + " <%1$s> a owl:Ontology, skos:ConceptScheme, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> ."
+                        + " <%2$s> a owl:DatatypeProperty ; rdfs:label \"Jméno\"@cs .",
+                DECISION_ONTOLOGY, DECISION_C1).getBytes());
+        when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
+        when(multipartFile.isEmpty()).thenReturn(false);
+        stubPersistenceForDecisionFlow(userId, false);
+        boolean[] stored = {true};
+        doAnswer(invocation -> {
+            OntModel model = invocation.getArgument(1);
+            stored[0] = model.listStatements(model.createResource(DECISION_C1), null,
+                    (org.apache.jena.rdf.model.RDFNode) null).hasNext();
+            return null;
+        }).when(jenaTDB2Repository).putOntologyModel(eq(DECISION_ONTOLOGY), any(OntModel.class));
+
+        OntologyUploadResultDto result =
+                ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
+
+        assertThat(result.rejectedConcepts()).singleElement().satisfies(rejected -> {
+            assertThat(rejected.iri()).isEqualTo(DECISION_C1);
+            assertThat(rejected.reason()).contains("chybí typ Pojem/Koncept");
+        });
+        assertThat(stored[0]).as("nothing references it, so it is pruned").isFalse();
     }
 
     @Test
@@ -596,10 +643,10 @@ class OntologyUploadServiceImplTest {
         String ttl = String.format(
                 "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
                         + " @prefix skos: <http://www.w3.org/2004/02/skos/core#> ."
-                        + " <%s> a owl:Ontology ."
+                        + " <%s> a owl:Ontology, <http://www.w3.org/2004/02/skos/core#ConceptScheme>, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> ."
                         + " <%s> a <%s>, owl:ObjectProperty, owl:DatatypeProperty ;"
                         + " skos:inScheme <%s> ."
-                        + " <%s> a <%s>, owl:Class ; skos:inScheme <%s> .",
+                        + " <%s> a <%s>, <http://www.w3.org/2004/02/skos/core#Concept>, owl:Class ; skos:inScheme <%s> .",
                 DECISION_ONTOLOGY,
                 DECISION_C1, DECISION_POJEM, DECISION_ONTOLOGY,
                 DECISION_C2, DECISION_POJEM, DECISION_ONTOLOGY);
@@ -636,62 +683,17 @@ class OntologyUploadServiceImplTest {
                 .isEqualTo("conflicting types: VLASTNOST + VZTAH");
     }
 
-    /**
-     * The contradiction must be caught in the OFN role-tag form too, not just the OWL one —
-     * otherwise the guard is sidestepped by whichever vocabulary the file happens to use.
-     */
-    @Test
-    void resolveConceptType_bothOfnRoleTags_isRejected() {
-        OntModel model = org.apache.jena.rdf.model.ModelFactory.createOntologyModel();
-        org.apache.jena.rdf.model.Resource both = model.createResource(DECISION_C1);
-        both.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(DECISION_POJEM));
-        both.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(
-                "https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/vlastnost"));
-        both.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(
-                "https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/vztah"));
-
-        ConceptType resolved = OntologyUploadServiceFixture.resolveConceptType(both);
-
-        assertThat(resolved)
-                .as("A concept carrying both the vlastnost and vztah OFN role tags "
-                + "declares two roles and must be dropped")
-                .isNull();
-    }
-
-    /**
-     * The OFN role tag and its OWL equivalent describe the SAME role — that is agreement,
-     * not a contradiction, and must not trip the multi-role guard.
-     */
-    @Test
-    void resolveConceptType_ofnTagAndMatchingOwlType_isNotAContradiction() {
-        OntModel model = org.apache.jena.rdf.model.ModelFactory.createOntologyModel();
-        org.apache.jena.rdf.model.Resource rel = model.createResource(DECISION_C1);
-        rel.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(DECISION_POJEM));
-        rel.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(
-                "https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/vztah"));
-        rel.addProperty(org.apache.jena.vocabulary.RDF.type, org.apache.jena.vocabulary.OWL2.ObjectProperty);
-
-        ConceptType resolved = OntologyUploadServiceFixture.resolveConceptType(rel);
-
-        assertThat(resolved)
-                .as("slovníky:vztah + owl:ObjectProperty is one role stated twice — the normal shape "
-                        + "after OFNTypeNormalizer runs, and it must resolve normally")
-                .isEqualTo(ConceptType.VZTAH);
-    }
-
     @Test
     void testUploadFromFile_unrecognizedType_conceptDroppedNotPersistedAsNull() throws Exception {
         String userId = "user123";
         // A concept already carrying skos:inScheme (so the decision gate leaves it alone) but no
-        // class/property/relationship signal. It reaches extraction untyped only because
-        // OFNTypeNormalizer.ensureConceptsHaveSkosType stamps skos:Concept on slovníky:pojem
-        // resources — this one is NOT a slovníky:pojem, so nothing types it.
+        // class/property/relationship signal: it is rejected, never saved untyped.
         String ttl = String.format(
                 "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
                         + " @prefix skos: <http://www.w3.org/2004/02/skos/core#> ."
-                        + " <%s> a owl:Ontology ."
+                        + " <%s> a owl:Ontology, <http://www.w3.org/2004/02/skos/core#ConceptScheme>, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> ."
                         + " <%s> a <%s> ; skos:inScheme <%s> ."
-                        + " <%s> a <%s>, owl:Class ; skos:inScheme <%s> .",
+                        + " <%s> a <%s>, <http://www.w3.org/2004/02/skos/core#Concept>, owl:Class ; skos:inScheme <%s> .",
                 DECISION_ONTOLOGY,
                 DECISION_C1, DECISION_POJEM, DECISION_ONTOLOGY,
                 DECISION_C2, DECISION_POJEM, DECISION_ONTOLOGY);
@@ -713,10 +715,8 @@ class OntologyUploadServiceImplTest {
     }
 
     /**
-     * The guard's own unit: extraction must never emit a null-typed row even when the
-     * normalizer has not typed the resource. Drives the role resolver directly because
-     * the upload normalizer stamps {@code skos:Concept} on every {@code slovníky:pojem},
-     * which masks the untyped case in a full-pipeline test.
+     * The guard's own unit: extraction must never emit a null-typed row for a resource with no
+     * OWL kind. Drives the role resolver directly.
      */
     @Test
     void resolveConceptType_noRecognizableType_returnsNullSoCallerDrops() {
@@ -733,9 +733,8 @@ class OntologyUploadServiceImplTest {
     }
 
     /**
-     * skos:Concept is the base marker (OFN koncept), not a role. OFNTypeNormalizer stamps it on
-     * every slovníky:pojem, so treating it as TRIDA would silently type every otherwise-untyped
-     * concept as a class — and make the untyped guard unreachable.
+     * skos:Concept is the base type (OFN koncept), not a role. Treating it as TRIDA would silently
+     * type every otherwise-untyped concept as a class — and make the untyped guard unreachable.
      */
     @Test
     void resolveConceptType_skosConceptAlone_isNotATrida() {
@@ -820,9 +819,9 @@ class OntologyUploadServiceImplTest {
                 @prefix owl: <http://www.w3.org/2002/07/owl#> .
                 @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
                 @prefix ofn: <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/> .
-                <%1$s> a owl:Ontology, skos:ConceptScheme .
-                <%2$s> a ofn:pojem, owl:Class ; skos:inScheme <%1$s> .
-                <%3$s> a ofn:pojem, owl:Class ; skos:inScheme <%1$s> .
+                <%1$s> a owl:Ontology, skos:ConceptScheme, ofn:slovník .
+                <%2$s> a ofn:pojem, skos:Concept, owl:Class ; skos:inScheme <%1$s> .
+                <%3$s> a ofn:pojem, skos:Concept, owl:Class ; skos:inScheme <%1$s> .
                 """.formatted(graphName, published, draft)).getBytes());
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(publishedResourceUtil.checkPublishedResourcesInNKD(any(), any())).thenReturn(List.of(published));
@@ -852,8 +851,8 @@ class OntologyUploadServiceImplTest {
                 @prefix owl: <http://www.w3.org/2002/07/owl#> .
                 @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
                 @prefix ofn: <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/> .
-                <%1$s> a owl:Ontology, skos:ConceptScheme .
-                <%1$s/pojem/a> a ofn:pojem, owl:Class ; skos:inScheme <%1$s> .
+                <%1$s> a owl:Ontology, skos:ConceptScheme, ofn:slovník .
+                <%1$s/pojem/a> a ofn:pojem, skos:Concept, owl:Class ; skos:prefLabel "A"@cs ; skos:inScheme <%1$s> .
                 """.formatted(graphName)).getBytes());
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(publishedResourceUtil.checkPublishedResourcesInNKD(any(), any())).thenReturn(List.of(graphName));
@@ -886,7 +885,7 @@ class OntologyUploadServiceImplTest {
     void testUploadFromFile_RollbackOnTDB2Failure() throws IOException {
         String ontologyIRI = "http://example.org/test-ontology";
         String userId = "user123";
-        byte[] fileContent = String.format("@prefix owl: <http://www.w3.org/2002/07/owl#> . <%s> a owl:Ontology .", ontologyIRI).getBytes();
+        byte[] fileContent = String.format("@prefix owl: <http://www.w3.org/2002/07/owl#> . <%s> a owl:Ontology, <http://www.w3.org/2004/02/skos/core#ConceptScheme>, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> .", ontologyIRI).getBytes();
 
         when(multipartFile.getBytes()).thenReturn(fileContent);
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
@@ -913,7 +912,7 @@ class OntologyUploadServiceImplTest {
     void testUploadFromFile_RollbackOnConceptMetadataExtractionFailure() throws IOException {
         String ontologyIRI = "http://example.org/test-ontology";
         String userId = "user123";
-        byte[] fileContent = String.format("@prefix owl: <http://www.w3.org/2002/07/owl#> . <%s> a owl:Ontology .", ontologyIRI).getBytes();
+        byte[] fileContent = String.format("@prefix owl: <http://www.w3.org/2002/07/owl#> . <%s> a owl:Ontology, <http://www.w3.org/2004/02/skos/core#ConceptScheme>, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> .", ontologyIRI).getBytes();
 
         when(multipartFile.getBytes()).thenReturn(fileContent);
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");

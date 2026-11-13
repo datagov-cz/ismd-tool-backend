@@ -48,7 +48,7 @@ class TurtleFilterUtilTest {
         @DisplayName("a subject with at least one domain type, with all its statements")
         void subjectWithDomainTypeKept() {
             String input = """
-                    pojem:osoba a owl:Class, skos:Concept, slovníky:pojem, slovníky:třída ;
+                    pojem:osoba a owl:Class, skos:Concept, slovníky:pojem ;
                         skos:prefLabel "Osoba"@cs .
                     <https://data.mvcr.gov.cz/zdroj/číselníky/typy> a l111:číselník .
                     """;

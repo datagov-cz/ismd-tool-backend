@@ -5,6 +5,7 @@ import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.vocabulary.OWL;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
 import org.apache.jena.vocabulary.SKOS;
@@ -15,9 +16,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OFN_NAMESPACE;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TRIDA;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VLASTNOST;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VZTAH;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -50,7 +48,7 @@ class OntologyDetailExtractorMemberIndexTest {
     @Test
     void selfReferencingRelationshipListedOnce() {
         Model model = ontologyWithClasses();
-        Resource rel = member(model, ONTOLOGY_IRI + "/pojem/zná", VZTAH, "zná");
+        Resource rel = member(model, ONTOLOGY_IRI + "/pojem/zná", OWL.ObjectProperty, "zná");
         rel.addProperty(RDFS.domain, model.createResource(CLASS_IRI));
         rel.addProperty(RDFS.range, model.createResource(CLASS_IRI));
 
@@ -66,7 +64,7 @@ class OntologyDetailExtractorMemberIndexTest {
     @Test
     void relationshipAttachesToDomainAndRange() {
         Model model = ontologyWithClasses();
-        Resource rel = member(model, ONTOLOGY_IRI + "/pojem/bydlí-v", VZTAH, "bydlí v");
+        Resource rel = member(model, ONTOLOGY_IRI + "/pojem/bydlí-v", OWL.ObjectProperty, "bydlí v");
         rel.addProperty(RDFS.domain, model.createResource(CLASS_IRI));
         rel.addProperty(RDFS.range, model.createResource(OTHER_CLASS_IRI));
 
@@ -84,10 +82,27 @@ class OntologyDetailExtractorMemberIndexTest {
      * A vlastnost attaches by domain only. Its {@code obor-hodnot} is a datatype, not a class,
      * so it must never surface as a member of whatever its range points at.
      */
+    /** NKD members carry only the OWL kind: they attach the same as ISMD ones. */
+    @Test
+    void membersAttachByOwlKindWithoutAMarker() {
+        Model model = ontologyWithClasses();
+        Resource prop = model.createResource(ONTOLOGY_IRI + "/pojem/věk").addProperty(RDF.type, OWL.DatatypeProperty)
+                .addProperty(SKOS.prefLabel, "věk", "cs").addProperty(SKOS.inScheme, model.createResource(ONTOLOGY_IRI));
+        prop.addProperty(RDFS.domain, model.createResource(CLASS_IRI));
+        Resource rel = model.createResource(ONTOLOGY_IRI + "/pojem/bydlí-v").addProperty(RDF.type, OWL.ObjectProperty)
+                .addProperty(SKOS.prefLabel, "bydlí v", "cs").addProperty(SKOS.inScheme, model.createResource(ONTOLOGY_IRI));
+        rel.addProperty(RDFS.domain, model.createResource(CLASS_IRI));
+
+        OntologyDetailModel.ConceptDetailModel klass = classDetail(model);
+
+        assertThat(klass.getConceptProperties()).extracting("iri").containsExactly(ONTOLOGY_IRI + "/pojem/věk");
+        assertThat(klass.getConceptRelationships()).extracting("iri").containsExactly(ONTOLOGY_IRI + "/pojem/bydlí-v");
+    }
+
     @Test
     void propertyAttachesByDomainOnly() {
         Model model = ontologyWithClasses();
-        Resource prop = member(model, ONTOLOGY_IRI + "/pojem/věk", VLASTNOST, "věk");
+        Resource prop = member(model, ONTOLOGY_IRI + "/pojem/věk", OWL.DatatypeProperty, "věk");
         prop.addProperty(RDFS.domain, model.createResource(CLASS_IRI));
         prop.addProperty(RDFS.range, model.createResource(OTHER_CLASS_IRI));
 
@@ -104,9 +119,9 @@ class OntologyDetailExtractorMemberIndexTest {
     @Test
     void propertiesAndRelationshipsDoNotCrossBuckets() {
         Model model = ontologyWithClasses();
-        member(model, ONTOLOGY_IRI + "/pojem/věk", VLASTNOST, "věk")
+        member(model, ONTOLOGY_IRI + "/pojem/věk", OWL.DatatypeProperty, "věk")
                 .addProperty(RDFS.domain, model.createResource(CLASS_IRI));
-        member(model, ONTOLOGY_IRI + "/pojem/bydlí-v", VZTAH, "bydlí v")
+        member(model, ONTOLOGY_IRI + "/pojem/bydlí-v", OWL.ObjectProperty, "bydlí v")
                 .addProperty(RDFS.domain, model.createResource(CLASS_IRI));
 
         OntologyDetailModel.ConceptDetailModel klass = classDetail(model);
@@ -121,7 +136,7 @@ class OntologyDetailExtractorMemberIndexTest {
     @Test
     void memberWithoutDomainIsSkipped() {
         Model model = ontologyWithClasses();
-        member(model, ONTOLOGY_IRI + "/pojem/bez-oboru", VLASTNOST, "bez oboru");
+        member(model, ONTOLOGY_IRI + "/pojem/bez-oboru", OWL.DatatypeProperty, "bez oboru");
 
         OntologyDetailModel.ConceptDetailModel klass = classDetail(model);
 
@@ -153,16 +168,16 @@ class OntologyDetailExtractorMemberIndexTest {
 
         for (String iri : new String[]{CLASS_IRI, OTHER_CLASS_IRI}) {
             Resource klass = model.createResource(iri);
-            klass.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + TRIDA));
+            klass.addProperty(RDF.type, OWL.Class);
             klass.addProperty(SKOS.prefLabel, iri.substring(iri.lastIndexOf('/') + 1), "cs");
             klass.addProperty(SKOS.inScheme, ontology);
         }
         return model;
     }
 
-    private static Resource member(Model model, String iri, String ofnType, String label) {
+    private static Resource member(Model model, String iri, Resource owlKind, String label) {
         Resource r = model.createResource(iri);
-        r.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + ofnType));
+        r.addProperty(RDF.type, owlKind);
         r.addProperty(SKOS.prefLabel, label, "cs");
         r.addProperty(SKOS.inScheme, model.createResource(ONTOLOGY_IRI));
         return r;

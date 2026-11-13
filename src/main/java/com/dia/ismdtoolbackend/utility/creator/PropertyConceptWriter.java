@@ -43,7 +43,6 @@ final class PropertyConceptWriter {
         propertyResource.addProperty(RDF.type, SKOS.Concept);
         propertyResource.addProperty(RDF.type, OWL2.DatatypeProperty);
         propertyResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + POJEM));
-        propertyResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + VLASTNOST));
 
         writers.addCommonMetadata(propertyResource, propModel);
 
@@ -79,7 +78,6 @@ final class PropertyConceptWriter {
 
     void addPropertyGovernanceMetadata(Resource propertyResource, PropertyConceptModel propModel) {
         writers.governance().addSharedGovernanceMetadata(propertyResource, propModel.getAgendaCode(), propModel.getAgendaSystemCode(),
-                propModel.getSharingMethod(), propModel.getAcquisitionMethod(), propModel.getContentType(),
-                propModel.getPrivacyProvisions());
+                propModel.getSharingMethod(), propModel.getAcquisitionMethod(), propModel.getContentType());
     }
 }

@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.utility.creator;
 
+import com.dia.ismdtoolbackend.ofn.OfnIris;
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import lombok.extern.slf4j.Slf4j;
@@ -43,13 +44,17 @@ final class ConceptDataClassificationWriter {
             }
         }
 
+        if (!Boolean.FALSE.equals(isPublic) && !validProvisions.isEmpty()) {
+            // The OFN provision belongs to a Neveřejný údaj only.
+            log.warn("Privacy provisions on {} are not written: the concept is not non-public", resource.getURI());
+        }
         if (Boolean.TRUE.equals(isPublic)) {
             if (!hasNonEmptyProvisions) {
                 resource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ));
             }
         } else if (Boolean.FALSE.equals(isPublic) && !validProvisions.isEmpty()) {
                 resource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ));
-                Property provisionProperty = ontModel.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
+                Property provisionProperty = ontModel.createProperty(OfnIris.USTANOVENI_NEVEREJNOST);
                 for (String transformedProvision : validProvisions) {
                     resource.addProperty(provisionProperty, ontModel.createResource(transformedProvision));
                 }

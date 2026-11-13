@@ -1,11 +1,13 @@
 package com.dia.ismdtoolbackend.utility.creator;
 
 import com.dia.ismdtoolbackend.models.concept.*;
+import com.dia.ismdtoolbackend.ofn.OfnIris;
 import com.dia.ismdtoolbackend.utility.URIGenerator;
 import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.rdf.model.*;
+import org.apache.jena.vocabulary.OWL2;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.SKOS;
 
@@ -39,10 +41,9 @@ final class ClassConceptWriter {
 
         classResource.addProperty(RDF.type, SKOS.Concept);
         classResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + POJEM));
-        classResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + TRIDA));
+        classResource.addProperty(RDF.type, OWL2.Class);
 
         addSpecificClassType(classResource, classModel.getType());
-
 
         writers.addCommonMetadata(classResource, classModel);
 
@@ -57,17 +58,16 @@ final class ClassConceptWriter {
             return;
         }
         if (type.contains("subjekt")) {
-            classResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + TSP));
+            classResource.addProperty(RDF.type, ontModel.getResource(OfnIris.TYP_SUBJEKTU_PRAVA));
         } else if (type.contains("objekt")) {
-            classResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + TOP));
+            classResource.addProperty(RDF.type, ontModel.getResource(OfnIris.TYP_OBJEKTU_PRAVA));
         }
     }
 
     void addClassSpecificMetadata(Resource classResource, ClassConceptModel classModel) {
         writers.governance().addIsInPPDF(classResource, classModel.getIsInPPDF());
         writers.governance().addSharedGovernanceMetadata(classResource, classModel.getAgendaCode(), classModel.getAgendaSystemCode(),
-                classModel.getSharingMethod(), classModel.getAcquisitionMethod(), classModel.getContentType(),
-                classModel.getPrivacyProvisions());
+                classModel.getSharingMethod(), classModel.getAcquisitionMethod(), classModel.getContentType());
         writers.classification().addDataClassification(classResource, classModel.getIsPublic(), classModel.getPrivacyProvisions());
         writers.relations().addBroaderConcept(classResource, classModel);
         writers.codeLists().addCodeListDataset(classResource, classModel.getCodeListIri(), classModel.getCodeListDataset());

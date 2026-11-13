@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.repository;
 
+import com.dia.ismdtoolbackend.ofn.OfnIris;
+
 import com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto;
 import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
@@ -22,9 +24,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OFN_NAMESPACE;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VLASTNOST;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VZTAH;
 
 /** Concept-level reads against Fuseki. Reached through {@link JenaTDB2Repository}. */
 @Slf4j
@@ -145,8 +144,8 @@ final class FusekiConceptQueries {
                     pss.append("} FILTER(?g != ?ownGraph) ");
                     pss.append("} GROUP BY ?concept ?kind");
                     pss.setIri("ownGraph", ownGraphName);
-                    pss.setIri("vlastnost", OFN_NAMESPACE + VLASTNOST);
-                    pss.setIri("vztah", OFN_NAMESPACE + VZTAH);
+                    pss.setIri("vlastnost", OfnIris.OWL_DATATYPE_PROPERTY);
+                    pss.setIri("vztah", OfnIris.OWL_OBJECT_PROPERTY);
 
                     Map<String, Integer> properties = new HashMap<>();
                     Map<String, Integer> relationships = new HashMap<>();
@@ -158,7 +157,7 @@ final class FusekiConceptQueries {
                             QuerySolution row = rs.next();
                             String concept = row.getResource("concept").getURI();
                             int n = row.getLiteral("n").getInt();
-                            if ((OFN_NAMESPACE + VLASTNOST).equals(row.getResource("kind").getURI())) {
+                            if (OfnIris.OWL_DATATYPE_PROPERTY.equals(row.getResource("kind").getURI())) {
                                 properties.merge(concept, n, Integer::sum);
                             } else {
                                 relationships.merge(concept, n, Integer::sum);

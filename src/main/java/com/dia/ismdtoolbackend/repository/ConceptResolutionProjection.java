@@ -16,8 +16,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OFN_NAMESPACE;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VZTAH;
 
 /** Projects a concept-resolution CONSTRUCT result into {@link ResolvedConceptDto}s. */
 public final class ConceptResolutionProjection {
@@ -45,7 +43,7 @@ public final class ConceptResolutionProjection {
         Property rdfType = model.createProperty("http://www.w3.org/1999/02/22-rdf-syntax-ns#type");
         Property rdfsDomain = model.createProperty("http://www.w3.org/2000/01/rdf-schema#domain");
         Property rdfsRange = model.createProperty("http://www.w3.org/2000/01/rdf-schema#range");
-        Set<String> relationshipTypeIris = Set.of(OFN_NAMESPACE + VZTAH, OWL_OBJECT_PROPERTY);
+        Set<String> relationshipTypeIris = Set.of(OWL_OBJECT_PROPERTY);
 
         Map<String, ResolvedConceptDto> out = new HashMap<>();
         for (String conceptIri : requestedIris) {
@@ -100,10 +98,8 @@ public final class ConceptResolutionProjection {
         Property rdfType = model.createProperty("http://www.w3.org/1999/02/22-rdf-syntax-ns#type");
         Property rdfsDomain = model.createProperty("http://www.w3.org/2000/01/rdf-schema#domain");
         Property rdfsRange = model.createProperty("http://www.w3.org/2000/01/rdf-schema#range");
-        // A relationship is typed by the OFN role IRI (…/vztah) in ISMD-authored
-        // graphs, but published NKD vocabularies type relationships only as
-        // owl:ObjectProperty. Accept either — a hit on one is enough.
-        Set<String> relationshipTypeIris = Set.of(OFN_NAMESPACE + VZTAH, OWL_OBJECT_PROPERTY);
+        // A relationship is an owl:ObjectProperty, in ISMD and NKD data alike.
+        Set<String> relationshipTypeIris = Set.of(OWL_OBJECT_PROPERTY);
 
         Map<String, ResolvedConceptDto> out = new HashMap<>();
         StmtIterator inSchemeStmts = model.listStatements(null, inScheme, (RDFNode) null);

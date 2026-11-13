@@ -68,13 +68,13 @@ class NkdSearchProviderTest {
         assertThat(dto.getOntologyIri()).isEqualTo("https://example.org/ontology/1");
         assertThat(dto.getType()).isEqualTo(SearchType.CONCEPT);
         // Unfiltered search (type=CONCEPT → roleFilter null): conceptType is derived
-        // from the projected role marker, not left null.
+        // from the projected OWL kind, not left null.
         assertThat(dto.getConceptType()).isEqualTo(com.dia.ismdtoolbackend.enums.ConceptType.TRIDA);
         assertThat(dto.getSource()).isEqualTo(SearchSource.NKD);
     }
 
     @Test
-    void search_conceptType_derivedPerRoleMarker() {
+    void search_conceptType_derivedPerOwlKind() {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
 
         Map<String, String> trida = conceptRow("https://example.org/c/trida");

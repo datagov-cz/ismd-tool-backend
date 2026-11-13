@@ -42,7 +42,6 @@ final class RelationshipConceptWriter {
         relationshipResource.addProperty(RDF.type, SKOS.Concept);
         relationshipResource.addProperty(RDF.type, OWL2.ObjectProperty);
         relationshipResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + POJEM));
-        relationshipResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + VZTAH));
 
         writers.addCommonMetadata(relationshipResource, relModel);
 
@@ -68,7 +67,6 @@ final class RelationshipConceptWriter {
 
     void addRelationshipGovernanceMetadata(Resource relationshipResource, RelationshipConceptModel relModel) {
         writers.governance().addSharedGovernanceMetadata(relationshipResource, relModel.getAgendaCode(), relModel.getAgendaSystemCode(),
-                relModel.getSharingMethod(), relModel.getAcquisitionMethod(), relModel.getContentType(),
-                relModel.getPrivacyProvisions());
+                relModel.getSharingMethod(), relModel.getAcquisitionMethod(), relModel.getContentType());
     }
 }

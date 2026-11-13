@@ -2,8 +2,12 @@ package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
+import com.dia.ismdtoolbackend.exception.OfnConformanceException;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
 import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
+import com.dia.ismdtoolbackend.ofn.ConformanceIssue;
+import com.dia.ismdtoolbackend.ofn.OfnIris;
+import com.dia.ismdtoolbackend.ofn.OfnWriteGate;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
@@ -11,6 +15,10 @@ import com.dia.ismdtoolbackend.utility.editor.OntologyEditor;
 import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
+import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.vocabulary.RDF;
+import org.apache.jena.vocabulary.RDFS;
+import org.apache.jena.vocabulary.SKOS;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -34,6 +42,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -50,6 +59,7 @@ class OntologyEditOperationTest {
     private OntologyEditor ontologyEditor;
     private MetadataTouchService metadataTouchService;
 
+    private OfnWriteGate ofnWriteGate;
     private OntologyEditOperation operation;
 
     @Captor private ArgumentCaptor<OntologyMetadataEntity> ontologyCaptor;
@@ -60,7 +70,9 @@ class OntologyEditOperationTest {
 
     @BeforeEach
     void setUp() {
-        OntologyServiceFixture fixture = new OntologyServiceFixture();
+        // The editor is a mock, so the gate is too; OfnSafetyNet.RealGate runs the real one.
+        ofnWriteGate = mock(OfnWriteGate.class);
+        OntologyServiceFixture fixture = new OntologyServiceFixture().ofnWriteGate(ofnWriteGate);
         ontologyMetadataRepository = fixture.ontologyMetadataRepository();
         conceptMetadataRepository = fixture.conceptMetadataRepository();
         jenaTDB2Repository = fixture.jenaTDB2Repository();
@@ -140,6 +152,90 @@ class OntologyEditOperationTest {
                     .isInstanceOf(OntologyException.class)
                     .hasMessageContaining("Nepodařilo se uložit změny");
             verify(ontologyMetadataRepository, never()).save(any());
+        }
+    }
+
+    @Nested
+    class OfnSafetyNet {
+
+        @Test
+        void checksTheEditedVocabularyBeforeSavingIt() {
+            givenEditResult(GRAPH, false);
+
+            operation.editOntology(ONTOLOGY_ID, editModel);
+
+            var order = org.mockito.Mockito.inOrder(ofnWriteGate, jenaTDB2Repository);
+            order.verify(ofnWriteGate).requireWritableVocabulary(graph, GRAPH);
+            order.verify(jenaTDB2Repository).saveOntologyModel(GRAPH, graph);
+        }
+
+        @Test
+        void checksARenamedVocabularyUnderItsNewIri() {
+            givenEditResult(NEW_GRAPH, true);
+            when(conceptMetadataRepository.findByOntologyMetadataId(ONTOLOGY_ID)).thenReturn(List.of());
+            when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).then(returnsFirstArg());
+
+            operation.editOntology(ONTOLOGY_ID, editModel);
+
+            verify(ofnWriteGate).requireWritableVocabulary(graph, NEW_GRAPH);
+        }
+
+        @Test
+        void aRefusedEditSavesAndMovesNothing() {
+            givenEditResult(NEW_GRAPH, true);
+            OfnConformanceException refusal = new OfnConformanceException(OfnConformanceException.Context.WRITE,
+                    NEW_GRAPH, List.of(new ConformanceIssue(ConformanceIssue.Kind.VOCABULARY_INVALID, NEW_GRAPH,
+                    "", "typ")));
+            doThrow(refusal).when(ofnWriteGate).requireWritableVocabulary(any(Model.class), anyString());
+
+            assertThatThrownBy(() -> operation.editOntology(ONTOLOGY_ID, editModel)).isSameAs(refusal);
+            verify(jenaTDB2Repository, never()).saveOntologyModel(anyString(), any(Model.class));
+            verify(jenaTDB2Repository, never()).deleteGraph(anyString());
+            verify(ontologyMetadataRepository, never()).save(any());
+            verify(metadataTouchService, never()).touchOntology(any());
+        }
+
+        /** The real gate on an OFN-shaped vocabulary: what the edit leaves in the model decides. */
+        @Nested
+        class RealGate {
+
+            private Resource vocabulary;
+
+            @BeforeEach
+            void useTheRealGateOnAnOfnVocabulary() {
+                operation = new OntologyServiceFixture()
+                        .ontologyMetadataRepository(ontologyMetadataRepository)
+                        .conceptMetadataRepository(conceptMetadataRepository)
+                        .jenaTDB2Repository(jenaTDB2Repository)
+                        .ontologyEditor(ontologyEditor)
+                        .metadataTouchService(metadataTouchService)
+                        .editOperation();
+                graph = ModelFactory.createDefaultModel();
+                vocabulary = graph.createResource(GRAPH)
+                        .addProperty(RDF.type, graph.createResource(OfnIris.SLOVNIK))
+                        .addProperty(RDF.type, graph.createResource(OfnIris.CONCEPT_SCHEME))
+                        .addProperty(RDF.type, graph.createResource(OfnIris.ONTOLOGY))
+                        .addProperty(SKOS.prefLabel, "Slovník", "cs");
+            }
+
+            @Test
+            void savesAnOfnVocabulary() {
+                givenEditResult(GRAPH, false);
+
+                operation.editOntology(ONTOLOGY_ID, editModel);
+
+                verify(jenaTDB2Repository).saveOntologyModel(GRAPH, graph);
+            }
+
+            @Test
+            void refusesAVocabularyWithATripleOutsideOfn() {
+                vocabulary.addProperty(RDFS.label, "x");
+                givenEditResult(GRAPH, false);
+
+                assertThatThrownBy(() -> operation.editOntology(ONTOLOGY_ID, editModel))
+                        .isInstanceOf(OfnConformanceException.class);
+                verify(jenaTDB2Repository, never()).saveOntologyModel(anyString(), any(Model.class));
+            }
         }
     }
 

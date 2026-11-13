@@ -35,7 +35,7 @@ public class ConceptPropertiesModel {
     /**
      * Codelist-resolved view of {@link #range}. Falls back to the {@code Literal}
      * entry when the underlying range is null/empty/unrecognised — matches the
-     * write-path default in {@code ConceptCreator.addRangeProperty}.
+     * write-path default in {@code PropertyDataType.rangeIri}.
      */
     private DataTypeDto rangeResolved;
 }

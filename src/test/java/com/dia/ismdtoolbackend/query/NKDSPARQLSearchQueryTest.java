@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.query;
 
+
 import com.dia.ismdtoolbackend.enums.RelationType;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import org.junit.jupiter.api.Test;
@@ -304,7 +305,7 @@ class NKDSPARQLSearchQueryTest {
     }
 
     @Test
-    void buildConceptSearchQuery_projectsRoleMarkers() {
+    void buildConceptSearchQuery_projectsOwlKinds() {
         String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("test", "cs", 10, 0, null, null, null);
 
         assertThat(query).contains("?roleTrida");
@@ -313,16 +314,12 @@ class NKDSPARQLSearchQueryTest {
     }
 
     @Test
-    void buildConceptSearchQuery_roleMarkersAcceptOfnAndOwlTypes() {
+    void buildConceptSearchQuery_roleComesFromOwlTypesOnly() {
         String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("test", "cs", 10, 0, null, null, null);
 
-        // OFN role tags (ISMD-published) and OWL types (NKD-carried) both bind the marker.
-        assertThat(query).contains("http://www.w3.org/2002/07/owl#Class");
-        assertThat(query).contains("http://www.w3.org/2002/07/owl#DatatypeProperty");
-        assertThat(query).contains("http://www.w3.org/2002/07/owl#ObjectProperty");
-        assertThat(query).contains("třída");
-        assertThat(query).contains("vlastnost");
-        assertThat(query).contains("vztah");
+        assertThat(query).contains("FILTER(?roleTrida = <http://www.w3.org/2002/07/owl#Class>)");
+        assertThat(query).contains("FILTER(?roleVlastnost = <http://www.w3.org/2002/07/owl#DatatypeProperty>)");
+        assertThat(query).contains("FILTER(?roleVztah = <http://www.w3.org/2002/07/owl#ObjectProperty>)");
     }
 
     @Test

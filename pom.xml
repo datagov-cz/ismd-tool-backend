@@ -205,6 +205,12 @@
             <version>20260522</version>
         </dependency>
         <dependency>
+            <!-- Checks exported vocabularies against the bundled OFN slovníky JSON Schema (draft 2020-12) -->
+            <groupId>com.networknt</groupId>
+            <artifactId>json-schema-validator</artifactId>
+            <version>1.5.9</version>
+        </dependency>
+        <dependency>
             <groupId>org.jsoup</groupId>
             <artifactId>jsoup</artifactId>
             <version>1.18.3</version>

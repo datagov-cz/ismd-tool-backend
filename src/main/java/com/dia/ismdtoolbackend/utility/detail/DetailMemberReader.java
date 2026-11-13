@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.utility.detail;
 
+import com.dia.ismdtoolbackend.ofn.OfnIris;
+
 import com.dia.ismdtoolbackend.models.concept.ConceptPropertiesModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptRelationshipsModel;
 import org.apache.jena.ontology.OntModel;
@@ -46,7 +48,7 @@ class DetailMemberReader {
         List<ConceptPropertiesModel> properties = new ArrayList<>();
 
         Resource conceptResource = ontModel.getResource(conceptIri);
-        Resource vlastnostType = ontModel.getResource(OFN_NAMESPACE + VLASTNOST);
+        Resource vlastnostType = ontModel.getResource(OfnIris.OWL_DATATYPE_PROPERTY);
 
         ResIterator propertyIterator = ontModel.listSubjectsWithProperty(
             org.apache.jena.vocabulary.RDFS.domain,
@@ -106,7 +108,7 @@ class DetailMemberReader {
         List<ConceptRelationshipsModel> relationships = new ArrayList<>();
 
         Resource conceptResource = ontModel.getResource(conceptIri);
-        Resource vztahType = ontModel.getResource(OFN_NAMESPACE + VZTAH);
+        Resource vztahType = ontModel.getResource(OfnIris.OWL_OBJECT_PROPERTY);
 
         Set<Resource> relationshipResources = new LinkedHashSet<>();
         ontModel.listSubjectsWithProperty(org.apache.jena.vocabulary.RDFS.domain, conceptResource)

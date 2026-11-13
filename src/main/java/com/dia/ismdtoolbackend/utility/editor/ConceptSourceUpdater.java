@@ -2,10 +2,12 @@ package com.dia.ismdtoolbackend.utility.editor;
 
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.DigitalObjectModel;
+import com.dia.ismdtoolbackend.ofn.OfnIris;
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.jena.datatypes.xsd.XSDDatatype;
 import org.apache.jena.rdf.model.*;
 import org.apache.jena.vocabulary.RDF;
 
@@ -22,12 +24,6 @@ import static com.dia.ismdtoolbackend.utility.editor.RdfLangValues.removeAllByPr
 @Slf4j
 class ConceptSourceUpdater {
 
-    private final ConceptIriFactory iriFactory;
-
-    ConceptSourceUpdater(ConceptIriFactory iriFactory) {
-        this.iriFactory = iriFactory;
-    }
-
     void updateLegalSources(Resource newConcept, ConceptEditModel editModel, Resource oldConcept,
                              Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
         Property definingProp = model.createProperty(OFN_NAMESPACE + DEFINUJICI_USTANOVENI);
@@ -41,8 +37,8 @@ class ConceptSourceUpdater {
 
     void updateNonLegalSources(Resource newConcept, ConceptEditModel editModel, Resource oldConcept,
                                 Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
-        Property definingProp = model.createProperty(iriFactory.getEffectiveNamespace() + DEFINUJICI_NELEGISLATIVNI_ZDROJ);
-        Property relatedProp = model.createProperty(iriFactory.getEffectiveNamespace() + SOUVISEJICI_NELEGISLATIVNI_ZDROJ);
+        Property definingProp = model.createProperty(OfnIris.DEFINUJICI_NELEGISLATIVNI_ZDROJ);
+        Property relatedProp = model.createProperty(OfnIris.SOUVISEJICI_NELEGISLATIVNI_ZDROJ);
 
         updateNonLegalSourceList(newConcept, definingProp, editModel.getDefiningNonLegalSource(),
                 oldConcept, model, toRemove, toAdd);
@@ -121,7 +117,7 @@ class ConceptSourceUpdater {
 
             toAdd.add(model.createStatement(digitalDocument, RDF.type, digitalObjectType));
             toAdd.add(model.createStatement(digitalDocument, schemaUrlProperty,
-                    model.createResource(source.getUrl().trim())));
+                    model.createTypedLiteral(source.getUrl().trim(), XSDDatatype.XSDanyURI)));
 
             if (source.getName() != null && !source.getName().trim().isEmpty()) {
                 toAdd.add(model.createStatement(digitalDocument, dctermsTitle,
@@ -150,16 +146,13 @@ class ConceptSourceUpdater {
     }
 
     /**
-     * The concept's stored sources under {@code property}, or {@code null} when one is not a digital-object
-     * blank node, so it never equals an edit and gets rewritten.
+     * The concept's stored sources under {@code property}, compared by the lexical form of their url, title
+     * and description, or {@code null} when one has no url, so it never equals an edit and gets rewritten.
      */
     private Set<SourceRecord> currentSources(Resource concept, Property property, Property url,
                                              Property title, Property description) {
         Set<SourceRecord> sources = new HashSet<>();
         for (Statement link : concept.listProperties(property).toList()) {
-            if (!link.getObject().isAnon()) {
-                return null;
-            }
             Resource document = link.getObject().asResource();
             Statement urlValue = document.getProperty(url);
             if (urlValue == null) {

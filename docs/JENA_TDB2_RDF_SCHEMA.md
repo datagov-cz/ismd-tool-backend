@@ -1,856 +1,412 @@
-# Jena TDB2 / Apache Fuseki RDF Schema Documentation
+# Jena TDB2 / Apache Fuseki RDF Schema
 
 ## Overview
 
-**RDF Store**: Apache Jena Fuseki with TDB2 backend
-**Jena Version**: 5.3.0
-**Access Method**: HTTP SPARQL endpoint
-**Dataset**: Named graphs per ontology
-**Primary Vocabularies**: SKOS, OWL, RDF, RDFS, DCTerms, OFN (Czech Open Formal Standards)
+**RDF store**: Apache Jena Fuseki with a TDB2 dataset (`ismd-tool-dataset`), reached over HTTP
+**Jena version**: 5.4.0
+**Layout**: one named graph per vocabulary; graph IRI = vocabulary IRI
+**Data standard**: OFN Slovníky 2026-02-26, variant *Konceptuální model* (`ofn/slovniky/kontext.jsonld`, `ofn/slovniky/schema.json`)
+
+Every triple ISMD stores for its own vocabularies is expressible in the OFN slovníky JSON-LD context. The ISMD
+download is the OFN document read from those triples, with nothing added, renamed or repaired on the way out.
 
 ---
 
-## Architecture Overview
-
-### Dual Storage Strategy
-
-The application uses a **hybrid storage architecture** combining relational and semantic databases:
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    Application Layer                        │
-├─────────────────────────────────────────────────────────────┤
-│  Controllers → Services → Repositories                      │
+│  Controllers → Services / Operations → Repositories         │
 └────────────┬─────────────────────────────┬──────────────────┘
-             │                             │
              ▼                             ▼
 ┌────────────────────────┐    ┌───────────────────────────────┐
-│   PostgreSQL (Metadata)│    │  Apache Fuseki (RDF Triples)  │
-├────────────────────────┤    ├───────────────────────────────┤
-│ - Ontology metadata    │    │ - Complete RDF graphs         │
-│ - Concept metadata     │    │ - Semantic relationships      │
-│ - User/ownership data  │    │ - Multi-language labels       │
-│ - Comments             │    │ - Full ontology definitions   │
-│ - Validation reports   │    │ - SKOS/OWL structures         │
+│ PostgreSQL             │    │ Fuseki / TDB2                 │
+│ - vocabulary + concept │    │ - one graph per vocabulary    │
+│   metadata (ownership, │    │ - owned concepts in OFN shape │
+│   publish state, slug) │    │ - link triples to NKD / other │
+│ - inTezaurus flag      │    │   vocabularies                │
+│ - NKD snapshot copies  │    │                               │
+│ - outbox, migration log│    │                               │
 └────────────────────────┘    └───────────────────────────────┘
-         (Access Control)              (Semantic Data)
 ```
 
-**PostgreSQL**: Fast queries for filtering, access control, publication status
-**Jena Fuseki/TDB2**: Complete semantic data with SPARQL query capabilities
+- **PostgreSQL** is the source of truth for which concepts exist (one row per owned concept), access control and
+  publish state. Writes to TDB2 go through the outbox in the same PostgreSQL transaction; see
+  `PG_TDB2_CONSISTENCY.md`.
+- **TDB2** holds the RDF. NKD snapshot copies live only in PostgreSQL (`nkd_concept_snapshots`); the owner graph
+  holds just the link triple (see `NKD_LOCAL_COPY_SNAPSHOT.md`).
 
 ---
 
 ## Configuration
 
-### Jena/Fuseki Configuration
-
-**Configuration Class**: `com.dia.ismdtoolbackend.config.JenaConfig`
-
-**Application Properties**:
+**Configuration class**: `com.dia.ismdtoolbackend.config.JenaConfig`
 
 ```properties
-# Fuseki HTTP endpoint
-jena.fuseki.url=${FUSEKI_URL}  # Default: http://localhost:3030/ismd-tool-dataset
-```
-
-**Dependencies** (from `pom.xml`):
-```xml
-<jena.version>5.3.0</jena.version>
-
-<dependency>
-    <groupId>org.apache.jena</groupId>
-    <artifactId>jena-core</artifactId>
-</dependency>
-<dependency>
-    <groupId>org.apache.jena</groupId>
-    <artifactId>jena-arq</artifactId>
-</dependency>
-<dependency>
-    <groupId>org.apache.jena</groupId>
-    <artifactId>jena-tdb2</artifactId>
-</dependency>
-<dependency>
-    <groupId>org.apache.jena</groupId>
-    <artifactId>jena-fuseki-server</artifactId>
-</dependency>
-<dependency>
-    <groupId>org.apache.jena</groupId>
-    <artifactId>jena-fuseki-core</artifactId>
-</dependency>
+jena.fuseki.url=${FUSEKI_URL}                       # e.g. http://localhost:3030/ismd-tool-dataset
+rdf-migration.enabled=${RDF_MIGRATION_ENABLED:true}  # startup RDF migrations; off only in test contexts
+rdf-migration.update-timeout=${RDF_MIGRATION_UPDATE_TIMEOUT:PT30M}
 ```
 
 ---
 
-## Named Graph Structure
-
-### Graph Organization
-
-Each ontology is stored in a **separate named graph** within the TDB2 dataset.
+## Named Graphs
 
 ```
-TDB2 Dataset: /ismd-tool-dataset
-│
-├── Named Graph: <https://data.dia.gov.cz/zdroj/slovníky/ontology-1>
-│   ├── Ontology metadata triples (vocabulary info, labels, timestamps)
-│   └── Concept triples (all classes, properties, relationships in this ontology)
-│
-├── Named Graph: <https://data.dia.gov.cz/zdroj/slovníky/ontology-2>
-│   ├── Ontology metadata triples
-│   └── Concept triples
-│
-└── Named Graph: <https://data.dia.gov.cz/zdroj/slovníky/ontology-n>
-    └── ...
+TDB2 dataset /ismd-tool-dataset
+├── <https://slovník.gov.cz/doprava>            vocabulary graph
+│   ├── the vocabulary node  <https://slovník.gov.cz/doprava>
+│   ├── owned concepts       <https://slovník.gov.cz/doprava/pojem/…>  (skos:inScheme the graph)
+│   ├── their nested nodes   blank nodes: creation instant, digital objects
+│   └── link triples         objects only: NKD concepts, other vocabularies, legal provisions
+└── <…next vocabulary…>
 ```
 
-**Graph Naming Convention**:
-- Graph IRI = Ontology IRI
-- Example: `https://data.dia.gov.cz/zdroj/slovníky/vocabulary-name`
-- Stored in PostgreSQL as `graph_name` column
+- **Ownership**: a concept belongs to a vocabulary when its IRI starts with `<vocabulary IRI>/` (the `/`
+  boundary matters: `…/doprava-2/pojem/x` is not owned by `…/doprava`). Java: `OfnIris.isOwnedBy`; SPARQL:
+  `JenaTDB2Repository.OWNED_CONCEPT_PATTERN`. RDF changesets must use the same rule.
+- **Membership**: an owned concept is in the vocabulary when it has `skos:inScheme <graph>`. Only owned,
+  in-scheme concepts are part of the vocabulary's OFN document (`pojmy`).
+- **PostgreSQL link**: `ontologies.graph_name` = graph IRI; `concepts.graph_name` = the parent's graph IRI;
+  `concepts.concept_iri` = the concept's IRI.
 
-**Linking Mechanism**:
-- PostgreSQL `ontologies.graph_name` → Fuseki named graph URI
-- PostgreSQL `concepts.graph_name` → Fuseki named graph URI (same as parent ontology)
-- PostgreSQL `concepts.concept_iri` → Fuseki RDF resource URI
+Two kinds of subjects can sit in a graph without being part of its document. Neither is exported, and neither has
+a PostgreSQL row:
+
+| Subject | Why it is there |
+|---|---|
+| Foreign concept described in place (IRI outside `<graph>/`, e.g. an NKD class with its labels) | Uploaded files describe referenced concepts. They are references only: the upload does not put them in the scheme. Their triples stay. |
+| Owned concept without `skos:inScheme` | An upload concept the user excluded or the OFN gate rejected, kept by `ExcludedConceptPruning` because another concept references it. Unreferenced ones are deleted. |
 
 ---
 
-## RDF Vocabularies and Namespaces
+## Namespaces
 
-### Standard W3C Vocabularies
+Prefixes as the OFN context defines them; the Turtle download uses the same ones. `do:` is this document's
+shorthand only (the context has no prefix for it).
 
-| Prefix | Namespace | Purpose |
-|--------|-----------|---------|
-| `rdf` | `http://www.w3.org/1999/02/22-rdf-syntax-ns#` | RDF core vocabulary |
-| `rdfs` | `http://www.w3.org/2000/01/rdf-schema#` | RDF Schema (subClassOf, domain, range, etc.) |
-| `owl` | `http://www.w3.org/2002/07/owl#` | Web Ontology Language (ontologies, classes, properties) |
-| `skos` | `http://www.w3.org/2004/02/skos/core#` | Simple Knowledge Organization System |
-| `dct` / `dcterms` | `http://purl.org/dc/terms/` | Dublin Core metadata terms |
-| `xsd` | `http://www.w3.org/2001/XMLSchema#` | XML Schema datatypes |
+| Prefix | Namespace |
+|---|---|
+| `rdf` | `http://www.w3.org/1999/02/22-rdf-syntax-ns#` |
+| `rdfs` | `http://www.w3.org/2000/01/rdf-schema#` |
+| `owl` | `http://www.w3.org/2002/07/owl#` |
+| `skos` | `http://www.w3.org/2004/02/skos/core#` |
+| `dcterms` | `http://purl.org/dc/terms/` |
+| `xsd` | `http://www.w3.org/2001/XMLSchema#` |
+| `schema` | `http://schema.org/` (only `schema:url` of a digital object) |
+| `slovníky` | `https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/` |
+| `vsgov` | `https://slovník.gov.cz/veřejný-sektor/pojem/` |
+| `l111` (`111-2009` in the context) | `https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/` |
+| `a104` | `https://slovník.gov.cz/agendový/104/pojem/` |
+| `čas` | `https://slovník.gov.cz/generický/čas/pojem/` |
+| `do` | `https://slovník.gov.cz/generický/digitální-objekty/pojem/` |
+| `způsoby-získání` | `https://data.dia.gov.cz/zdroj/číselníky/způsoby-získání-údajů/položky/` |
+| `způsoby-sdílení` | `https://data.dia.gov.cz/zdroj/číselníky/způsoby-sdílení-údajů/položky/` |
+| `typy-obsahu` | `https://data.dia.gov.cz/zdroj/číselníky/typy-obsahu-údajů/položky/` |
 
-### OFN Vocabularies
-
-| Prefix | Namespace | Purpose |
-|--------|-----------|---------|
-| `ofn` | `https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/` | OFN vocabulary terms (concept types, properties) |
-| `ofn-legal` | `https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/` | Legal/legislative vocabulary |
-| `a104` | `https://slovník.gov.cz/agendový/104/pojem/` | Agenda 104 governance vocabulary (PPDF, agenda codes) |
-| `l111-2009` | `https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/` | Legislative collection 111/2009 |
-| `cas` | `https://slovník.gov.cz/generický/čas/pojem/` | Temporal vocabulary (timestamps, moments) |
-| `slovniky` | `https://slovník.gov.cz/generický/slovníky/pojem/` | Generic vocabulary vocabulary |
-
-### Application-Specific Namespaces
-
-| Prefix | Namespace | Purpose |
-|--------|-----------|---------|
-| `default` | `https://data.dia.gov.cz/zdroj/slovníky/` | Default namespace for ontologies |
-| `schema` | `http://schema.org/` | Schema.org vocabulary (for URL, etc.) |
+Java constants for every IRI below: `com.dia.ismdtoolbackend.ofn.OfnIris`.
 
 ---
 
-## Ontology RDF Structure
-
-### Ontology Resource
-
-An ontology is represented as an RDF resource with multiple types and metadata properties.
-
-**RDF Types**:
-```turtle
-<https://data.dia.gov.cz/zdroj/slovníky/example-ontology>
-    rdf:type owl:Ontology ;
-    rdf:type skos:ConceptScheme ;
-    rdf:type <https://slovník.gov.cz/generický/slovníky/pojem/slovník> .
-```
-
-### Ontology Type Classifications
-
-**Type IRIs**:
-- `owl:Ontology` - Standard OWL ontology
-- `skos:ConceptScheme` - SKOS concept scheme (for taxonomies/thesauri)
-- `https://slovník.gov.cz/generický/slovníky/pojem/slovník` - OFN vocabulary type
-
-**JSON-LD Type Labels**:
-- "Slovník" - Vocabulary
-- "Tezaurus" - Thesaurus
-- "Konceptuální model" - Conceptual model
-
----
-
-## Concept RDF Structures
-
-### 1. Class Concept (Třída)
-
-A class represents an entity type or category in the domain model.
-
-**RDF Types**:
-```turtle
-<concept-uri>
-    rdf:type skos:Concept ;
-    rdf:type ofn:pojem ;
-    rdf:type ofn:třída ;
-    rdf:type ofn:typ-subjektu-nebo-události ;  # TSP (Subject or Event Type)
-    rdf:type ofn-legal:veřejný-údaj .          # Public data (optional)
-```
-
-### 2. Property Concept (Vlastnost - Datatype Property)
-
-A property represents an attribute with a literal value (string, number, date, etc.).
-
-**RDF Types**:
-```turtle
-<concept-uri>
-    rdf:type skos:Concept ;
-    rdf:type ofn:pojem ;
-    rdf:type ofn:vlastnost ;
-    rdf:type owl:DatatypeProperty .
-```
-
-**Common Datatype Ranges**:
-- `xsd:string` - Text
-- `xsd:integer` - Whole numbers
-- `xsd:decimal` - Decimal numbers
-- `xsd:boolean` - True/false
-- `xsd:date` - Date (YYYY-MM-DD)
-- `xsd:dateTime` - Date and time
-- `xsd:anyURI` - URI/URL
-
----
-
-### 3. Relationship Concept (Vztah - Object Property)
-
-A relationship represents a connection between two entity types.
-
-**RDF Types**:
-```turtle
-<concept-uri>
-    rdf:type skos:Concept ;
-    rdf:type ofn:pojem ;
-    rdf:type ofn:vztah ;
-    rdf:type owl:ObjectProperty .
-```
-
-## Concept Type Classifications
-
-### OFN Concept Type Hierarchy
-
-```
-ofn:pojem (Base concept type - always present)
-│
-├── ofn:třída (Class)
-│   ├── ofn:typ-subjektu-nebo-události (TSP - Subject or Event Type)
-│   └── ofn:typ-objektu-nebo-vlastnosti (TOP - Object or Property Type)
-│
-├── ofn:vlastnost (Property / Datatype Property)
-│
-└── ofn:vztah (Relationship / Object Property)
-```
-
-### Legal Classification
-
-```
-<https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/>
-│
-├── veřejný-údaj (Public data)
-└── neveřejný-údaj (Non-public data)
-```
-
-### Concept Type Mapping Table
-
-| Czech Term | RDF Type | OWL Equivalent |
-|-----|------|----------------|
-| Pojem | `ofn:pojem` | `skos:Concept` |
-| Třída | `ofn:třída` | `owl:Class` |
-| Vlastnost | `ofn:vlastnost` | `owl:DatatypeProperty` |
-| Vztah | `ofn:vztah` | `owl:ObjectProperty` |
-| TSP | `ofn:typ-subjektu-nebo-události` | Subtype of Class |
-| TOP | `ofn:typ-objektu-nebo-vlastnosti` | Subtype of Class |
-
----
-
-## Multi-Language Support
-
-All textual properties support multiple languages using **language tags**.
-
-### Language Tag Format
+## Vocabulary
 
 ```turtle
-skos:prefLabel "Person"@en ;
-skos:prefLabel "Osoba"@cs ;
-skos:prefLabel "Personne"@fr ;
-
-skos:definition "A natural or legal person"@en ;
-skos:definition "Fyzická nebo právnická osoba"@cs ;
+<https://slovník.gov.cz/doprava>
+    a slovníky:slovník, skos:ConceptScheme, owl:Ontology ;
+    skos:prefLabel "Doprava"@cs ;
+    dcterms:description "Pojmy silniční dopravy."@cs ;          # optional
+    slovníky:okamžik-vytvoření [
+        a čas:časový-okamžik ;
+        čas:datum-a-čas "2026-10-07T13:47:18.858014Z"^^xsd:dateTimeStamp
+    ] .
 ```
 
-### Common Language Codes
-
-- `@cs` - Czech (primary language)
-- `@en` - English
-- `@sk` - Slovak
-
-**Default Language**: Czech (`cs`)
-
-### Language-Tagged Properties
-
-| Property | Purpose |
-|----------|---------|
-| `skos:prefLabel` | Preferred label/name |
-| `skos:altLabel` | Alternative label/name |
-| `skos:definition` | Formal definition |
-| `dct:description` | Detailed description |
+- All three types, always: ISMD supports only the Konceptuální model, which includes Slovník and Tezaurus.
+- `název` (`skos:prefLabel`) needs a `cs` value; a `dcterms:description` needs one too when present.
+- `vytvořeno` is a **blank** `čas:časový-okamžik` with an `xsd:dateTimeStamp` (with zone). New vocabularies get
+  Europe/Prague time (`OfnDates`).
+- `aktualizováno` (`slovníky:okamžik-poslední-změny`) has the same shape. It is optional and not maintained yet.
 
 ---
 
-## Semantic Relationships and Hierarchies
+## Concepts
 
-### Class Hierarchies
+Every owned concept carries `skos:Concept`, `slovníky:pojem`, `skos:inScheme <graph>`, a `skos:prefLabel` with a
+`cs` value, and **exactly one OWL kind**.
 
-**Superclass (Parent Class)**:
+### Kind and role marker
+
+| Kind | OWL type (the source of truth) | Role marker (derived) |
+|---|---|---|
+| Třída | `owl:Class` | `slovníky:třída` |
+| Vlastnost | `owl:DatatypeProperty` | `slovníky:vlastnost` |
+| Vztah | `owl:ObjectProperty` | `slovníky:vztah` |
+
+The markers are not OFN terms. They are kept, also in exports, until the DIA data review, and are always derived
+from the OWL kind (`RoleMarkerDerivation`), never the other way round. The OFN gate tolerates exactly these three.
+
+### Třída
+
 ```turtle
-<child-class>
-    rdfs:subClassOf <parent-class> .
+<https://slovník.gov.cz/doprava/pojem/osoba>
+    a skos:Concept, slovníky:pojem, owl:Class, slovníky:třída ;
+    a vsgov:typ-subjektu-práva ;                                  # or vsgov:typ-objektu-práva; optional
+    skos:inScheme <https://slovník.gov.cz/doprava> ;
+    skos:prefLabel "Osoba"@cs ;
+    rdfs:subClassOf <https://slovník.gov.cz/doprava/pojem/subjekt> ;    # nadřazená třída
+    slovníky:má-instance-definované-číselníkem <https://…/číselníky/typy-osob> .  # Číselník; optional
 ```
 
-**Multiple Inheritance**:
+A Číselník is an IRI node: `<codelist> a l111:číselník ; l111:má-v-nkod-zastřešující-datovou-sadu <dataset>`.
+
+### Vlastnost
+
 ```turtle
-<child-class>
-    rdfs:subClassOf <parent-class-1> ;
-    rdfs:subClassOf <parent-class-2> .
+<https://slovník.gov.cz/doprava/pojem/registrační-značka>
+    a skos:Concept, slovníky:pojem, owl:DatatypeProperty, slovníky:vlastnost ;
+    skos:inScheme <https://slovník.gov.cz/doprava> ;
+    skos:prefLabel "Registrační značka"@cs ;
+    rdfs:domain <https://slovník.gov.cz/doprava/pojem/vozidlo> ;
+    rdfs:range xsd:string ;
+    rdfs:subPropertyOf <…> .                                       # nadřazená vlastnost; optional
 ```
 
-### Property Hierarchies
+The range comes from `PropertyDataType.rangeIri` on create and edit: the FE sends a code from
+`GET /property-datatypes`; an `xsd:`/`rdfs:` CURIE or a full IRI is also accepted; blank or unknown →
+`rdfs:Literal`.
 
-**Super Property**:
+### Vztah
+
 ```turtle
-<child-property>
-    rdfs:subPropertyOf <parent-property> .
+<https://slovník.gov.cz/doprava/pojem/má-vlastníka>
+    a skos:Concept, slovníky:pojem, owl:ObjectProperty, slovníky:vztah ;
+    skos:inScheme <https://slovník.gov.cz/doprava> ;
+    skos:prefLabel "Má vlastníka"@cs ;
+    rdfs:domain <https://slovník.gov.cz/doprava/pojem/vozidlo> ;
+    rdfs:range <https://slovník.gov.cz/doprava/pojem/osoba> ;
+    rdfs:subPropertyOf <…> .                                       # nadřazený vztah; optional
 ```
 
-### Relationship Hierarchies
+A Vztah may be stored without its domain or range (a draft, e.g. drawn in the diagram). The download is
+blocked until both are filled in.
 
-**Super Relation**:
-```turtle
-<child-relation>
-    rdfs:subPropertyOf <parent-relation> .
-```
+### Fields shared by all kinds
 
-### Equivalent Concepts (External Mappings)
+| OFN key | Predicate | Object |
+|---|---|---|
+| `název` | `skos:prefLabel` | text, one per language, `cs` required |
+| `alternativní-název` | `skos:altLabel` | text, several per language |
+| `popis` | `dcterms:description` | text, one per language |
+| `definice` | `skos:definition` | text, one per language |
+| `definující-` / `související-ustanovení-právního-předpisu` | `slovníky:definující-ustanovení` / `slovníky:související-ustanovení` | ELI IRI |
+| `definující-` / `související-nelegislativní-zdroj` | `slovníky:definující-nelegislativní-zdroj` / `slovníky:související-nelegislativní-zdroj` | blank `do:digitální-objekt` with `dcterms:title` (text), `dcterms:description` (text), `schema:url` (`xsd:anyURI` literal) |
+| `ekvivalentní-pojem` | `skos:exactMatch` | IRI |
+| `nadřazený-pojem` | `skos:broader` | IRI |
+| `je-sdílen-v-ppdf` | `a104:je-sdílen-v-propojeném-datovém-fondu` | `xsd:boolean` |
+| `agenda` | `a104:sdružuje-údaje-vedené-nebo-vytvářené-v-rámci-agendy` | IRI (RPP agenda) |
+| `agendový-informační-systém` | `a104:údaje-jsou-v-ais` | IRI (RPP ISVS) |
+| `způsob-získání-údaje` | `slovníky:má-způsob-získání-údaje` | `způsoby-získání:` item |
+| `typ-obsahu-údaje` | `slovníky:má-typ-obsahu-údaje` | `typy-obsahu:` item |
+| `způsoby-sdílení-údaje` | `slovníky:má-způsob-sdílení-údaje` | `způsoby-sdílení:` items |
+| type | `l111:veřejný-údaj` or `l111:neveřejný-údaj` | |
+| `ustanovení-dokládající-neveřejnost-údaje` | `l111:je-vymezen-ustanovením-stanovujícím-jeho-neveřejnost` | ELI IRI; **required** on a Neveřejný údaj, never written on any other concept |
 
-**Exact Match** (same meaning in external vocabulary):
-```turtle
-<concept-uri>
-    skos:exactMatch <http://xmlns.com/foaf/0.1/Person> ;
-    skos:exactMatch <http://schema.org/Person> .
-```
----
+"Text" means a literal with a language tag. A single-valued key (no list in the schema) holds one value; two
+values would make the export an array the schema rejects.
 
-## Repository Operations
+### Pre-OFN shapes
 
-### Primary Repository Class
+Earlier versions wrote these. Nothing writes them now, the write gate refuses them, and the pre-production
+data that held them was wiped (2026-11).
 
-**File**: `com.dia.ismdtoolbackend.repository.JenaTDB2Repository`
-
-**Connection Method**:
-```java
-// HTTP connection to Fuseki endpoint
-RDFConnection conn = RDFConnection.connect(fusekiUrl);
-```
-
-### CRUD Operations
-
-#### Create/Save Concept
-
-```java
-String saveConcept(Resource conceptResource, String graphName)
-```
-
-**Process**:
-1. Extract concept IRI from resource
-2. Create model from resource
-3. Load model into named graph
-4. Return concept IRI
-
-#### Read/Fetch Graph
-
-```java
-Model fetchGraph(String graphName)
-```
-
-**Process**:
-1. Connect to Fuseki
-2. Fetch all triples from named graph
-3. Return Jena Model
-
-#### Update Ontology
-
-```java
-void saveOntologyModel(String graphName, Model model)  // Append/merge
-void putOntologyModel(String graphName, Model model)   // Replace
-```
-
-#### Delete Concept
-
-```java
-void deleteConcept(String conceptUri)
-void deleteConceptFromGraph(String conceptUri, String graphName)
-void deleteConceptsFromGraph(List<String> conceptUris, String graphName)
-```
-
-Deletes:
-1. All triples where concept is the subject
-2. All triples where concept is the object
-
-#### Delete Graph
-
-```java
-void deleteGraph(String graphName)
-```
-
-### Query Operations
-
-#### Check Concept Existence
-
-```java
-boolean conceptExists(String conceptUri)
-boolean conceptExistsInGraph(String conceptUri, String graphName)
-```
-
-#### Find Graph Containing Concept
-
-```java
-String findGraphContainingConcept(String conceptUri)
-```
+| Was stored | Now |
+|---|---|
+| `inTezaurus` flag | PostgreSQL `concepts.in_tezaurus` only |
+| `<ns>nadřazená-třída` copy of `rdfs:subClassOf` | not written, not added in memory either; readers use `rdfs:subClassOf` |
+| `slovníky:typ-subjektu-práva` / `-objektu-práva` | `vsgov:` types |
+| provision under `l111:ustanovení-dokládající-neveřejnost-údaje` or a `<ns>` copy | `l111:je-vymezen-ustanovením-stanovujícím-jeho-neveřejnost` |
+| sources under `<ns>` or `https://slovník.gov.cz/` predicates; `schema:url` as IRI or plain string | `slovníky:` predicates; `xsd:anyURI` literal |
+| PPDF as `"true"`/`"false"` string | `xsd:boolean` |
+| `<https://slovník.gov.cz/pojem>` (junk class from the common library base model) | not written |
+| named `<vocabulary>/casovy-okamzik-vytvoreni` node with a zone-less string | blank instant, `xsd:dateTimeStamp` |
+| Třída marked only by `slovníky:třída` | `owl:Class` + marker |
+| legal provisions under `dct:conformsTo` / `dct:relation` (older uploads) | `slovníky:definující-ustanovení` / `slovníky:související-ustanovení` |
+| misspelled `l111:je-vymezen-ustanovení-stanovujícím-jeho-neveřejnost` (ISMD export 2025-12 – 2026-07) | correct spelling `…ustanovením…` |
+| `rdfs:range` pointing to an empty blank node | an IRI, `rdfs:Literal` by default for a Vlastnost |
 
 ---
 
-## SPARQL Query Patterns
+## OFN Gate
 
-### Construct Query for Concept Details
+`com.dia.ismdtoolbackend.ofn`: `OfnRdfReader` reads RDF into an OFN document by the context (an unmappable
+triple is an issue, never repaired); `OfnConformanceGate` checks the document against the schema;
+`ConceptKindRule` checks the OWL kind and marker; `OfnWriteGate` combines them.
 
-**Purpose**: Retrieve complete concept data including nested blank nodes
+| Tier | Rule | Examples |
+|---|---|---|
+| T1 shape | every triple fits the context; schema rules other than `required` | text without a language, `schema:url` as IRI, unknown predicate, two ranges |
+| T2 kind | exactly one OWL kind; marker matches | Třída without `owl:Class`, DTP + OP on one concept |
+| T3 completeness | schema `required` | Vlastnost/Vztah without domain or range, Neveřejný údaj without a provision |
 
-**File**: `com.dia.ismdtoolbackend.query.NKDSPARQLConstructQuery`
+| Write path | T1 / T2 | T3 |
+|---|---|---|
+| Concept create, concept edit (incl. diagram, working-copy sync) | refused: `OfnWriteGate.requireWritableConcepts` on the concept as it will be stored, 500 `OFN_WRITE_NONCONFORMANT` | allowed (draft) |
+| Vocabulary create (alone or with concepts), vocabulary edit | refused: `requireWritableVocabulary` on the whole graph, 500 `OFN_WRITE_NONCONFORMANT` | allowed |
+| Upload | T2 concept → that concept rejected (`RejectedConceptDto`); vocabulary-level T1 → whole upload rejected, 400 `UPLOAD_OFN_NONCONFORMANT` | stored as draft |
+| ISMD download | blocked, 400 `ONTOLOGY_DOWNLOAD_BLOCKED_BY_OFN`, every issue listed | blocked |
+| NKD download | not gated (ISMD does not own NKD content) | — |
 
-```sparql
-PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX owl: <http://www.w3.org/2002/07/owl#>
-PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-PREFIX dct: <http://purl.org/dc/terms/>
-PREFIX ofn: <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/>
-
-CONSTRUCT {
-  ?concept ?p ?o .
-  ?o ?nestedP ?nestedO .
-}
-WHERE {
-  BIND(<concept-uri> as ?concept)
-
-  # Direct properties
-  {
-    ?concept ?p ?o .
-  }
-  UNION
-  # Nested blank node properties
-  {
-    ?concept ?p ?o .
-    FILTER(isBlank(?o))
-    ?o ?nestedP ?nestedO .
-  }
-}
-```
-
-**Fetches**:
-- All direct triples where concept is subject
-- All nested triples for blank node objects (e.g., temporal moments, digital documents)
-
-### ASK Query for Existence
-
-```sparql
-ASK {
-  ?s ?p ?o
-}
-```
-
-Returns: `true` if any triple exists, `false` otherwise
-
-### SELECT Query for Graph Discovery
-
-```sparql
-SELECT ?g
-WHERE {
-  GRAPH ?g {
-    <concept-uri> ?p ?o
-  }
-}
-LIMIT 1
-```
-
-Returns: Graph URI containing the concept
+The write checks are a safety net: the writers produce OFN by construction, so a refusal means a writer bug or
+stored data written before the gate existed.
 
 ---
 
-## Data Flow Diagrams
+## RDF Migrations
 
-### Write Flow: Create Concept
+Ordered, idempotent SPARQL Update changesets in `src/main/resources/db/rdf-changelog/`, applied at startup by
+`RdfMigrationRunner` (after Liquibase, before the outbox relay, the reconciler and the web server). Each runs once
+per vocabulary graph with `?graph` bound; applied changesets are recorded with a checksum in
+`ismd_schema.rdf_migration_log`. Any failure stops startup. Conventions, preconditions, the deploy rule, how to
+prove a changeset on an environment's data, and the rollback/backup rule: the changelog's `README.md`.
 
-```
-┌──────────────────┐
-│ POST /api/concept│
-│ /{slug}/create   │
-└────────┬─────────┘
-         │
-         ▼
-┌─────────────────────────┐
-│  ConceptController      │
-└────────┬────────────────┘
-         │
-         ▼
-┌─────────────────────────┐
-│  ConceptService         │
-└────────┬────────────────┘
-         │
-         ▼
-┌─────────────────────────┐
-│  ConceptCreator         │
-│  (creates RDF model)    │
-└────────┬────────────────┘
-         │
-         ▼
-┌─────────────────────────┐
-│  OFNBaseModel           │
-│  - Creates OntModel     │
-│  - Adds RDF types       │
-│  - Adds properties      │
-│  - Multi-language       │
-└────────┬────────────────┘
-         │
-         ▼
-┌─────────────────────────┐
-│  Resource (Jena)        │
-│  with complete triples  │
-└────────┬────────────────┘
-         │
-         ▼
-┌─────────────────────────┐
-│  JenaTDB2Repository     │
-│  .saveConcept()         │
-└────────┬────────────────┘
-         │
-         ▼
-┌─────────────────────────┐
-│  RDFConnection          │
-│  .load(graph, model)    │
-└────────┬────────────────┘
-         │
-         ▼
-┌─────────────────────────┐
-│  Apache Fuseki          │
-│  (TDB2 storage)         │
-└─────────────────────────┘
-         │
-         ▼ (parallel)
-┌─────────────────────────┐
-│  PostgreSQL             │
-│  ConceptMetadataEntity  │
-└─────────────────────────┘
-```
-
-### Read Flow: Get Ontology Detail
-
-```
-┌──────────────────┐
-│ GET /api/ontology│
-│ /{slug}/detail   │
-└────────┬─────────┘
-         │
-         ▼
-┌─────────────────────────┐
-│  OntologyController     │
-└────────┬────────────────┘
-         │
-         ▼
-┌─────────────────────────┐
-│  OntologyService        │
-└────────┬────────────────┘
-         │
-         ▼
-┌─────────────────────────┐
-│  JenaTDB2Repository     │
-│  .fetchGraph()          │
-└────────┬────────────────┘
-         │
-         ▼
-┌─────────────────────────┐
-│  Apache Fuseki          │
-│  SPARQL CONSTRUCT       │
-└────────┬────────────────┘
-         │
-         ▼
-┌─────────────────────────┐
-│  Raw Jena Model         │
-└────────┬────────────────┘
-         │
-         ▼
-┌──────────────────────────────┐
-│  OntologyDetailExtractor     │
-│  .applyOFNTransformations()  │
-└────────┬─────────────────────┘
-         │
-         ▼
-┌─────────────────────────┐
-│  TurtleFilterUtil       │
-│  TurtleFormatterUtil    │
-└────────┬────────────────┘
-         │
-         ▼
-┌─────────────────────────┐
-│  ModelAnalyzer          │
-│  - Extract ontology meta│
-│  - Identify concepts    │
-└────────┬────────────────┘
-         │
-         ▼
-┌─────────────────────────┐
-│  ConceptJsonMapper      │
-│  - Process each concept │
-│  - Extract properties   │
-│  - Build relationships  │
-└────────┬────────────────┘
-         │
-         ▼
-┌─────────────────────────┐
-│  OntologyDetailModel    │
-│  (JSON structure)       │
-└─────────────────────────┘
-```
-
-### Export Flow: Download TTL/JSON-LD
-
-```
-┌──────────────────┐
-│ GET /api/ontology│
-│ /{id}/download   │
-│ ?format=ttl      │
-└────────┬─────────┘
-         │
-         ▼
-┌─────────────────────────┐
-│  OntologyController     │
-└────────┬────────────────┘
-         │
-         ▼
-┌─────────────────────────┐
-│  OntologyDownloadService│
-└────────┬────────────────┘
-         │
-         ▼
-┌─────────────────────────┐
-│  JenaTDB2Repository     │
-│  .fetchGraph()          │
-└────────┬────────────────┘
-         │
-         ▼
-┌─────────────────────────┐
-│  Jena Model             │
-└────────┬────────────────┘
-         │
-         ├─────────────────────────┐
-         │                         │
-         ▼ (TTL)                   ▼ (JSON-LD)
-┌──────────────────┐    ┌─────────────────────────┐
-│ model.write()    │    │  JsonExporter           │
-│ format="TTL"     │    │  - ModelAnalyzer        │
-└──────────────────┘    │  - ConceptJsonMapper    │
-                        │  - JsonFormatter        │
-                        └─────────────────────────┘
-         │                         │
-         ▼                         ▼
-┌──────────────────┐    ┌─────────────────────────┐
-│ Turtle String    │    │  JSON-LD String         │
-└──────────────────┘    └─────────────────────────┘
-```
+The changelog is empty: the pre-production data holding pre-OFN shapes was wiped (2026-11) instead of
+migrated, and every write path goes through the OFN write gate.
 
 ---
 
-## JSON-LD Export Structure
+## Repository
 
-### Context
+`com.dia.ismdtoolbackend.repository.JenaTDB2Repository` is the facade over `FusekiSparqlExecutor` (queries,
+timeouts, error mapping), `FusekiGraphWriter` (graph writes) and `FusekiConceptQueries`.
 
-**Context URL**:
+| Method | Use |
+|---|---|
+| `fetchGraph(graph)` | whole graph as a `Model` |
+| `graphHasData`, `listNamedGraphs`, `listOwnedConceptIrisInGraph` | existence and enumeration |
+| `saveOntologyModel(graph, model)` | add a model to a graph (outbox `CREATE_GRAPH`, vocabulary edit) |
+| `putOntologyModel(graph, model)` | replace a graph (upload) |
+| `applyConceptDelta(iri, graph, remove, add)` | outbox `UPSERT_CONCEPT`; deletes every blank child of the concept when the delta touches a blank node, so the editor re-stages surviving blank children (`BlankChildRestaging`) |
+| `deleteConceptsFromGraph`, `deleteGraph` | outbox `DELETE_CONCEPTS` / `DELETE_GRAPH` |
+| `executeUpdate(label, update)` | SPARQL Update (RDF migrations) |
+| `fetchConceptLabels`, `fetchConceptHierarchy`, `fetchConceptResolutions`, `findRelatedConceptUris`, `searchByText`, `filterByRelationTypes` | read queries for detail, resolution and search |
+
+---
+
+## Data Flows
+
+### Concept create / edit
+
 ```
-https://data.dia.gov.cz/kontexty/popis-slovníků-popis-dat.jsonld
+ConceptController → ConceptServiceImpl
+  → ConceptCreateOperation (ConceptCreator)   | ConceptEditOperation (ConceptEditor + NkdLinkReconciler)
+  → OfnWriteGate.requireWritableConcepts       (T1/T2 on the concept as it will be stored)
+  → OutboxWriter.enqueueUpsert + metadata row  (one PostgreSQL transaction)
+  → after commit: OutboxRelay → JenaTDB2Repository.applyConceptDelta → Fuseki
 ```
 
-This context defines the mapping from Czech property names to RDF predicates.
+Vocabulary create is the same with `requireWritableVocabulary` and `enqueueCreateGraph`. Vocabulary edit checks the
+edited graph with `requireWritableVocabulary` and saves it directly. Upload writes the whole graph with
+`putOntologyModel` after its own OFN check.
+
+### Detail reads (ontology, concept, diagram, working copy, NKD)
+
+```
+JenaTDB2Repository.fetchGraph | NKD CONSTRUCT | upload input
+  → OntologyDetailExtractor.applyOFNTransformations / …ForNkd / …ForUpload
+       (OutsideDataNormalizer for NKD and upload input only) → TurtleFilterUtil / TurtleFormatterUtil
+  → ModelAnalyzer + ConceptJsonMapper → OntologyDetailModel
+```
+
+Two read paths by data owner:
+- **Stored ISMD data** is read as it is: the write gate keeps it OFN-shaped.
+- **Outside data** (NKD responses, upload input) goes through `OutsideDataNormalizer` first. It adds the
+  `skos:Concept`, role markers and `skos:prefLabel` that NKD often lacks, in memory only. NKD has no role
+  markers at all, and 4 of the 10 production vocabularies have no `skos:Concept` on their concepts.
+
+Every reader takes a concept's kind from its OWL type (`owl:Class` / `owl:DatatypeProperty` /
+`owl:ObjectProperty`); the role markers are written (derived from the OWL kind) but not read. A single
+OFN reader for both paths, with an NKD adapter in front of `OfnRdfReader`, is a planned follow-up.
+
+### Download
+
+```
+OntologyController (stored SHACL report block first)
+  → OntologyDownloadServiceImpl → OfnVocabularyExporter
+      OfnWriteGate.inspectVocabulary (one read: gated document + all issues)
+      any issue → 400 ONTOLOGY_DOWNLOAD_BLOCKED_BY_OFN
+      else OfnDocumentOrder → JSON-LD (the document) or Turtle (the document parsed back)
+```
+
+Both formats come from one document, so they are the same graph. The JSON-LD `@context` is the OFN URL
+`https://ofn.gov.cz/slovníky/2026-02-26/kompletní/kontext.jsonld`, served offline from the bundled copy
+(`OfnDocumentLoader`; any other remote context is refused). The NKD download still uses `JsonExporter`.
 
 ---
 
 ## Utility Classes
 
-### RDF Creation and Manipulation
-
-| Utility Class | Purpose | Key Methods |
-|---------------|---------|-------------|
-| `ConceptCreator` | Creates RDF resources from domain models | `createClass()`, `createProperty()`, `createRelationship()` |
-| `OntologyCreator` | Creates ontology RDF resources | `createOntology()` |
-| `ConceptEditor` | Edits existing concept RDF | `editConcept()` |
-| `OntologyEditor` | Edits existing ontology RDF | `editOntology()` |
-| `URIGenerator` | Generates IRIs for concepts and vocabularies | `generateConceptIRI()`, `generateVocabularyIRI()` |
-
-### RDF Processing and Export
-
-| Utility Class | Purpose | Key Methods |
-|---------------|---------|-------------|
-| `OntologyDetailExtractor` | Extracts structured data from RDF | `applyOFNTransformations()`, `extract()` |
-| `ModelAnalyzer` | Analyzes RDF model structure | `analyzeOntology()`, `extractConcepts()` |
-| `ConceptJsonMapper` | Maps RDF concepts to JSON / JSON-LD objects | `processAllConcepts()`, `processConceptByIri()` |
-| `JsonFormatter` | Formats data as JSON-LD | `formatOntology()`, `formatConcept()` |
-| `JsonExporter` | Exports RDF to JSON-LD | `export()` |
-| `TurtleFilterUtil` | Filters RDF triples | `filterTriples()` |
-| `TurtleFormatterUtil` | Transforms to OFN format | `format()` |
-
----
-
-## Performance Considerations
-
-### Indexing
-
-Fuseki/TDB2 automatically creates indexes for efficient SPARQL queries:
-
-- **SPO** - Subject-Predicate-Object
-- **POS** - Predicate-Object-Subject
-- **OSP** - Object-Subject-Predicate
-
-These indexes enable fast lookups for different query patterns.
+| Class | Role |
+|---|---|
+| `utility/creator/ConceptCreator` (+ `ClassConceptWriter`, `PropertyConceptWriter`, `RelationshipConceptWriter`, …) | create-path RDF in OFN shape |
+| `utility/creator/OntologyModelFactory` | new vocabulary graph |
+| `utility/editor/ConceptEditor`, `OntologyEditor` | edit deltas in OFN shape |
+| `utility/upload/*` | upload steps: IRI normaliser, graph name, inScheme stamping, marker derivation, concept gate, pruning |
+| `ofn/*` | reader, gate, exporter, dates, IRIs |
+| `rdfmigration/*` | changeset loader and startup runner |
+| `utility/detail/*`, `utility/exporter/json/ModelAnalyzer`, `ConceptJsonMapper` | detail read path |
+| `utility/exporter/json/JsonExporter`, `utility/exporter/turtle/TurtleFilterUtil`, `TurtleFormatterUtil` | NKD download and the detail read path only |
 
 ---
 
 ## Backup and Recovery
 
-### TDB2 Backup
-
-**Recommended Approach**:
 ```bash
 # Online backup (Fuseki running)
 curl -X POST http://localhost:3030/$/backup/ismd-tool-dataset
-
 # Offline backup (Fuseki stopped)
 cp -r /data/tdb2/production-dataset /backup/tdb2-$(date +%Y%m%d)
 ```
 
-**Backup Frequency**: Daily
-
-**Retention**: 30 days minimum
-
-### Recovery
-
-**From Online Backup**:
-1. Stop Fuseki
-2. Remove corrupted dataset
-3. Restore from backup
-4. Start Fuseki
-
-**From Offline Backup**:
-1. Stop Fuseki
-2. Replace dataset directory
-3. Start Fuseki
-
-### Consistency Requirements
-
-**Critical**: PostgreSQL and TDB2 backups must be synchronized to maintain referential integrity through `graph_name` and IRI references.
-
-**Recommendation**: Backup PostgreSQL and TDB2 in sequence within the same backup window.
+Restore: stop Fuseki, replace the dataset, start Fuseki. Back up PostgreSQL and TDB2 in the same window: they
+reference each other through `graph_name` and concept IRIs, and `rdf_migration_log` records which changesets
+the TDB2 data has had. Take a TDB2 backup before a deploy that adds changesets.
 
 ---
 
-## Security Considerations
+## Security
 
-### Access Control
-
-Fuseki endpoint security is managed at the **application layer**, not at the database level.
-
-**Application Enforcement**:
-- All Fuseki operations go through `JenaTDB2Repository`
-- Controllers enforce authorization via `@PreAuthorize` annotations
-- Services verify ownership before write operations
-
-**No Direct Fuseki Access**: Production Fuseki should not be publicly accessible; only the application backend should connect.
-
-### Data Validation
-
-**RDF Validation**:
-- External validation service validates SHACL/SKOS compliance
-- Validation results stored in PostgreSQL `validation_reports` table
-- Ontologies can be blocked from download if validation fails (configurable)
-
-**Input Sanitization**:
-- IRIs validated before RDF generation
-- User input sanitized to prevent SPARQL injection
+- Only the backend connects to Fuseki; it must not be reachable from outside.
+- Authorization is enforced in the application (`SecurityConfig`, `@PreAuthorize`, ownership checks before writes).
+- IRIs are validated before RDF is built; user input is sanitized before it reaches SPARQL.
+- Validation: the external SHACL report can block a download; the OFN gate always does for non-conformant data.
 
 ---
 
 ## Monitoring and Maintenance
 
-### Fuseki Monitoring
-
-**Endpoints**:
-- Health: `http://localhost:3030/$/ping`
-- Statistics: `http://localhost:3030/$/stats/{dataset}`
-- Server info: `http://localhost:3030/$/server`
-
-**Metrics to Monitor**:
-- Query execution time
-- Number of triples per graph
-- HTTP request rate
-- Memory usage
-
-### TDB2 Maintenance
-
-**Compaction** (reduces disk space):
-```bash
-# Requires Fuseki to be stopped
-tdb2.tdbcompact --loc=/data/tdb2/production-dataset
-```
-
-**Frequency**: Monthly or when disk usage increases significantly
-
-**Statistics Update** (improves query performance):
-```bash
-tdb2.tdbstats --loc=/data/tdb2/production-dataset --graph=<graph-uri>
-```
+- Fuseki: `$/ping`, `$/stats/{dataset}`, `$/server`.
+- Compaction (Fuseki stopped): `tdb2.tdbcompact --loc=/data/tdb2/production-dataset`.
+- Statistics: `tdb2.tdbstats --loc=/data/tdb2/production-dataset --graph=<graph-uri>`.
 
 ---
 
-## Appendix
+## Key Files
 
-### Key File Locations
-
-| Component | File Path |
-|-----------|-----------|
-| Jena Configuration | `src/main/java/com/dia/ismdtoolbackend/config/JenaConfig.java` |
-| TDB2 Repository | `src/main/java/com/dia/ismdtoolbackend/repository/JenaTDB2Repository.java` |
-| SPARQL Construct Query | `src/main/java/com/dia/ismdtoolbackend/query/NKDSPARQLConstructQuery.java` |
-| Concept Creator | `src/main/java/com/dia/ismdtoolbackend/utility/ConceptCreator.java` |
-| Ontology Creator | `src/main/java/com/dia/ismdtoolbackend/utility/OntologyCreator.java` |
-| Model Analyzer | `src/main/java/com/dia/ismdtoolbackend/utility/ModelAnalyzer.java` |
-| JSON Exporter | `src/main/java/com/dia/ismdtoolbackend/utility/JsonExporter.java` |
-| Concept JSON mapper | `src/main/java/com/dia/ismdtoolbackend/utility/exporter/json/ConceptJsonMapper.java` |
-
-### External Resources
+| Component | Path (under `src/main/`) |
+|---|---|
+| Fuseki config | `java/com/dia/ismdtoolbackend/config/JenaConfig.java` |
+| Repository facade | `java/com/dia/ismdtoolbackend/repository/JenaTDB2Repository.java` |
+| OFN gate and IRIs | `java/com/dia/ismdtoolbackend/ofn/` |
+| OFN context and schema | `resources/ofn/slovniky/` |
+| RDF migrations | `resources/db/rdf-changelog/`, `java/com/dia/ismdtoolbackend/rdfmigration/` |
+| Outbox | `java/com/dia/ismdtoolbackend/outbox/` |
 
 | Resource | URL |
-|----------|-----|
-| Apache Jena Documentation | https://jena.apache.org/documentation/ |
-| SPARQL 1.1 Specification | https://www.w3.org/TR/sparql11-query/ |
-| SKOS Reference | https://www.w3.org/TR/skos-reference/ |
-| OWL 2 Primer | https://www.w3.org/TR/owl2-primer/ |
-| Czech OFN Standards | https://ofn.gov.cz/ |
-| ELI (European Legislation Identifier) | https://eur-lex.europa.eu/eli-register/about.html |
+|---|---|
+| OFN Slovníky | https://ofn.gov.cz/slovníky/ |
+| Apache Jena | https://jena.apache.org/documentation/ |
+| SPARQL 1.1 | https://www.w3.org/TR/sparql11-query/ |
 
 ---
 
-**Document Version**: 1.0
-**Last Updated**: 2025-12-31
-**Author**: Richard Koubek (generated)
-**Project**: ISMD Tool Backend
+**Last updated**: 2026-11-03

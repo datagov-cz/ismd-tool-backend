@@ -7,7 +7,7 @@ import com.dia.ismdtoolbackend.utility.exporter.json.ConceptData;
 import com.dia.ismdtoolbackend.utility.exporter.json.ConceptJsonMapper;
 import com.dia.ismdtoolbackend.utility.exporter.json.ModelAnalyzer;
 import com.dia.ismdtoolbackend.utility.exporter.json.ModelStructure;
-import com.dia.ismdtoolbackend.utility.exporter.turtle.OFNTypeNormalizer;
+
 import com.dia.ismdtoolbackend.utility.exporter.turtle.TurtleFilterUtil;
 import com.dia.ismdtoolbackend.utility.exporter.turtle.TurtleFormatterUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -47,43 +47,52 @@ public class OntologyDetailExtractor {
         return iri -> iri;
     }
 
+    /** Which data is read, and so how much tolerance the read needs. */
+    private enum Source {
+        /** Stored ISMD data: OFN-shaped by the write gate, read as it is. */
+        STORED,
+        /** Upload input, before it is stored: {@link OutsideDataNormalizer#normalizeUploadInput}. */
+        UPLOAD,
+        /** NKD responses: {@link OutsideDataNormalizer#normalizeNkd}. */
+        NKD
+    }
+
     /**
-     * Local-detail OFN transform. Infers role tags + labels but does NOT derive
-     * {@code skos:inScheme}: local vocabularies are written via the authoritative
-     * upload path, which guarantees an explicit inScheme on every owned concept.
-     *
-     * <p>{@code rawModel} is left unchanged; the transform works on a copy.
+     * Detail transform of stored ISMD data (ontology and concept detail, diagram, working-copy projection).
+     * {@code rawModel} is left unchanged; the transform works on a copy.
      */
     public Model applyOFNTransformations(Model rawModel) {
-        return applyOFNTransformations(rawModel, false);
+        return applyOFNTransformations(rawModel, Source.STORED);
+    }
+
+    /** Detail transform of upload input, which ISMD does not own yet. {@code rawModel} is left unchanged. */
+    public Model applyOFNTransformationsForUpload(Model rawModel) {
+        return applyOFNTransformations(rawModel, Source.UPLOAD);
     }
 
     /**
-     * NKD-detail OFN transform. Same as the local transform PLUS {@code skos:inScheme}
-     * derivation, since NKD data is out of our control and often arrives without one.
-     *
-     * <p>{@code rawModel} is left unchanged; the transform works on a copy.
+     * Detail transform of NKD data, which ISMD does not own: also derives {@code skos:inScheme}, which NKD
+     * data often lacks. {@code rawModel} is left unchanged.
      */
     public Model applyOFNTransformationsForNkd(Model rawModel) {
-        return applyOFNTransformations(rawModel, true);
+        return applyOFNTransformations(rawModel, Source.NKD);
     }
 
-    private Model applyOFNTransformations(Model rawModel, boolean deriveInScheme) {
-        log.debug("Applying OFN transformations (deriveInScheme={})", deriveInScheme);
+    private Model applyOFNTransformations(Model rawModel, Source source) {
+        log.debug("Applying OFN transformations ({})", source);
         // The normalizers mutate the model they are handed, and callers pass models they do not
         // own (a cached NKD model, a graph the request extracts from again), so they run on a copy.
         Model workingModel = ModelFactory.createDefaultModel();
         workingModel.setNsPrefixes(rawModel.getNsPrefixMap());
         workingModel.add(rawModel);
 
-        // Normalize before filtering: NKD-published concepts often carry only
-        // generic types (slovníky:pojem + owl:Class/ObjectProperty/DatatypeProperty),
-        // all of which TurtleFilterUtil treats as "vocabulary noise" and would
-        // strip. Inferring the role tags (skos:Concept, slovníky:třída/vztah/
-        // vlastnost) here keeps real concepts past the filter.
-        int normalized = deriveInScheme
-                ? OFNTypeNormalizer.normalizeForNkd(workingModel)
-                : OFNTypeNormalizer.normalizeForLocalDetail(workingModel);
+        // Outside data may lack skos:Concept and slovníky:pojem; TurtleFilterUtil would strip such
+        // concepts as vocabulary noise, so they are inferred before filtering.
+        int normalized = switch (source) {
+            case STORED -> 0;
+            case UPLOAD -> OutsideDataNormalizer.normalizeUploadInput(workingModel);
+            case NKD -> OutsideDataNormalizer.normalizeNkd(workingModel);
+        };
         if (normalized > 0) {
             log.debug("Inferred OFN role tags on {} resources before filtering", normalized);
         }

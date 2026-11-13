@@ -9,14 +9,10 @@ import org.apache.jena.rdf.model.Statement;
 import java.util.List;
 import java.util.Set;
 
-import static com.dia.ismdtoolbackend.utility.editor.ConceptEditStatements.updateBooleanLiteral;
 
 /** The field updaters of the concept editor, shared by the three concept-type editors. */
 class ConceptFieldUpdaters {
 
-    private static final String IN_TEZAURUS = "inTezaurus";
-
-    private final ConceptIriFactory iriFactory;
     private final ConceptLabelUpdater labels;
     private final ConceptSourceUpdater sources;
     private final ConceptRelationUpdater relations;
@@ -25,12 +21,11 @@ class ConceptFieldUpdaters {
     private final ConceptCodeListUpdater codeLists;
 
     ConceptFieldUpdaters(ConceptIriFactory iriFactory) {
-        this.iriFactory = iriFactory;
         this.labels = new ConceptLabelUpdater();
-        this.sources = new ConceptSourceUpdater(iriFactory);
+        this.sources = new ConceptSourceUpdater();
         this.relations = new ConceptRelationUpdater(iriFactory);
         this.governance = new ConceptGovernanceUpdater(iriFactory);
-        this.classification = new ConceptDataClassificationUpdater(iriFactory);
+        this.classification = new ConceptDataClassificationUpdater();
         this.codeLists = new ConceptCodeListUpdater();
     }
 
@@ -43,8 +38,6 @@ class ConceptFieldUpdaters {
         sources.updateLegalSources(context.newConcept, editModel, context.oldConcept, model, toRemove, toAdd);
         sources.updateNonLegalSources(context.newConcept, editModel, context.oldConcept, model, toRemove, toAdd);
         relations.updateExactMatch(context.newConcept, editModel.getExactMatch(), context.oldConcept, model, toRemove, toAdd);
-        updateBooleanLiteral(context.newConcept, model.createProperty(iriFactory.getEffectiveNamespace() + IN_TEZAURUS),
-                editModel.getInTezaurus(), context.oldConcept, model, toRemove, toAdd);
     }
 
     /** Applies the class {@code type} value (TSP/TOP rdf:type transitions). */
