@@ -1,10 +1,12 @@
 package com.dia.ismdtoolbackend.config.cors;
 
 import com.dia.ismdtoolbackend.config.DomainApplicationProfile;
+import com.dia.ismdtoolbackend.publication.PublicationController;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
+import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
@@ -45,7 +47,20 @@ public class CorsConfig {
 
     private CorsConfigurationSource productionCorsConfigurationSource() {
         var config = new CorsConfigUtil().createProductionCorsConfiguration(productionAllowedOrigins());
+        return withPublication(config);
+    }
+
+    /**
+     * The two published open-data files, by exact path, are readable from any origin (NKOD checks CORS on distributions); every
+     * other path keeps the profile's configuration. The first matching pattern wins, so publication is
+     * registered first.
+     */
+    private static CorsConfigurationSource withPublication(CorsConfiguration config) {
         var source = new UrlBasedCorsConfigurationSource();
+        var publicRead = new CorsConfigUtil().createPublicReadCorsConfiguration();
+        for (String file : PublicationController.FILES) {
+            source.registerCorsConfiguration(PublicationController.BASE_PATH + "/" + file, publicRead);
+        }
         source.registerCorsConfiguration("/**", config);
         return source;
     }
@@ -58,16 +73,10 @@ public class CorsConfig {
     }
 
     private CorsConfigurationSource testCorsConfigurationSource() {
-        var config = new CorsConfigUtil().createTestCorsConfiguration();
-        var source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", config);
-        return source;
+        return withPublication(new CorsConfigUtil().createTestCorsConfiguration());
     }
 
     private CorsConfigurationSource localCorsConfigurationSource() {
-        var config = new CorsConfigUtil().createLocalCorsConfiguration();
-        var source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", config);
-        return source;
+        return withPublication(new CorsConfigUtil().createLocalCorsConfiguration());
     }
 }

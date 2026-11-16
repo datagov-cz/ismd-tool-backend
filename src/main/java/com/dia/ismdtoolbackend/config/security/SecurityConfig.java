@@ -161,6 +161,9 @@ public class SecurityConfig {
                         "/api/eli/law/content",
                         "/api/eli/resolve",
                         "/api/codelist/**",
+                        // Published open data: exact paths, so a new /api/publikace endpoint is not public by accident
+                        "/api/publikace/slovniky.jsonld",
+                        "/api/publikace/diagramy.jsonld",
                         "/v3/api-docs/**",
                         "/swagger-ui/**",
                         "/swagger-ui.html"

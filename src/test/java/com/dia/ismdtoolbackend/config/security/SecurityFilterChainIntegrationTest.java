@@ -48,6 +48,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.testSecurityContext;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -161,6 +162,9 @@ class SecurityFilterChainIntegrationTest {
             // Codelist (wildcard)
             "/api/codelist/property-datatypes",
             "/api/codelist/nkod",
+            // Published open data
+            "/api/publikace/slovniky.jsonld",
+            "/api/publikace/diagramy.jsonld",
             // OpenAPI / Swagger
             "/v3/api-docs",
             "/swagger-ui/index.html",
@@ -176,6 +180,30 @@ class SecurityFilterChainIntegrationTest {
         assertThat(status)
                 .as("Public endpoint %s should not require auth (got %d)", path, status)
                 .isNotIn(401, 403);
+    }
+
+    // The published files are an NKOD distribution: readable from any origin, without credentials. Other paths
+    // keep the profile's origin allowlist.
+    @Test
+    void publication_preflightFromAnyOrigin_allowedWithoutCredentials() throws Exception {
+        MvcResult result = mockMvc.perform(options("/api/publikace/slovniky.jsonld")
+                        .header("Origin", "https://catalogue.example")
+                        .header("Access-Control-Request-Method", "GET"))
+                .andReturn();
+
+        assertThat(result.getResponse().getHeader("Access-Control-Allow-Origin")).isEqualTo("*");
+        assertThat(result.getResponse().getHeader("Access-Control-Allow-Credentials")).isNull();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/ontology/list", "/api/publikace/other"})
+    void nonPublicationPath_preflightFromUnknownOrigin_notAllowed(String path) throws Exception {
+        MvcResult result = mockMvc.perform(options(path)
+                        .header("Origin", "https://catalogue.example")
+                        .header("Access-Control-Request-Method", "GET"))
+                .andReturn();
+
+        assertThat(result.getResponse().getHeader("Access-Control-Allow-Origin")).isNull();
     }
 
     // ── Authenticated chain ──────────────────────────────────────────────
@@ -300,6 +328,14 @@ class SecurityFilterChainIntegrationTest {
     void unmatchedEndpoint_deniedWithoutAuth() throws Exception {
         mockMvc.perform(get("/api/nonexistent")
                         .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+    }
+
+    /** Only the two published files are public; anything else under /api/publikace falls to denyAll. */
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/publikace/current.json", "/api/publikace/other", "/api/publikace/a/b"})
+    void otherPublicationPath_anonymous_rejected(String path) throws Exception {
+        mockMvc.perform(get(path).accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isUnauthorized());
     }
 
