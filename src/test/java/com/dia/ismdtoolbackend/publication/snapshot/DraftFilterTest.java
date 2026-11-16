@@ -1,6 +1,5 @@
 package com.dia.ismdtoolbackend.publication.snapshot;
 
-import com.dia.ismdtoolbackend.models.diagram.EdgeWaypoint;
 import com.dia.ismdtoolbackend.publication.snapshot.PublicationSnapshot.Concept;
 import com.dia.ismdtoolbackend.publication.snapshot.PublicationSnapshot.Diagram;
 import com.dia.ismdtoolbackend.publication.snapshot.PublicationSnapshot.Edge;
@@ -27,7 +26,7 @@ class DraftFilterTest {
     private static final String IN_DRAFT = DRAFT + "/pojem/any";
 
     private static Concept concept(String iri, boolean published) {
-        return new Concept(iri, iri.substring(iri.lastIndexOf('/') + 1), published, false, T, T);
+        return new Concept(iri, iri.substring(iri.lastIndexOf('/') + 1), published, T, T);
     }
 
     private static Ontology ontology(String iri, boolean published, Concept... concepts) {
@@ -35,12 +34,12 @@ class DraftFilterTest {
                 List.of(concepts));
     }
 
-    private static Node node(String conceptIri, String parent, String... visible) {
-        return new Node(conceptIri, 0, 0, false, parent, false, List.of(visible));
+    private static Node node(String conceptIri, String parent) {
+        return new Node(conceptIri, 0, 0, parent, false);
     }
 
     private static Edge edge(String key) {
-        return new Edge(key, List.of(new EdgeWaypoint(1, 2)));
+        return new Edge(key);
     }
 
     private static Diagram diagram(String ontologyIri, List<Node> nodes, List<Edge> edges) {
@@ -74,7 +73,7 @@ class DraftFilterTest {
     @Test
     void dropsNodesOfExcludedConcepts_fromAnyVocabulary_andUngroupsTheirChildren() {
         Diagram d = diagram(PUB, List.of(
-                node(KEPT, DRAFT_IN_PUB, DRAFT_IN_PUB, KEPT),
+                node(KEPT, DRAFT_IN_PUB),
                 node(DRAFT_IN_PUB, null),
                 node(IN_DRAFT, null),
                 node(NKD, KEPT)), List.of());
@@ -83,7 +82,6 @@ class DraftFilterTest {
 
         assertThat(nodes).extracting(Node::conceptIri).containsExactly(KEPT, NKD);
         assertThat(nodes.get(0).parentConceptIri()).isNull();
-        assertThat(nodes.get(0).visibleProperties()).containsExactly(KEPT);
         assertThat(nodes.get(1).parentConceptIri()).as("foreign NKD node and its grouping stay").isEqualTo(KEPT);
     }
 

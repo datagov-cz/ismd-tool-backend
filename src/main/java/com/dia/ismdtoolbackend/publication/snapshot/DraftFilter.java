@@ -20,8 +20,7 @@ import java.util.Set;
  *       {@link PublicationSnapshot#excludedConceptIris()};</li>
  *   <li>a diagram node whose concept is any excluded ISMD concept is dropped, whichever vocabulary owns
  *       it; a node grouped under a dropped node is ungrouped; foreign nodes not known to ISMD stay;</li>
- *   <li>an edge is dropped when its key is, or joins, an excluded concept;</li>
- *   <li>excluded concepts are removed from {@code visibleProperties}.</li>
+ *   <li>an edge is dropped when its key is, or joins, an excluded concept.</li>
  * </ul>
  */
 public final class DraftFilter {
@@ -61,9 +60,9 @@ public final class DraftFilter {
     private static Diagram withoutExcluded(Diagram diagram, Set<String> excluded) {
         List<Node> nodes = diagram.nodes().stream()
                 .filter(n -> !excluded.contains(n.conceptIri()))
-                .map(n -> new Node(n.conceptIri(), n.x(), n.y(), n.collapsed(),
-                        excluded.contains(n.parentConceptIri()) ? null : n.parentConceptIri(), n.foreign(),
-                        n.visibleProperties().stream().filter(p -> !excluded.contains(p)).toList()))
+                .map(n -> excluded.contains(n.parentConceptIri())
+                        ? new Node(n.conceptIri(), n.x(), n.y(), null, n.foreign())
+                        : n)
                 .toList();
         List<Edge> edges = diagram.edges().stream()
                 .filter(e -> !touches(e.edgeKey(), excluded))

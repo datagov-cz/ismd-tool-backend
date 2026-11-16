@@ -1,7 +1,6 @@
 package com.dia.ismdtoolbackend.publication.snapshot;
 
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
-import com.dia.ismdtoolbackend.entity.DiagramEdgeEntity;
 import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.DiagramNodeEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
@@ -37,8 +36,8 @@ public class PublicationSnapshotReader {
         for (Object[] row : rows("select c, c.ontologyMetadata.id from ConceptMetadataEntity c order by c.id")) {
             ConceptMetadataEntity c = (ConceptMetadataEntity) row[0];
             conceptsByOntology.computeIfAbsent((Long) row[1], id -> new ArrayList<>()).add(new Concept(
-                    c.getConceptIri(), c.getSlug(), Boolean.TRUE.equals(c.getIsPublished()),
-                    Boolean.TRUE.equals(c.getInTezaurus()), c.getCreatedAt(), c.getUpdatedAt()));
+                    c.getConceptIri(), c.getSlug(), Boolean.TRUE.equals(c.getIsPublished()), c.getCreatedAt(),
+                    c.getUpdatedAt()));
         }
 
         Map<Long, String> ontologyIris = new HashMap<>();
@@ -60,10 +59,8 @@ public class PublicationSnapshotReader {
             nodesByDiagram.computeIfAbsent((Long) row[1], id -> new ArrayList<>()).add((DiagramNodeEntity) row[0]);
         }
         Map<Long, List<Edge>> edgesByDiagram = new HashMap<>();
-        for (Object[] row : rows("select e, e.diagram.id from DiagramEdgeEntity e order by e.id")) {
-            DiagramEdgeEntity e = (DiagramEdgeEntity) row[0];
-            edgesByDiagram.computeIfAbsent((Long) row[1], id -> new ArrayList<>())
-                    .add(new Edge(e.getEdgeKey(), e.getSegments() == null ? List.of() : e.getSegments()));
+        for (Object[] row : rows("select e.edgeKey, e.diagram.id from DiagramEdgeEntity e order by e.id")) {
+            edgesByDiagram.computeIfAbsent((Long) row[1], id -> new ArrayList<>()).add(new Edge((String) row[0]));
         }
 
         List<Diagram> diagrams = new ArrayList<>();
@@ -82,9 +79,9 @@ public class PublicationSnapshotReader {
         Map<Long, String> conceptByNodeId = new HashMap<>();
         entities.forEach(n -> conceptByNodeId.put(n.getId(), n.getConceptIri()));
         return entities.stream()
-                .map(n -> new Node(n.getConceptIri(), n.getPosX(), n.getPosY(), n.isCollapsed(),
+                .map(n -> new Node(n.getConceptIri(), n.getPosX(), n.getPosY(),
                         n.getParentNodeId() == null ? null : conceptByNodeId.get(n.getParentNodeId()),
-                        n.isForeign(), n.getVisibleProperties()))
+                        n.isForeign()))
                 .toList();
     }
 

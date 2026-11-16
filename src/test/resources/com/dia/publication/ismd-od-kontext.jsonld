@@ -1,0 +1,82 @@
+{
+  "@context": {
+    "@version": 1.1,
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+    "čas": "https://slovník.gov.cz/generický/čas/pojem/",
+    "ismd": "https://slovník.gov.cz/generický/ismd-otevřená-data/pojem/",
+    "iri": "@id",
+    "typ": "@type",
+
+    "Publikace ISMD": "ismd:publikace",
+    "publikováno": {
+      "@id": "ismd:okamžik-publikace",
+      "@context": {
+        "Časový okamžik": {
+          "@id": "čas:časový-okamžik",
+          "@context": {
+            "datum_a_čas": { "@id": "čas:datum-a-čas", "@type": "xsd:dateTimeStamp" }
+          }
+        }
+      }
+    },
+    "úplná": { "@id": "ismd:je-úplná", "@type": "xsd:boolean" },
+    "obsahuje_rozpracované": { "@id": "ismd:obsahuje-rozpracované", "@type": "xsd:boolean" },
+
+    "slug": { "@id": "ismd:slug", "@type": "xsd:string" },
+    "je_publikován": { "@id": "ismd:je-publikován", "@type": "xsd:boolean" },
+    "stav_poslední_validace": { "@id": "ismd:stav-poslední-validace", "@type": "xsd:string" },
+    "okamžik_poslední_validace": {
+      "@id": "ismd:okamžik-poslední-validace",
+      "@context": {
+        "Časový okamžik": {
+          "@id": "čas:časový-okamžik",
+          "@context": {
+            "datum_a_čas": { "@id": "čas:datum-a-čas", "@type": "xsd:dateTimeStamp" }
+          }
+        }
+      }
+    },
+    "stav_obsahu": { "@id": "ismd:stav-obsahu", "@type": "xsd:string" },
+    "počet_pojmů": { "@id": "ismd:počet-pojmů", "@type": "xsd:integer" },
+    "vytvořeno_v_ismd": {
+      "@id": "ismd:okamžik-vytvoření-v-ismd",
+      "@context": {
+        "Časový okamžik": {
+          "@id": "čas:časový-okamžik",
+          "@context": {
+            "datum_a_čas": { "@id": "čas:datum-a-čas", "@type": "xsd:dateTimeStamp" }
+          }
+        }
+      }
+    },
+    "aktualizováno_v_ismd": {
+      "@id": "ismd:okamžik-poslední-změny-v-ismd",
+      "@context": {
+        "Časový okamžik": {
+          "@id": "čas:časový-okamžik",
+          "@context": {
+            "datum_a_čas": { "@id": "čas:datum-a-čas", "@type": "xsd:dateTimeStamp" }
+          }
+        }
+      }
+    },
+
+    "Diagram": "ismd:diagram",
+    "Uzel diagramu": "ismd:uzel-diagramu",
+    "Hrana diagramu": "ismd:hrana-diagramu",
+    "Bod": "ismd:bod",
+    "název_diagramu": { "@id": "ismd:název-diagramu", "@type": "xsd:string" },
+    "slovník": { "@id": "ismd:zobrazuje-slovník", "@type": "@id" },
+    "výřez": { "@id": "ismd:výřez" },
+    "přiblížení": { "@id": "ismd:přiblížení", "@type": "xsd:double" },
+    "x": { "@id": "ismd:x", "@type": "xsd:double" },
+    "y": { "@id": "ismd:y", "@type": "xsd:double" },
+    "uzly": { "@id": "ismd:má-uzel", "@container": "@set" },
+    "pojem": { "@id": "ismd:zobrazuje-pojem", "@type": "@id" },
+    "pozice": { "@id": "ismd:pozice" },
+    "seskupen_pod": { "@id": "ismd:je-seskupen-pod", "@type": "@id" },
+    "cizí": { "@id": "ismd:je-cizí", "@type": "xsd:boolean" },
+    "hrany": { "@id": "ismd:má-hranu", "@container": "@set" },
+    "klíč_hrany": { "@id": "ismd:klíč-hrany", "@type": "xsd:string" }
+  }
+}

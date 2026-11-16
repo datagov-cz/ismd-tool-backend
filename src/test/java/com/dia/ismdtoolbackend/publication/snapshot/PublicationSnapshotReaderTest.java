@@ -45,7 +45,6 @@ class PublicationSnapshotReaderTest extends PostgresIntegrationTestBase {
         OntologyMetadataEntity ontology = data.createOntology("snapshot", GRAPH, PgTestData.USER, true);
         ConceptMetadataEntity a = data.createConcept(ontology, A, "A", ConceptType.TRIDA);
         a.setIsPublished(true);
-        a.setInTezaurus(true);
         conceptRepository.save(a);
         data.createConcept(ontology, B, "B", ConceptType.TRIDA);
 
@@ -79,7 +78,6 @@ class PublicationSnapshotReaderTest extends PostgresIntegrationTestBase {
         assertThat(o.slug()).isEqualTo("snapshot");
         assertThat(o.published()).isTrue();
         assertThat(o.concepts()).extracting(PublicationSnapshot.Concept::iri).containsExactly(A, B);
-        assertThat(o.concepts().get(0).inTezaurus()).isTrue();
         assertThat(o.concepts().get(1).published()).as("null is_published reads as draft").isFalse();
 
         Diagram d = snapshot.diagrams().stream().filter(x -> x.ontologyIri().equals(GRAPH)).findFirst().orElseThrow();
@@ -87,10 +85,7 @@ class PublicationSnapshotReaderTest extends PostgresIntegrationTestBase {
         assertThat(d.viewportZoom()).isEqualTo(0.5);
         assertThat(d.nodes()).extracting(Node::conceptIri).containsExactly(A, B);
         assertThat(d.nodes().get(1).parentConceptIri()).isEqualTo(A);
-        assertThat(d.nodes().get(1).visibleProperties()).containsExactly(A);
         assertThat(d.edges()).extracting(PublicationSnapshot.Edge::edgeKey).containsExactly(B, A);
-        assertThat(d.edges().get(0).segments()).containsExactly(new EdgeWaypoint(5, 6));
-        assertThat(d.edges().get(1).segments()).as("no route reads as empty, not null").isEmpty();
         assertThat(snapshot.excludedConceptIris()).isEmpty();
     }
 

@@ -1,7 +1,6 @@
 package com.dia.ismdtoolbackend.publication.snapshot;
 
 import com.dia.ismdtoolbackend.enums.OntologyValidationStatus;
-import com.dia.ismdtoolbackend.models.diagram.EdgeWaypoint;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -42,8 +41,8 @@ public record PublicationSnapshot(List<Ontology> ontologies, List<Diagram> diagr
         }
     }
 
-    public record Concept(String iri, String slug, boolean published, boolean inTezaurus,
-                          LocalDateTime createdAt, LocalDateTime updatedAt) {
+    public record Concept(String iri, String slug, boolean published, LocalDateTime createdAt,
+                          LocalDateTime updatedAt) {
     }
 
     /** Saved layout only; viewport fields are null until the canvas is first saved. */
@@ -63,19 +62,10 @@ public record PublicationSnapshot(List<Ontology> ontologies, List<Diagram> diagr
     }
 
     /** @param parentConceptIri concept of the node this one is grouped under, or null */
-    public record Node(String conceptIri, double x, double y, boolean collapsed, String parentConceptIri,
-                       boolean foreign, List<String> visibleProperties) {
-
-        public Node {
-            visibleProperties = List.copyOf(visibleProperties);
-        }
+    public record Node(String conceptIri, double x, double y, String parentConceptIri, boolean foreign) {
     }
 
     /** @param edgeKey a VZTAH's concept IRI, or the client-assembled {@code edge|KIND|source|target} */
-    public record Edge(String edgeKey, List<EdgeWaypoint> segments) {
-
-        public Edge {
-            segments = List.copyOf(segments);
-        }
+    public record Edge(String edgeKey) {
     }
 }

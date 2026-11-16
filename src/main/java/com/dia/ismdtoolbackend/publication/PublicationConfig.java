@@ -33,8 +33,11 @@ public class PublicationConfig {
     /** Directory holding the published files. */
     private Path directory = Path.of(System.getProperty("java.io.tmpdir"), "ismd-publication");
 
-    /** Base of the published diagram IRIs; the diagram's {@code iri_id} is appended. */
-    private String diagramIriBase = "https://data.dia.gov.cz/zdroj/ismd/diagramy/";
+    /**
+     * Base of the IRIs ISMD mints for publication: {@code <base>diagramy/<iri_id>} for diagrams and
+     * {@code <base>publikace/<file>} for the publication records. Fixed once published.
+     */
+    private String iriBase = "https://data.dia.gov.cz/zdroj/ismd/";
 
     /** URL of the ISMD OD JSON-LD context, the second entry of both files' {@code @context}. */
     private String contextUrl;
