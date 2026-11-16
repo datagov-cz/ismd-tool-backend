@@ -5,6 +5,7 @@ import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.mapper.CommentMapperImpl;
 import com.dia.ismdtoolbackend.outbox.OutboxEntry;
 import com.dia.ismdtoolbackend.outbox.OutboxEntryRepository;
+import com.dia.ismdtoolbackend.publication.snapshot.PublicationSnapshotReader;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
 import com.dia.ismdtoolbackend.repository.DiagramRepository;
@@ -46,7 +47,7 @@ import java.lang.annotation.Target;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @ActiveProfiles("junit")
 @Import({JpaAuditingConfig.class, TransactionTemplateConfig.class, PgTestData.class, DiagramSearchLookup.class,
-        CommentServiceImpl.class, CommentMapperImpl.class})
+        CommentServiceImpl.class, CommentMapperImpl.class, PublicationSnapshotReader.class})
 @EntityScan(basePackageClasses = {OutboxEntry.class, ConceptMetadataEntity.class})
 @EnableJpaRepositories(basePackageClasses = {OutboxEntryRepository.class, ConceptMetadataRepository.class})
 @MockitoSpyBean(types = {ConceptMetadataRepository.class, DiagramPendingEditRepository.class, DiagramRepository.class})
