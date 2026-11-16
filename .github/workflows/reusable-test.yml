@@ -66,6 +66,7 @@ jobs:
           COVERAGE_BRANCH: ${{ inputs.coverage_branch }}
           COVERAGE_COMPLEXITY: ${{ inputs.coverage_complexity }}
           COVERAGE_METHOD: ${{ inputs.coverage_method }}
+          ENFORCE_COVERAGE: ${{ inputs.enforce_coverage }}
         run: |
           overrides=()
           [ -n "$COVERAGE_LINE" ] && overrides+=("-Djacoco.line.minimum=$COVERAGE_LINE")
@@ -73,7 +74,7 @@ jobs:
           [ -n "$COVERAGE_BRANCH" ] && overrides+=("-Djacoco.branch.minimum=$COVERAGE_BRANCH")
           [ -n "$COVERAGE_COMPLEXITY" ] && overrides+=("-Djacoco.complexity.minimum=$COVERAGE_COMPLEXITY")
           [ -n "$COVERAGE_METHOD" ] && overrides+=("-Djacoco.method.minimum=$COVERAGE_METHOD")
-          if [ "${{ inputs.enforce_coverage }}" = "true" ]; then
+          if [ "$ENFORCE_COVERAGE" = "true" ]; then
             ./mvnw clean verify "${overrides[@]}"
           else
             ./mvnw clean test jacoco:report
