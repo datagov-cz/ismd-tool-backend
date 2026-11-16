@@ -1,8 +1,10 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
+import com.dia.ismdtoolbackend.ofn.OfnIris;
 import com.dia.ismdtoolbackend.models.NameModel;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.vocabulary.OWL2;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.SKOS;
 import org.junit.jupiter.api.Test;
@@ -17,8 +19,8 @@ class ConceptEditorCrossCuttingTest extends ConceptEditorTestBase {
         String conceptIri = DEFAULT_NS + "class-d1";
         Resource existing = model.createResource(conceptIri);
         existing.addProperty(SKOS.prefLabel, model.createLiteral("Same name", "cs"));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TOP));
+        existing.addProperty(RDF.type, OWL2.Class);
+        existing.addProperty(RDF.type, model.getResource(OfnIris.TYP_OBJEKTU_PRAVA));
 
         NameModel sameName = createNameModel("cs", "Same name");
         classConceptEditModel.setNameModel(sameName);
@@ -31,8 +33,8 @@ class ConceptEditorCrossCuttingTest extends ConceptEditorTestBase {
         assertThat(result.newConceptIRI).isEqualTo(conceptIri);
 
         Resource updated = model.getResource(conceptIri);
-        Resource tspType = model.getResource(OFN_NAMESPACE + TSP);
-        Resource topType = model.getResource(OFN_NAMESPACE + TOP);
+        Resource tspType = model.getResource(OfnIris.TYP_SUBJEKTU_PRAVA);
+        Resource topType = model.getResource(OfnIris.TYP_OBJEKTU_PRAVA);
         assertThat(updated.hasProperty(RDF.type, tspType)).isTrue();
         assertThat(updated.hasProperty(RDF.type, topType)).isFalse();
     }
@@ -41,7 +43,7 @@ class ConceptEditorCrossCuttingTest extends ConceptEditorTestBase {
         String oldIri = DEFAULT_NS + "class-d1b";
         Resource existing = model.createResource(oldIri);
         existing.addProperty(SKOS.prefLabel, model.createLiteral("Old name", "cs"));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
+        existing.addProperty(RDF.type, OWL2.Class);
 
         NameModel newName = createNameModel("cs", "New name d1b");
         classConceptEditModel.setNameModel(newName);
@@ -60,8 +62,8 @@ class ConceptEditorCrossCuttingTest extends ConceptEditorTestBase {
         String conceptIri = DEFAULT_NS + "class-d2";
         Resource existing = model.createResource(conceptIri);
         existing.addProperty(SKOS.prefLabel, model.createLiteral("Class d2", "cs"));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TOP));
+        existing.addProperty(RDF.type, OWL2.Class);
+        existing.addProperty(RDF.type, model.getResource(OfnIris.TYP_OBJEKTU_PRAVA));
 
         Property descProperty = model.createProperty("http://purl.org/dc/terms/description");
         existing.addProperty(descProperty, model.createLiteral("Existing description", "cs"));
@@ -84,8 +86,8 @@ class ConceptEditorCrossCuttingTest extends ConceptEditorTestBase {
 
         Resource updated = model.getResource(conceptIri);
         assertThat(updated.hasProperty(SKOS.prefLabel)).isTrue();
-        assertThat(updated.hasProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA))).isTrue();
-        assertThat(updated.hasProperty(RDF.type, model.getResource(OFN_NAMESPACE + TOP))).isTrue();
+        assertThat(updated.hasProperty(RDF.type, OWL2.Class)).isTrue();
+        assertThat(updated.hasProperty(RDF.type, model.getResource(OfnIris.TYP_OBJEKTU_PRAVA))).isTrue();
         assertThat(updated.hasProperty(descProperty)).isTrue();
         assertThat(updated.hasProperty(SKOS.definition)).isTrue();
         assertThat(updated.hasProperty(SKOS.altLabel)).isTrue();

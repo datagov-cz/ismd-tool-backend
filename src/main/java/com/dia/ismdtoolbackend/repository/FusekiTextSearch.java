@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.repository;
 
+import com.dia.ismdtoolbackend.ofn.OfnIris;
+
 import com.dia.ismdtoolbackend.config.DomainApplicationProfile;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.RelationType;
@@ -19,10 +21,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OFN_NAMESPACE;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TRIDA;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VLASTNOST;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VZTAH;
 
 /** Text-index search and relation filtering against Fuseki. Reached through {@link JenaTDB2Repository}. */
 @Slf4j
@@ -155,7 +153,7 @@ final class FusekiTextSearch {
     /**
      * Role-narrowed variant of {@link #searchByText(String, List, int)} — when
      * {@code conceptTypeFilter} is non-null, restricts results to resources that
-     * carry the matching OFN role marker ({@code slovníky:třída/vlastnost/vztah}).
+     * carry the matching OWL kind ({@code owl:Class/DatatypeProperty/ObjectProperty}).
      * Used to back the {@code ?type=CLASS|PROPERTY|RELATIONSHIP} search filter.
      */
     public List<Map<String, String>> searchByText(String query, List<String> visibleGraphNames, int limit,
@@ -346,16 +344,14 @@ final class FusekiTextSearch {
     // role narrowing — SearchType.toConceptType() never yields it here.
     private static String roleFilterClause(ConceptType type) {
         return switch (type) {
-            case TRIDA -> roleFilterClause(OFN_NAMESPACE + TRIDA, "http://www.w3.org/2002/07/owl#Class");
-            case VLASTNOST -> roleFilterClause(OFN_NAMESPACE + VLASTNOST,
-                    "http://www.w3.org/2002/07/owl#DatatypeProperty");
-            case VZTAH -> roleFilterClause(OFN_NAMESPACE + VZTAH, ConceptResolutionProjection.OWL_OBJECT_PROPERTY);
+            case TRIDA -> roleFilterClause(OfnIris.OWL_CLASS);
+            case VLASTNOST -> roleFilterClause(OfnIris.OWL_DATATYPE_PROPERTY);
+            case VZTAH -> roleFilterClause(OfnIris.OWL_OBJECT_PROPERTY);
             case KONCEPT -> throw new IllegalArgumentException("KONCEPT is not a role-narrowing type");
         };
     }
 
-    private static String roleFilterClause(String ofnRoleIri, String owlTypeIri) {
-        return "    FILTER(EXISTS { ?resource a <" + ofnRoleIri + "> }"
-                + " || EXISTS { ?resource a <" + owlTypeIri + "> }) ";
+    private static String roleFilterClause(String owlTypeIri) {
+        return "    FILTER(EXISTS { ?resource a <" + owlTypeIri + "> }) ";
     }
 }

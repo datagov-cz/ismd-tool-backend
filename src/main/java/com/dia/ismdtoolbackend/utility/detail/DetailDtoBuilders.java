@@ -69,7 +69,7 @@ final class DetailDtoBuilders {
      * Resolve any raw range value (bare code, {@code xsd:}/{@code rdfs:} prefix,
      * full IRI, Czech label) to a codelist DTO. Falls back to {@code Literal}
      * for null/empty/unrecognised input — mirrors the write-path default in
-     * {@code ConceptCreator.addRangeProperty}.
+     * {@code PropertyDataType.rangeIri}.
      */
     static DataTypeDto buildDataTypeDto(Object rawRange) {
         String raw = rawRange instanceof String s ? s : null;

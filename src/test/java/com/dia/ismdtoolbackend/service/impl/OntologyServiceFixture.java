@@ -5,6 +5,7 @@ import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapperImpl;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapperImpl;
+import com.dia.ismdtoolbackend.ofn.OfnWriteGate;
 import com.dia.ismdtoolbackend.outbox.OutboxEntryRepository;
 import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
@@ -56,6 +57,8 @@ public final class OntologyServiceFixture {
     private NkdSnapshotService nkdSnapshotService = mock(NkdSnapshotService.class);
     private NkdDetailService nkdDetailService = mock(NkdDetailService.class);
     private NkdConfig nkdConfig = new NkdConfig();
+    /** Real: pure, so every create and edit test also passes the OFN safety net. */
+    private OfnWriteGate ofnWriteGate = OntologyUploadServiceFixture.ofnWriteGate();
 
     public OntologyServiceImpl build() {
         return new OntologyServiceImpl(createOperation(), editOperation(), deleteOperation(), detailReader(),
@@ -68,13 +71,13 @@ public final class OntologyServiceFixture {
 
     OntologyCreateOperation createOperation() {
         return new OntologyCreateOperation(ontologyMetadataRepository, conceptMetadataRepository,
-                ontologyMetadataMapper, outboxWriter, outboxRepository, outboxRelayTrigger, metadataEnricher());
+                ontologyMetadataMapper, outboxWriter, outboxRepository, outboxRelayTrigger, metadataEnricher(), ofnWriteGate);
     }
 
     OntologyEditOperation editOperation() {
         return new OntologyEditOperation(ontologyMetadataRepository, conceptMetadataRepository, jenaTDB2Repository,
                 ontologyEditor, metadataTouchService, ontologyMetadataMapper, metadataEnricher(),
-                new InitialGraphGuard(outboxRepository));
+                new InitialGraphGuard(outboxRepository), ofnWriteGate);
     }
 
     OntologyDeleteOperation deleteOperation() {

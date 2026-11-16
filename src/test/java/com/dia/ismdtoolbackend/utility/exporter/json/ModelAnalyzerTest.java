@@ -175,13 +175,12 @@ class ModelAnalyzerTest {
         @CsvSource(delimiter = '|', value = {
                 "skos:Concept                  | Slovník",
                 "slovníky:pojem                | Slovník,Tezaurus",
-                "slovníky:třída                | Slovník,Tezaurus,Konceptuální model",
-                "slovníky:typ-subjektu-práva   | Slovník,Tezaurus,Konceptuální model",
-                "slovníky:typ-objektu-práva    | Slovník,Tezaurus,Konceptuální model",
-                "slovníky:vlastnost            | Slovník,Tezaurus,Konceptuální model",
-                "slovníky:vztah                | Slovník,Tezaurus,Konceptuální model",
+                "owl:Class                     | Slovník,Tezaurus,Konceptuální model",
+                "owl:DatatypeProperty          | Slovník,Tezaurus,Konceptuální model",
+                "owl:ObjectProperty            | Slovník,Tezaurus,Konceptuální model",
+                "slovníky:typ-subjektu-práva   | Slovník",
         })
-        @DisplayName("vocabulary types follow the concept roles present")
+        @DisplayName("vocabulary types follow the OWL kinds present")
         void vocabularyTypes(String conceptType, String expected) {
             ModelStructure structure = analyze("ex: a owl:Ontology . pojem:x a " + conceptType + " .");
 

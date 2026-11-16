@@ -1,5 +1,11 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.exception.OfnConformanceException;
+import com.dia.ismdtoolbackend.ofn.ConformanceIssue;
+import com.dia.ismdtoolbackend.ofn.OfnWriteGate;
+import java.util.List;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import com.dia.ismdtoolbackend.controller.dto.OntologyIriCheckRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyIriCheckResponseDto;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
@@ -209,6 +215,36 @@ class OntologyCreateOperationTest {
             assertThatThrownBy(() -> operation.createOntology(model, USER_ID))
                     .isInstanceOf(OntologyException.class);
             verifyNoInteractions(outboxWriter);
+        }
+
+        @Test
+        void aRefusedVocabularyIsNeitherSavedNorQueued() {
+            OfnWriteGate refusingGate = mock(OfnWriteGate.class);
+            OfnConformanceException refusal = new OfnConformanceException(OfnConformanceException.Context.WRITE,
+                    GRAPH, List.of(new ConformanceIssue(ConformanceIssue.Kind.VOCABULARY_INVALID, GRAPH, "", "typ")));
+            doThrow(refusal).when(refusingGate).requireWritableVocabulary(any(Model.class), eq(GRAPH));
+            OntologyServiceFixture fixture = new OntologyServiceFixture().ofnWriteGate(refusingGate);
+
+            assertThatThrownBy(() -> fixture.createOperation().createOntology(createModel(), USER_ID)).isSameAs(refusal);
+            verify(fixture.ontologyMetadataRepository(), never()).save(any());
+            verifyNoInteractions(fixture.outboxWriter());
+        }
+
+        @Test
+        void aRefusedVocabularyWithConceptsIsNeitherSavedNorQueued() {
+            OfnWriteGate refusingGate = mock(OfnWriteGate.class);
+            String graph = com.dia.ismdtoolbackend.support.VocabularyCreationRequests.GRAPH;
+            OfnConformanceException refusal = new OfnConformanceException(OfnConformanceException.Context.WRITE,
+                    graph, List.of(new ConformanceIssue(ConformanceIssue.Kind.CONCEPT_EXCLUDED, graph + "/pojem/x",
+                    "pojmy[0]", "no OWL kind")));
+            doThrow(refusal).when(refusingGate).requireWritableVocabulary(any(Model.class), eq(graph));
+            OntologyServiceFixture fixture = new OntologyServiceFixture().ofnWriteGate(refusingGate);
+
+            assertThatThrownBy(() -> fixture.createOperation().createWithConcepts(
+                    com.dia.ismdtoolbackend.support.VocabularyCreationRequests.sample(), USER_ID)).isSameAs(refusal);
+            verify(fixture.ontologyMetadataRepository(), never()).save(any());
+            verify(fixture.conceptMetadataRepository(), never()).saveAll(any());
+            verifyNoInteractions(fixture.outboxWriter());
         }
 
         @Test

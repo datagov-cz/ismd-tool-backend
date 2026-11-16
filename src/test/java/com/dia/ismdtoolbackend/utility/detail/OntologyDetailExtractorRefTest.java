@@ -9,6 +9,7 @@ import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.vocabulary.OWL;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
 import org.apache.jena.vocabulary.SKOS;
@@ -21,11 +22,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
+import org.apache.jena.vocabulary.OWL2;
 
 import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OFN_NAMESPACE;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TRIDA;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VLASTNOST;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VZTAH;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -164,9 +163,9 @@ class OntologyDetailExtractorRefTest {
         Model model = ModelFactory.createDefaultModel();
 
         Resource owlOntology = model.createResource("http://www.w3.org/2002/07/owl#Ontology");
-        Resource tridaType = model.createResource(OFN_NAMESPACE + TRIDA);
-        Resource vlastnostType = model.createResource(OFN_NAMESPACE + VLASTNOST);
-        Resource vztahType = model.createResource(OFN_NAMESPACE + VZTAH);
+        Resource tridaType = OWL2.Class;
+        Resource vlastnostType = OWL2.DatatypeProperty;
+        Resource vztahType = OWL2.ObjectProperty;
         Property inScheme = model.createProperty("http://www.w3.org/2004/02/skos/core#inScheme");
 
         Resource ontology = model.createResource(ONTOLOGY_IRI);
@@ -174,18 +173,18 @@ class OntologyDetailExtractorRefTest {
         ontology.addProperty(SKOS.prefLabel, "Testovací slovník", "cs");
 
         Resource classConcept = model.createResource(CLASS_IRI);
-        classConcept.addProperty(RDF.type, tridaType);
+        classConcept.addProperty(RDF.type, tridaType).addProperty(RDF.type, OWL.Class);
         classConcept.addProperty(inScheme, ontology);
         classConcept.addProperty(SKOS.prefLabel, "Osoba", "cs");
 
         Resource property = model.createResource(PROPERTY_IRI);
-        property.addProperty(RDF.type, vlastnostType);
+        property.addProperty(RDF.type, vlastnostType).addProperty(RDF.type, OWL.DatatypeProperty);
         property.addProperty(inScheme, ontology);
         property.addProperty(SKOS.prefLabel, "věk", "cs");
         property.addProperty(RDFS.domain, classConcept);
 
         Resource relationship = model.createResource(RELATIONSHIP_IRI);
-        relationship.addProperty(RDF.type, vztahType);
+        relationship.addProperty(RDF.type, vztahType).addProperty(RDF.type, OWL.ObjectProperty);
         relationship.addProperty(inScheme, ontology);
         relationship.addProperty(SKOS.prefLabel, "bydlí v", "cs");
         relationship.addProperty(RDFS.domain, classConcept);

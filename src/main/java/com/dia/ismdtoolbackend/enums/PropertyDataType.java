@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.enums;
 
 import com.dia.ismdtoolbackend.controller.dto.DataTypeDto;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.Optional;
 
@@ -12,9 +13,9 @@ import java.util.Optional;
  *
  * <p>Declaration order is the order shown to the FE.
  * {@link #LITERAL} is the read-side default when an incoming value is
- * malformed/empty/unrecognised — mirrors the write-side default in
- * {@code ConceptCreator.addRangeProperty}.
+ * malformed/empty/unrecognised — mirrors the write-side default in {@link #rangeIri}.
  */
+@Slf4j
 public enum PropertyDataType {
     BOOLEAN("boolean", "http://www.w3.org/2001/XMLSchema#boolean", "Ano či ne"),
     DATE("date", "http://www.w3.org/2001/XMLSchema#date", "Datum"),
@@ -89,5 +90,20 @@ public enum PropertyDataType {
             }
         }
         return Optional.empty();
+    }
+
+    /**
+     * The {@code rdfs:range} IRI a Vlastnost is written with, used by both create and edit: any form
+     * {@link #fromValue} accepts; blank means {@link #LITERAL}; an unknown value also becomes
+     * {@link #LITERAL}, with a warning.
+     */
+    public static String rangeIri(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return LITERAL.iri;
+        }
+        return fromValue(raw).map(PropertyDataType::iri).orElseGet(() -> {
+            log.warn("Unknown property datatype '{}', writing rdfs:Literal", raw.trim());
+            return LITERAL.iri;
+        });
     }
 }

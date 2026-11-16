@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import org.apache.jena.vocabulary.OWL2;
 
 import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 import static com.dia.ismdtoolbackend.utility.exporter.RdfTestModelFactory.*;
@@ -45,7 +46,7 @@ class ConceptMultilingualPropertyTest {
     void multiLanguagePrefLabel() {
         OntModel model = createDefaultModel();
         Resource concept = addSkosConcept(model, "osoba", "Osoba");
-        concept.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + TRIDA));
+        concept.addProperty(RDF.type, OWL2.Class);
         addMultilingualLabel(concept, SKOS.prefLabel, Map.of("en", "Person"), model);
         ModelStructure structure = createModelStructure(model);
 
@@ -63,7 +64,7 @@ class ConceptMultilingualPropertyTest {
     void noLangTag_defaultsToCs() {
         OntModel model = createDefaultModel();
         Resource concept = addSkosConcept(model, "nolangtag", "placeholder");
-        concept.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + TRIDA));
+        concept.addProperty(RDF.type, OWL2.Class);
         // Remove the cs-tagged label and add one without a tag
         concept.removeAll(SKOS.prefLabel);
         concept.addProperty(SKOS.prefLabel, "Bez značky");
@@ -82,7 +83,7 @@ class ConceptMultilingualPropertyTest {
     void duplicateLang_producesArray() {
         OntModel model = createDefaultModel();
         Resource concept = addSkosConcept(model, "dupcs", "Prvni");
-        concept.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + TRIDA));
+        concept.addProperty(RDF.type, OWL2.Class);
         concept.addProperty(SKOS.prefLabel, model.createLiteral("Druhy", "cs"));
         ModelStructure structure = createModelStructure(model);
 
@@ -154,7 +155,7 @@ class ConceptMultilingualPropertyTest {
         Resource concept = model.createResource(TEST_POJEM_NS + "nolabel");
         concept.addProperty(RDF.type, model.createResource(SKOS_NS + "Concept"));
         concept.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + POJEM));
-        concept.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + TRIDA));
+        concept.addProperty(RDF.type, OWL2.Class);
         ModelStructure structure = createModelStructure(model);
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());

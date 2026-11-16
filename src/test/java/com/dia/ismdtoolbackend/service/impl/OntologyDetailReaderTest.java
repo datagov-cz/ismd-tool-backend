@@ -1,5 +1,9 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
@@ -162,6 +166,30 @@ class OntologyDetailReaderTest {
             verify(detailExtractor).extractOntologyDetail(graph);
             // No snapshot rows yet: the warmer is started for a cold graph.
             verify(nkdSnapshotWarmer).warmGraph(GRAPH);
+        }
+
+        @Test
+        void modificationDate_isTheMetadataLastChange_notTheStoredValue() {
+            OntologyDetailModel detail = detailWithConcepts();
+            detail.setModificationDate("2020-01-01T00:00:00Z");
+            givenStoredDetail(detail);
+            OntologyMetadataEntity entity = ontologyEntity();
+            LocalDateTime updatedAt = LocalDateTime.of(2026, 11, 4, 9, 30, 15, 123_000_000);
+            entity.setUpdatedAt(updatedAt);
+            when(ontologyMetadataRepository.findBySlug(SLUG)).thenReturn(Optional.of(entity));
+
+            String expected = updatedAt.atZone(ZoneId.systemDefault()).withZoneSameInstant(ZoneId.of("Europe/Prague"))
+                    .toOffsetDateTime().withNano(0).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+            assertThat(reader.getOntologyDetail(SLUG).getModificationDate()).isEqualTo(expected);
+        }
+
+        @Test
+        void modificationDate_withoutAMetadataLastChange_isAbsent() {
+            OntologyDetailModel detail = detailWithConcepts();
+            detail.setModificationDate("2020-01-01T00:00:00Z");
+            givenStoredDetail(detail);
+
+            assertThat(reader.getOntologyDetail(SLUG).getModificationDate()).isNull();
         }
 
         @Test

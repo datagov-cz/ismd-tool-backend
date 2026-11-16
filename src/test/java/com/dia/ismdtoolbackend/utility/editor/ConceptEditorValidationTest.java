@@ -12,11 +12,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import org.apache.jena.vocabulary.OWL2;
 
 import static com.dia.ismdtoolbackend.constants.VocabularyConstants.DEFAULT_NS;
 import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OFN_NAMESPACE;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TRIDA;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VZTAH;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -43,7 +42,7 @@ class ConceptEditorValidationTest {
         conceptIri = DEFAULT_NS + "validated-class";
         Resource existing = model.createResource(conceptIri);
         existing.addProperty(SKOS.prefLabel, model.createLiteral("Pojem", "cs"));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
+        existing.addProperty(RDF.type, OWL2.Class);
     }
 
     private ClassConceptEditModel baseModel() {
@@ -205,7 +204,7 @@ class ConceptEditorValidationTest {
         String relIri = DEFAULT_NS + "validated-rel";
         Resource r = relModel.createResource(relIri);
         r.addProperty(SKOS.prefLabel, relModel.createLiteral("Vztah", "cs"));
-        r.addProperty(RDF.type, relModel.getResource(OFN_NAMESPACE + VZTAH));
+        r.addProperty(RDF.type, OWL2.ObjectProperty);
 
         com.dia.ismdtoolbackend.models.concept.RelationshipConceptEditModel m =
                 new com.dia.ismdtoolbackend.models.concept.RelationshipConceptEditModel();

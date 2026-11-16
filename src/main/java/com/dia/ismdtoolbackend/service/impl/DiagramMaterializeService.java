@@ -8,6 +8,7 @@ import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.exception.DiagramCascadeConflictException;
 import com.dia.ismdtoolbackend.exception.DiagramForeignConceptException;
 import com.dia.ismdtoolbackend.exception.DiagramStaleBaseException;
+import com.dia.ismdtoolbackend.exception.OfnConformanceException;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
 import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
@@ -72,6 +73,9 @@ public class DiagramMaterializeService {
                 failed.add(fail(change, DiagramFailureCode.FOREIGN_CONCEPT, e.getMessage()));
             } catch (ConceptValidationException | OntologyValidationException e) {
                 failed.add(fail(change, DiagramFailureCode.VALIDATION, e.getMessage()));
+            } catch (OfnConformanceException e) {
+                log.error("OFN safety net refused materializing concept {}: {}", conceptIri, e.getIssues());
+                failed.add(fail(change, DiagramFailureCode.VALIDATION, ofnMessage(e)));
             } catch (AccessDeniedException e) {
                 // The caller owns the ontology but not this concept: a per-change 403, not a 500.
                 failed.add(fail(change, DiagramFailureCode.FORBIDDEN,
@@ -116,6 +120,14 @@ public class DiagramMaterializeService {
      * then (a concurrent discard, or an ambiguous failure at commit), which reported {@code op: null} on
      * exactly the failures a client most needs to identify.
      */
+    /** The refusal and every issue, e.g. "… (1 problém): pojmy[a]/definice: hodnota není text". */
+    private static String ofnMessage(OfnConformanceException e) {
+        List<String> issues = e.getIssues().stream()
+                .map(issue -> issue.location() + ": " + issue.message())
+                .toList();
+        return e.getMessage() + " " + String.join("; ", issues);
+    }
+
     private MaterializeResultDto.Failed fail(StagedChange change, DiagramFailureCode error,
                                              String message) {
         return new MaterializeResultDto.Failed(change.conceptIri(), change.op(), error, message);

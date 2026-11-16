@@ -64,3 +64,7 @@ logging:
   level:
     root: WARN
     com.dia: INFO
+
+# Never migrate the local Fuseki from a test run; RdfMigrationRunner has its own tests.
+rdf-migration:
+  enabled: false

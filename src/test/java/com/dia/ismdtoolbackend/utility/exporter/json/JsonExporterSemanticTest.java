@@ -75,7 +75,7 @@ class JsonExporterSemanticTest {
     @CsvSource(delimiter = '|', value = {
             "skos:Concept                                | Pojem,Koncept",
             "owl:Class                                   | Pojem,Koncept,Třída",
-            "skos:Concept, owl:Class, slovníky:třída     | Pojem,Koncept,Třída",
+            "skos:Concept, owl:Class                     | Pojem,Koncept,Třída",
             "owl:DatatypeProperty                        | Pojem,Koncept,Vlastnost",
             "owl:ObjectProperty                          | Pojem,Koncept,Vztah",
             "skos:Concept, slovníky:typ-subjektu-práva   | Pojem,Koncept,Typ subjektu práva",

@@ -60,7 +60,7 @@ class NkdConceptListReader {
                     .iri(iri)
                     // NKD concepts have no local slug — the FE deep-links via IRI only.
                     .name(label == null || label.isBlank() ? Map.of() : Map.of(DEFAULT_LANG, label))
-                    .conceptType(conceptTypeFromRoleMarkers(row))
+                    .conceptType(conceptTypeFromOwlKinds(row))
                     .build());
         }
         log.debug("Listed {} NKD concepts for ontology {}", concepts.size(), ontologyIri);
@@ -68,11 +68,11 @@ class NkdConceptListReader {
     }
 
     /**
-     * Role markers are three independent OPTIONAL binds, so a concept tagged as more than one role
+     * The OWL kinds are three independent OPTIONAL binds, so a concept tagged as more than one role
      * resolves in this fixed order — matching {@code NkdSearchProvider}. Null when NKD publishes no
      * recognizable role.
      */
-    private ConceptType conceptTypeFromRoleMarkers(Map<String, String> row) {
+    private ConceptType conceptTypeFromOwlKinds(Map<String, String> row) {
         if (row.get("roleTrida") != null) return ConceptType.TRIDA;
         if (row.get("roleVlastnost") != null) return ConceptType.VLASTNOST;
         if (row.get("roleVztah") != null) return ConceptType.VZTAH;

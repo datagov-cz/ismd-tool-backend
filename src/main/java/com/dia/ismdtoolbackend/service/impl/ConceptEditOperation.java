@@ -4,6 +4,7 @@ import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
+import com.dia.ismdtoolbackend.ofn.OfnWriteGate;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
@@ -13,14 +14,18 @@ import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.utility.validation.ConceptIriNormalizer;
 import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
+import com.dia.ismdtoolbackend.utility.validation.ConceptNamespaceRule;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.RDFNode;
+import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.vocabulary.RDF;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import org.springframework.stereotype.Component;
 
@@ -40,6 +45,7 @@ class ConceptEditOperation {
     private final ConceptAccessGuard accessGuard;
     private final InitialGraphGuard initialGraphGuard;
     private final NkdLinkReconciler nkdLinkReconciler;
+    private final OfnWriteGate ofnWriteGate;
 
     ConceptMetadataModel editConcept(Long conceptId, ConceptEditModel conceptEditModel) {
         accessGuard.assertCanModify(conceptId);
@@ -78,6 +84,7 @@ class ConceptEditOperation {
         String aggregateIri = metadata.getConceptIri();
 
         ConceptEditor.EditResult editResult = performConceptEdit(conceptId, aggregateIri, conceptEditModel, model, graphName);
+        ConceptNamespaceRule.requireInVocabulary(editResult.newConceptIRI, graphName);
 
         // Reconcile NKD links and union the resulting link delta with the editor's, so a dropped link's
         // edge removal rides the same owner-keyed aggregate as the edit. The snapshot service reads
@@ -93,6 +100,8 @@ class ConceptEditOperation {
         Set<Statement> toAdd = new HashSet<>(editResult.statementsToAdd);
         toAdd.addAll(snapshotDelta.toAdd);
 
+        requireWritable(model, graphName, editResult.newConceptIRI, toRemove, toAdd);
+
         // Enqueue the merged change set (editor delta ∪ NKD copy delta), NOT a whole-graph PUT,
         // committed atomically with the metadata update below.
         outboxWriter.enqueueUpsert(graphName, aggregateIri, toRemove, toAdd);
@@ -100,6 +109,22 @@ class ConceptEditOperation {
         outboxRelayTrigger.nudgeAfterCommit();
         return saveAndReturnMetadata(metadata, editResult.newConceptIRI,
                 contentChanged(toRemove, toAdd));
+    }
+
+    /**
+     * OFN safety net (T1/T2) on the concept as it will be stored. The editor has applied its own delta to
+     * {@code model}, the NKD link delta is not applied yet, so the check runs on a copy with the merged delta.
+     */
+    void requireWritable(Model model, String graphName, String conceptIri,
+                         Set<Statement> toRemove, Set<Statement> toAdd) {
+        Model written = ModelFactory.createDefaultModel().add(model);
+        try {
+            written.remove(List.copyOf(toRemove));
+            written.add(List.copyOf(toAdd));
+            ofnWriteGate.requireWritableConcepts(written, graphName, List.of(conceptIri));
+        } finally {
+            written.close();
+        }
     }
 
     boolean contentChanged(Set<Statement> toRemove, Set<Statement> toAdd) {
@@ -126,7 +151,8 @@ class ConceptEditOperation {
     ConceptEditor.EditResult performConceptEdit(Long conceptId, String conceptIri, ConceptEditModel conceptEditModel, Model model, String graphName) {
         try {
             ConceptEditor.EditResult editResult = conceptEditor.editConcept(conceptIri, conceptEditModel, model, graphName,
-                    candidateIri -> isConceptIriTakenByOther(candidateIri, conceptId));
+                    candidateIri -> isConceptIriTakenByOther(candidateIri, conceptId)
+                            || graphHoldsSubject(model, candidateIri));
             log.info("Edit completed: {} changes, IRI changed: {}, new IRI: {}",
                     editResult.changesCount, editResult.iriChanged, editResult.newConceptIRI);
             return editResult;
@@ -195,6 +221,15 @@ class ConceptEditOperation {
      * <p>Matches only owned concepts — NKD snapshot copies live in a separate table, so a
      * referenced NKD concept never counts as a collision.
      */
+    /**
+     * True when the graph holds triples about the IRI: a concept an upload rejected but kept because another
+     * concept references it. A rename onto it would merge those triples into this concept. Referenced
+     * concepts appear only as objects and NKD snapshot copies live only in PG, so neither matches.
+     */
+    static boolean graphHoldsSubject(Model model, String iri) {
+        return model.contains(model.createResource(iri), null, (RDFNode) null);
+    }
+
     boolean isConceptIriTakenByOther(String conceptUri, Long conceptId) {
         return conceptMetadataRepository.findByConceptIri(conceptUri)
                 .filter(existing -> !existing.getId().equals(conceptId))
