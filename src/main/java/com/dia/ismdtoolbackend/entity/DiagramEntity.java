@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -12,6 +13,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * One visual layout of an ontology, a ReactFlow canvas. An ontology may have many diagrams, each a
@@ -65,6 +67,14 @@ public class DiagramEntity {
      */
     @Column(name = "name", nullable = false)
     private String name;
+
+    /**
+     * Stable id behind the diagram's published IRI. Unlike the ontology IRI and the name, it never changes
+     * and is never reused, so it is assigned on construction and not updatable.
+     */
+    @Setter(AccessLevel.NONE)
+    @Column(name = "iri_id", nullable = false, unique = true, updatable = false)
+    private UUID iriId = UUID.randomUUID();
 
     /** Saved pan and zoom, restored on load; null until the canvas is first saved. */
     @Column(name = "viewport_x")
