@@ -15,6 +15,9 @@ import org.springframework.stereotype.Component;
  * publication, whose age survives restarts, has reached the interval. Gated by
  * {@code ismd.publication.enabled}.
  *
+ * <p>Both triggers run on {@link AsyncConfig#PUBLICATION_EXECUTOR}: one run at a time, extra triggers
+ * dropped. The default 04:00 check follows the reconciler (03:00) and the outbox prune (03:30).
+ *
  * <p>Single-instance assumption, as for the reconciler: each replica would publish into its own directory.
  */
 @Slf4j
@@ -32,7 +35,9 @@ public class PublicationScheduler {
         tick("startup");
     }
 
-    @Scheduled(cron = "${ismd.publication.check-cron:0 0 3 * * *}")
+    /** Hands the check to the publication executor, so a run never holds the shared scheduler thread. */
+    @Async(AsyncConfig.PUBLICATION_EXECUTOR)
+    @Scheduled(cron = "${ismd.publication.check-cron:0 0 4 * * *}")
     public void publishScheduledIfDue() {
         tick("scheduled");
     }

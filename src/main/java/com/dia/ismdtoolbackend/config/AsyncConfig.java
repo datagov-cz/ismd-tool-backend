@@ -36,7 +36,7 @@ public class AsyncConfig {
 
     public static final String PUBLICATION_EXECUTOR = "publicationExecutor";
 
-    /** Runs the startup publication check off the boot thread; one run at a time, extra triggers dropped. */
+    /** Runs the publication checks off the boot and scheduler threads; one run at a time, extra triggers dropped. */
     @Bean(name = PUBLICATION_EXECUTOR, destroyMethod = "shutdown")
     public Executor publicationExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();

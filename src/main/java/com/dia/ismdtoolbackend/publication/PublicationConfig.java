@@ -28,7 +28,7 @@ public class PublicationConfig {
     private Duration interval = Duration.ofDays(30);
 
     /** Cron (Spring 6-field) on which the scheduler compares the publication's age with {@link #interval}. */
-    private String checkCron = "0 0 3 * * *";
+    private String checkCron = "0 0 4 * * *";
 
     /** Directory holding the published files. */
     private Path directory = Path.of(System.getProperty("java.io.tmpdir"), "ismd-publication");
