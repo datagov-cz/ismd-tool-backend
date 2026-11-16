@@ -16,8 +16,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import static com.dia.constants.VocabularyConstants.OFN_NAMESPACE;
-import static com.dia.constants.VocabularyConstants.VZTAH;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OFN_NAMESPACE;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VZTAH;
 
 /** Projects a concept-resolution CONSTRUCT result into {@link ResolvedConceptDto}s. */
 public final class ConceptResolutionProjection {
@@ -181,11 +181,10 @@ public final class ConceptResolutionProjection {
                 RDFNode node = stmts.next().getObject();
                 if (!node.isLiteral()) continue;
                 Literal lit = node.asLiteral();
+                // Jena returns "" (never null) for a missing lexical form or language tag.
                 String text = lit.getString();
-                if (text == null || text.isEmpty()) continue;
-                String lang = lit.getLanguage();
-                String key = (lang == null || lang.isEmpty()) ? "" : lang;
-                values.putIfAbsent(key, text);
+                if (text.isEmpty()) continue;
+                values.putIfAbsent(lit.getLanguage(), text);
             }
         } finally {
             stmts.close();

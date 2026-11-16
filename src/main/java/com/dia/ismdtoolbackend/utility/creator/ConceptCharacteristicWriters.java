@@ -5,7 +5,7 @@ import org.apache.jena.rdf.model.Resource;
 
 import java.util.Map;
 
-import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
+import static com.dia.ismdtoolbackend.constants.ExportConstants.Common.DEFAULT_LANG;
 
 /** The characteristic writers of one concept build, shared by the three concept-type writers. */
 record ConceptCharacteristicWriters(ConceptBuildContext context,

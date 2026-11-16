@@ -28,12 +28,18 @@
     </scm>
     <properties>
         <java.version>17</java.version>
-        <ismd-validator-common.version>1.0.20</ismd-validator-common.version>
         <jena.version>5.4.0</jena.version>
         <jacoco.version>0.8.15</jacoco.version>
-        <jacoco.line.minimum>0.55</jacoco.line.minimum>
-        <jacoco.branch.minimum>0.45</jacoco.branch.minimum>
-        <jacoco.complexity.minimum>0.45</jacoco.complexity.minimum>
+        <!-- Same test class order on macOS and CI (the default follows the filesystem).
+             Override with -Dsurefire.runOrder=random to look for state leaking between classes. -->
+        <surefire.runOrder>alphabetical</surefire.runOrder>
+        <!-- Coverage gate, the only place it is set. Raise it as coverage grows; never lower it.
+             Targets: line 95, instruction 96, branch 87, complexity 85, method 97. -->
+        <jacoco.line.minimum>0.95</jacoco.line.minimum>
+        <jacoco.instruction.minimum>0.96</jacoco.instruction.minimum>
+        <jacoco.branch.minimum>0.87</jacoco.branch.minimum>
+        <jacoco.complexity.minimum>0.85</jacoco.complexity.minimum>
+        <jacoco.method.minimum>0.97</jacoco.method.minimum>
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -132,11 +138,6 @@
             <artifactId>spring-boot-starter-liquibase</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.dia</groupId>
-            <artifactId>ismd-validator-common</artifactId>
-            <version>${ismd-validator-common.version}</version>
-        </dependency>
-        <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>
@@ -192,6 +193,11 @@
             <artifactId>jena-text</artifactId>
             <version>${jena.version}</version>
         </dependency>
+        <dependency>
+            <groupId>org.apache.jena</groupId>
+            <artifactId>jena-rdfconnection</artifactId>
+            <version>${jena.version}</version>
+        </dependency>
         <!-- https://mvnrepository.com/artifact/org.json/json -->
         <dependency>
             <groupId>org.json</groupId>
@@ -216,17 +222,6 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
-
-    <repositories>
-        <repository>
-            <id>github</id>
-            <name>GitHub Packages</name>
-            <url>https://maven.pkg.github.com/datagov-cz/ismd-validator-backend</url>
-            <snapshots>
-                <enabled>true</enabled>
-            </snapshots>
-        </repository>
-    </repositories>
 
     <build>
         <plugins>
@@ -303,6 +298,16 @@
                                             <counter>COMPLEXITY</counter>
                                             <value>COVEREDRATIO</value>
                                             <minimum>${jacoco.complexity.minimum}</minimum>
+                                        </limit>
+                                        <limit>
+                                            <counter>INSTRUCTION</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>${jacoco.instruction.minimum}</minimum>
+                                        </limit>
+                                        <limit>
+                                            <counter>METHOD</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>${jacoco.method.minimum}</minimum>
                                         </limit>
                                     </limits>
                                 </rule>

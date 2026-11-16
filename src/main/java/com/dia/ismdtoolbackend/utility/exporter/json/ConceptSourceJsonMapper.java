@@ -7,7 +7,7 @@ import org.apache.jena.vocabulary.RDF;
 
 import java.util.*;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 
 /** Maps legal and non-legal sources, including their digital documents. */
 @Slf4j

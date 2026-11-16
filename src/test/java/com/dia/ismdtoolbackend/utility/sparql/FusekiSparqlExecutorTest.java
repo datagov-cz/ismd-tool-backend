@@ -12,9 +12,9 @@ import org.mockito.Mockito;
 import java.util.concurrent.Semaphore;
 import java.util.function.Function;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 /**
  * Verifies that {@link FusekiSparqlExecutor} maps Jena HTTP failures to the right
@@ -50,9 +50,8 @@ class FusekiSparqlExecutorTest {
         HttpException notFound = new HttpException(404, "Not Found", "graph absent");
         FusekiSparqlExecutor executor = executorThrowing(notFound);
 
-        OntologyNotFoundException ex = assertThrows(OntologyNotFoundException.class,
-                () -> run(executor, notFound));
-        assertSame(notFound, ex.getCause());
+        OntologyNotFoundException ex = assertThatExceptionOfType(OntologyNotFoundException.class).isThrownBy(() -> run(executor, notFound)).actual();
+        assertThat(ex.getCause()).isSameAs(notFound);
     }
 
     @Test
@@ -60,10 +59,11 @@ class FusekiSparqlExecutorTest {
         HttpException unavailable = new HttpException(503, "Service Unavailable", "down");
         FusekiSparqlExecutor executor = executorThrowing(unavailable);
 
-        SparqlEndpointUnavailableException ex = assertThrows(SparqlEndpointUnavailableException.class,
-                () -> run(executor, unavailable));
-        assertEquals("Fuseki", ex.getEndpointLabel());
-        assertSame(unavailable, ex.getCause());
+        SparqlEndpointUnavailableException ex = assertThatExceptionOfType(SparqlEndpointUnavailableException.class)
+                .isThrownBy(() -> run(executor, unavailable))
+                .actual();
+        assertThat(ex.getEndpointLabel()).isEqualTo("Fuseki");
+        assertThat(ex.getCause()).isSameAs(unavailable);
     }
 
     @Test
@@ -71,7 +71,7 @@ class FusekiSparqlExecutorTest {
         HttpException badGateway = new HttpException(502, "Bad Gateway", "proxy");
         FusekiSparqlExecutor executor = executorThrowing(badGateway);
 
-        assertThrows(SparqlEndpointUnavailableException.class, () -> run(executor, badGateway));
+        assertThatThrownBy(() -> run(executor, badGateway)).isInstanceOf(SparqlEndpointUnavailableException.class);
     }
 
     @Test
@@ -79,7 +79,7 @@ class FusekiSparqlExecutorTest {
         HttpException gatewayTimeout = new HttpException(504, "Gateway Timeout", "slow");
         FusekiSparqlExecutor executor = executorThrowing(gatewayTimeout);
 
-        assertThrows(SparqlEndpointUnavailableException.class, () -> run(executor, gatewayTimeout));
+        assertThatThrownBy(() -> run(executor, gatewayTimeout)).isInstanceOf(SparqlEndpointUnavailableException.class);
     }
 
     @Test
@@ -89,7 +89,7 @@ class FusekiSparqlExecutorTest {
         HttpException dropped = new HttpException("Connection reset");
         FusekiSparqlExecutor executor = executorThrowing(dropped);
 
-        assertThrows(SparqlEndpointUnavailableException.class, () -> run(executor, dropped));
+        assertThatThrownBy(() -> run(executor, dropped)).isInstanceOf(SparqlEndpointUnavailableException.class);
     }
 
     @Test
@@ -97,10 +97,9 @@ class FusekiSparqlExecutorTest {
         HttpException serverError = new HttpException(500, "Internal Server Error", "boom");
         FusekiSparqlExecutor executor = executorThrowing(serverError);
 
-        JenaTDB2Exception ex = assertThrows(JenaTDB2Exception.class,
-                () -> run(executor, serverError));
-        assertEquals(USER_MSG, ex.getMessage());
-        assertSame(serverError, ex.getCause());
+        JenaTDB2Exception ex = assertThatExceptionOfType(JenaTDB2Exception.class).isThrownBy(() -> run(executor, serverError)).actual();
+        assertThat(ex.getMessage()).isEqualTo(USER_MSG);
+        assertThat(ex.getCause()).isSameAs(serverError);
     }
 
     @Test
@@ -108,6 +107,6 @@ class FusekiSparqlExecutorTest {
         QueryExceptionHTTP notFound = new QueryExceptionHTTP(404, "Not Found");
         FusekiSparqlExecutor executor = executorThrowing(notFound);
 
-        assertThrows(OntologyNotFoundException.class, () -> run(executor, notFound));
+        assertThatThrownBy(() -> run(executor, notFound)).isInstanceOf(OntologyNotFoundException.class);
     }
 }

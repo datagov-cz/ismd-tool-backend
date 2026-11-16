@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.controller.dto.OntologyDetailMetadataDto;
 import com.dia.ismdtoolbackend.config.NkdConfig;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
@@ -60,7 +61,7 @@ class OntologyDetailReader {
         Model processedModel = loadedDetail.processedModel();
         OntologyDetailModel detailModel = loadedDetail.detailModel();
 
-        OntologyMetadataModel metadataModel = ontologyMetadataMapper.toDto(metadataEntity);
+        OntologyDetailMetadataDto metadataModel = ontologyMetadataMapper.toDetail(metadataEntity);
 
         metadataEnricher.enrichMetadataFromModel(metadataModel, metadataEntity, rawModel);
 
@@ -82,7 +83,7 @@ class OntologyDetailReader {
         result.setOntologyMetadata(metadataModel);
         result.setOntologyDetail(detailModel);
 
-        PublishedOntologyDeviationModel ontologyDeviations = deviationChecker.checkOntologyDeviation(detailModel, metadataModel);
+        PublishedOntologyDeviationModel ontologyDeviations = deviationChecker.checkOntologyDeviation(detailModel, ontologyMetadataMapper.toRef(metadataEntity));
         result.setPublishedOntologyDeviationModel(ontologyDeviations);
 
         Map<String, PublishedConceptDeviationModel> conceptDeviations = deviationChecker.checkConceptsDeviation(processedModel, conceptMetadataEntities);

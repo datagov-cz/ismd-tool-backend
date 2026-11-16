@@ -22,10 +22,10 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
 
-import static com.dia.constants.VocabularyConstants.OFN_NAMESPACE;
-import static com.dia.constants.VocabularyConstants.TRIDA;
-import static com.dia.constants.VocabularyConstants.VLASTNOST;
-import static com.dia.constants.VocabularyConstants.VZTAH;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OFN_NAMESPACE;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TRIDA;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VLASTNOST;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VZTAH;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -120,8 +120,7 @@ class OntologyDetailExtractorRefTest {
 
     @Test
     void extractOntologyDetail_batchesSlugLookups_intoOneQuery() {
-        // The whole-ontology path used to run one findByConceptIri per property AND per relationship of
-        // every concept. One batched query must cover them all.
+        // One batched query covers the slugs of every property and relationship of every concept.
         ConceptMetadataEntity propertyEntity = new ConceptMetadataEntity();
         propertyEntity.setConceptIri(PROPERTY_IRI);
         propertyEntity.setSlug("vocab-věk");

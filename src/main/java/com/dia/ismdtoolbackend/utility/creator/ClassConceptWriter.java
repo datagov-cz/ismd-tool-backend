@@ -1,15 +1,15 @@
 package com.dia.ismdtoolbackend.utility.creator;
 
 import com.dia.ismdtoolbackend.models.concept.*;
-import com.dia.utility.URIGenerator;
-import com.dia.utility.UtilityMethods;
+import com.dia.ismdtoolbackend.utility.URIGenerator;
+import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.rdf.model.*;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.SKOS;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 
 /** Builds a class concept. */
 @Slf4j
@@ -53,6 +53,9 @@ final class ClassConceptWriter {
     }
 
     void addSpecificClassType(Resource classResource, String type) {
+        if (type == null) {
+            return;
+        }
         if (type.contains("subjekt")) {
             classResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + TSP));
         } else if (type.contains("objekt")) {

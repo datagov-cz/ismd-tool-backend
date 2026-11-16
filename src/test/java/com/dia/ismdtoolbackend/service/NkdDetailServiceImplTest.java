@@ -35,11 +35,8 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -84,7 +81,7 @@ class NkdDetailServiceImplTest {
 
         GetNkdOntologyDto dto = service.getOntologyDetail(ONTOLOGY_IRI);
 
-        assertSame(model, dto.getOntologyDetail());
+        assertThat(dto.getOntologyDetail()).isSameAs(model);
     }
 
     @Test
@@ -92,16 +89,15 @@ class NkdDetailServiceImplTest {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
         when(nkdSparqlClient.fetchPublishedOntology(ONTOLOGY_IRI)).thenReturn(Optional.empty());
 
-        assertThrows(NkdResourceNotFoundException.class,
-                () -> service.getOntologyDetail(ONTOLOGY_IRI));
+        assertThatThrownBy(() -> service.getOntologyDetail(ONTOLOGY_IRI))
+                .isInstanceOf(NkdResourceNotFoundException.class);
     }
 
     @Test
     void getOntologyDetail_endpointNotConfigured_throwsNkdEndpointException() {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(false);
 
-        assertThrows(NkdEndpointException.class,
-                () -> service.getOntologyDetail(ONTOLOGY_IRI));
+        assertThatThrownBy(() -> service.getOntologyDetail(ONTOLOGY_IRI)).isInstanceOf(NkdEndpointException.class);
 
         verify(nkdSparqlClient, org.mockito.Mockito.never()).fetchPublishedOntology(anyString());
     }
@@ -112,39 +108,35 @@ class NkdDetailServiceImplTest {
         when(nkdSparqlClient.fetchPublishedOntology(ONTOLOGY_IRI))
                 .thenThrow(new QueryExceptionHTTP(503, "Service unavailable"));
 
-        assertThrows(NkdEndpointException.class,
-                () -> service.getOntologyDetail(ONTOLOGY_IRI));
+        assertThatThrownBy(() -> service.getOntologyDetail(ONTOLOGY_IRI)).isInstanceOf(NkdEndpointException.class);
     }
 
     @Test
     void getOntologyDetail_blankIri_throwsIllegalArgumentException() {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
-        assertThrows(IllegalArgumentException.class,
-                () -> service.getOntologyDetail("   "));
+        assertThatThrownBy(() -> service.getOntologyDetail("   ")).isInstanceOf(IllegalArgumentException.class);
         verify(nkdSparqlClient, org.mockito.Mockito.never()).fetchPublishedOntology(anyString());
     }
 
     @Test
     void getOntologyDetail_nullIri_throwsIllegalArgumentException() {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
-        assertThrows(IllegalArgumentException.class,
-                () -> service.getOntologyDetail(null));
+        assertThatThrownBy(() -> service.getOntologyDetail(null)).isInstanceOf(IllegalArgumentException.class);
         verify(nkdSparqlClient, org.mockito.Mockito.never()).fetchPublishedOntology(anyString());
     }
 
     @Test
     void getOntologyDetail_malformedIri_throwsIllegalArgumentException() {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
-        assertThrows(IllegalArgumentException.class,
-                () -> service.getOntologyDetail("not an iri"));
+        assertThatThrownBy(() -> service.getOntologyDetail("not an iri")).isInstanceOf(IllegalArgumentException.class);
         verify(nkdSparqlClient, org.mockito.Mockito.never()).fetchPublishedOntology(anyString());
     }
 
     @Test
     void getOntologyDetail_relativeIri_throwsIllegalArgumentException() {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
-        assertThrows(IllegalArgumentException.class,
-                () -> service.getOntologyDetail("/relative/path"));
+        assertThatThrownBy(() -> service.getOntologyDetail("/relative/path"))
+                .isInstanceOf(IllegalArgumentException.class);
         verify(nkdSparqlClient, org.mockito.Mockito.never()).fetchPublishedOntology(anyString());
     }
 
@@ -162,8 +154,8 @@ class NkdDetailServiceImplTest {
 
         GetNkdConceptDto dto = service.getConceptDetail(CONCEPT_IRI, ONTOLOGY_IRI);
 
-        assertSame(model, dto.getConceptDetail());
-        assertEquals(ONTOLOGY_IRI, dto.getOntologyIri());
+        assertThat(dto.getConceptDetail()).isSameAs(model);
+        assertThat(dto.getOntologyIri()).isEqualTo(ONTOLOGY_IRI);
     }
 
     @Test
@@ -177,8 +169,8 @@ class NkdDetailServiceImplTest {
 
         GetNkdConceptDto dto = service.getConceptDetail(CONCEPT_IRI, null);
 
-        assertSame(model, dto.getConceptDetail());
-        assertEquals(ONTOLOGY_IRI, dto.getOntologyIri());
+        assertThat(dto.getConceptDetail()).isSameAs(model);
+        assertThat(dto.getOntologyIri()).isEqualTo(ONTOLOGY_IRI);
     }
 
     @Test
@@ -192,8 +184,8 @@ class NkdDetailServiceImplTest {
 
         GetNkdConceptDto dto = service.getConceptDetail(CONCEPT_IRI, null);
 
-        assertSame(model, dto.getConceptDetail());
-        assertNull(dto.getOntologyIri());
+        assertThat(dto.getConceptDetail()).isSameAs(model);
+        assertThat(dto.getOntologyIri()).isNull();
     }
 
     @Test
@@ -218,8 +210,8 @@ class NkdDetailServiceImplTest {
 
         GetNkdConceptDto dto = service.getConceptDetail(CONCEPT_IRI, null);
 
-        assertSame(agenda, dto.getConceptDetail().getAgendaResolved());
-        assertSame(ais, dto.getConceptDetail().getAisResolved());
+        assertThat(dto.getConceptDetail().getAgendaResolved()).isSameAs(agenda);
+        assertThat(dto.getConceptDetail().getAisResolved()).isSameAs(ais);
     }
 
     @Test
@@ -242,8 +234,8 @@ class NkdDetailServiceImplTest {
 
         GetNkdConceptDto dto = service.getConceptDetail(CONCEPT_IRI, null);
 
-        assertSame(check, dto.getConceptDetail().getCodeListResolved());
-        assertSame(stored, dto.getConceptDetail().getCodeList());
+        assertThat(dto.getConceptDetail().getCodeListResolved()).isSameAs(check);
+        assertThat(dto.getConceptDetail().getCodeList()).isSameAs(stored);
     }
 
     @Test
@@ -258,7 +250,7 @@ class NkdDetailServiceImplTest {
 
         GetNkdConceptDto dto = service.getConceptDetail(CONCEPT_IRI, null);
 
-        assertNull(dto.getConceptDetail().getCodeListResolved());
+        assertThat(dto.getConceptDetail().getCodeListResolved()).isNull();
     }
 
     @Test
@@ -300,16 +292,15 @@ class NkdDetailServiceImplTest {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
         when(nkdSparqlClient.fetchPublishedConceptWithScheme(CONCEPT_IRI)).thenReturn(Optional.empty());
 
-        assertThrows(NkdResourceNotFoundException.class,
-                () -> service.getConceptDetail(CONCEPT_IRI, null));
+        assertThatThrownBy(() -> service.getConceptDetail(CONCEPT_IRI, null))
+                .isInstanceOf(NkdResourceNotFoundException.class);
     }
 
     @Test
     void getConceptDetail_endpointNotConfigured_throwsNkdEndpointException() {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(false);
 
-        assertThrows(NkdEndpointException.class,
-                () -> service.getConceptDetail(CONCEPT_IRI, null));
+        assertThatThrownBy(() -> service.getConceptDetail(CONCEPT_IRI, null)).isInstanceOf(NkdEndpointException.class);
 
         verify(nkdSparqlClient, org.mockito.Mockito.never()).fetchPublishedConceptWithScheme(anyString());
     }
@@ -320,31 +311,29 @@ class NkdDetailServiceImplTest {
         when(nkdSparqlClient.fetchPublishedConceptWithScheme(CONCEPT_IRI))
                 .thenThrow(new QueryExceptionHTTP(503, "Service unavailable"));
 
-        assertThrows(NkdEndpointException.class,
-                () -> service.getConceptDetail(CONCEPT_IRI, null));
+        assertThatThrownBy(() -> service.getConceptDetail(CONCEPT_IRI, null)).isInstanceOf(NkdEndpointException.class);
     }
 
     @Test
     void getConceptDetail_blankIri_throwsIllegalArgumentException() {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
-        assertThrows(IllegalArgumentException.class,
-                () -> service.getConceptDetail("", null));
+        assertThatThrownBy(() -> service.getConceptDetail("", null)).isInstanceOf(IllegalArgumentException.class);
         verify(nkdSparqlClient, org.mockito.Mockito.never()).fetchPublishedConceptWithScheme(anyString());
     }
 
     @Test
     void getConceptDetail_malformedIri_throwsIllegalArgumentException() {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
-        assertThrows(IllegalArgumentException.class,
-                () -> service.getConceptDetail("not an iri", null));
+        assertThatThrownBy(() -> service.getConceptDetail("not an iri", null))
+                .isInstanceOf(IllegalArgumentException.class);
         verify(nkdSparqlClient, org.mockito.Mockito.never()).fetchPublishedConceptWithScheme(anyString());
     }
 
     @Test
     void getConceptDetail_malformedOntologyIri_throwsIllegalArgumentException() {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
-        assertThrows(IllegalArgumentException.class,
-                () -> service.getConceptDetail(CONCEPT_IRI, "not an iri"));
+        assertThatThrownBy(() -> service.getConceptDetail(CONCEPT_IRI, "not an iri"))
+                .isInstanceOf(IllegalArgumentException.class);
         verify(nkdSparqlClient, org.mockito.Mockito.never()).fetchPublishedConceptWithScheme(anyString());
     }
 
@@ -373,14 +362,14 @@ class NkdDetailServiceImplTest {
         // Empty/null input is a no-op — don't even check endpoint config so tests
         // and FE empty-cart calls don't fail when NKD is offline.
         GetNkdOntologyListDto result = service.getOntologyList(null);
-        assertTrue(result.getOntologies().isEmpty());
+        assertThat(result.getOntologies()).isEmpty();
         verify(nkdSparqlClient, org.mockito.Mockito.never()).executeSelect(anyString());
     }
 
     @Test
     void getOntologyList_emptyInput_returnsEmpty() {
         GetNkdOntologyListDto result = service.getOntologyList(List.of());
-        assertTrue(result.getOntologies().isEmpty());
+        assertThat(result.getOntologies()).isEmpty();
         verify(nkdSparqlClient, org.mockito.Mockito.never()).executeSelect(anyString());
     }
 
@@ -393,13 +382,13 @@ class NkdDetailServiceImplTest {
 
         GetNkdOntologyListDto result = service.getOntologyList(List.of(ONTOLOGY_IRI));
 
-        assertEquals(1, result.getOntologies().size());
+        assertThat(result.getOntologies()).hasSize(1);
         var item = result.getOntologies().get(0);
-        assertEquals(ONTOLOGY_IRI, item.getIri());
-        assertEquals(Map.of("cs", "Test slovník"), item.getName());
-        assertEquals(Map.of("cs", "Popis"), item.getDescription());
-        assertEquals("2024-01-02", item.getCreationDate());
-        assertEquals("2024-03-04", item.getModificationDate());
+        assertThat(item.getIri()).isEqualTo(ONTOLOGY_IRI);
+        assertThat(item.getName()).isEqualTo(Map.of("cs", "Test slovník"));
+        assertThat(item.getDescription()).isEqualTo(Map.of("cs", "Popis"));
+        assertThat(item.getCreationDate()).isEqualTo("2024-01-02");
+        assertThat(item.getModificationDate()).isEqualTo("2024-03-04");
     }
 
     @Test
@@ -417,8 +406,8 @@ class NkdDetailServiceImplTest {
 
         GetNkdOntologyListDto result = service.getOntologyList(List.of(iri1, iri2, iri3));
 
-        assertEquals(List.of(iri1, iri2, iri3),
-                result.getOntologies().stream().map(NkdOntologyListItemDto::getIri).toList());
+        assertThat(result.getOntologies().stream().map(NkdOntologyListItemDto::getIri).toList())
+                .isEqualTo(List.of(iri1, iri2, iri3));
     }
 
     @Test
@@ -432,8 +421,8 @@ class NkdDetailServiceImplTest {
 
         GetNkdOntologyListDto result = service.getOntologyList(List.of(missingIri, foundIri));
 
-        assertEquals(1, result.getOntologies().size());
-        assertEquals(foundIri, result.getOntologies().get(0).getIri());
+        assertThat(result.getOntologies()).hasSize(1);
+        assertThat(result.getOntologies().get(0).getIri()).isEqualTo(foundIri);
     }
 
     @Test
@@ -447,7 +436,7 @@ class NkdDetailServiceImplTest {
         GetNkdOntologyListDto result = service.getOntologyList(
                 List.of("https://example.org/ontology/ok"));
 
-        assertTrue(result.getOntologies().isEmpty());
+        assertThat(result.getOntologies()).isEmpty();
     }
 
     @Test
@@ -455,8 +444,8 @@ class NkdDetailServiceImplTest {
         // Validate up front so a single bad IRI doesn't waste a round-trip.
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
 
-        assertThrows(IllegalArgumentException.class,
-                () -> service.getOntologyList(List.of(ONTOLOGY_IRI, "not an iri")));
+        assertThatThrownBy(() -> service.getOntologyList(List.of(ONTOLOGY_IRI, "not an iri")))
+                .isInstanceOf(IllegalArgumentException.class);
 
         verify(nkdSparqlClient, org.mockito.Mockito.never()).executeSelect(anyString());
     }
@@ -465,8 +454,8 @@ class NkdDetailServiceImplTest {
     void getOntologyList_endpointNotConfigured_throwsNkdEndpointException() {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(false);
 
-        assertThrows(NkdEndpointException.class,
-                () -> service.getOntologyList(List.of(ONTOLOGY_IRI)));
+        assertThatThrownBy(() -> service.getOntologyList(List.of(ONTOLOGY_IRI)))
+                .isInstanceOf(NkdEndpointException.class);
 
         verify(nkdSparqlClient, org.mockito.Mockito.never()).executeSelect(anyString());
     }
@@ -478,8 +467,7 @@ class NkdDetailServiceImplTest {
                 .mapToObj(i -> "https://example.org/ontology/" + i)
                 .collect(Collectors.toList());
 
-        assertThrows(IllegalArgumentException.class,
-                () -> service.getOntologyList(tooMany));
+        assertThatThrownBy(() -> service.getOntologyList(tooMany)).isInstanceOf(IllegalArgumentException.class);
 
         verify(nkdSparqlClient, org.mockito.Mockito.never()).executeSelect(anyString());
     }
@@ -497,7 +485,7 @@ class NkdDetailServiceImplTest {
 
         GetNkdOntologyListDto result = service.getOntologyList(exactly50);
 
-        assertTrue(result.getOntologies().isEmpty());
+        assertThat(result.getOntologies()).isEmpty();
         // One batched round-trip for all 50 IRIs, not 50 per-IRI fetches.
         verify(nkdSparqlClient, org.mockito.Mockito.times(1))
                 .executeSelect(org.mockito.ArgumentMatchers.contains(META_QUERY_MARKER));
@@ -509,25 +497,21 @@ class NkdDetailServiceImplTest {
     void listAllOntologies_endpointNotConfigured_throwsNkdEndpointException() {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(false);
 
-        assertThrows(NkdEndpointException.class,
-                () -> service.listAllOntologies(20, 0, "cs"));
+        assertThatThrownBy(() -> service.listAllOntologies(20, 0, "cs")).isInstanceOf(NkdEndpointException.class);
 
         verify(nkdSparqlClient, org.mockito.Mockito.never()).executeSelect(anyString());
     }
 
     @Test
     void listAllOntologies_invalidLimit_throwsIllegalArgumentException() {
-        assertThrows(IllegalArgumentException.class,
-                () -> service.listAllOntologies(0, 0, "cs"));
-        assertThrows(IllegalArgumentException.class,
-                () -> service.listAllOntologies(101, 0, "cs"));
+        assertThatThrownBy(() -> service.listAllOntologies(0, 0, "cs")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.listAllOntologies(101, 0, "cs")).isInstanceOf(IllegalArgumentException.class);
         verify(nkdSparqlClient, org.mockito.Mockito.never()).isEndpointConfigured();
     }
 
     @Test
     void listAllOntologies_negativeOffset_throwsIllegalArgumentException() {
-        assertThrows(IllegalArgumentException.class,
-                () -> service.listAllOntologies(20, -1, "cs"));
+        assertThatThrownBy(() -> service.listAllOntologies(20, -1, "cs")).isInstanceOf(IllegalArgumentException.class);
         verify(nkdSparqlClient, org.mockito.Mockito.never()).isEndpointConfigured();
     }
 
@@ -545,10 +529,10 @@ class NkdDetailServiceImplTest {
 
         GetNkdOntologyListDto result = service.listAllOntologies(20, 100, "cs");
 
-        assertTrue(result.getOntologies().isEmpty());
-        assertEquals(42, result.getOntologyCount());
-        assertEquals(42, result.getTotalCount());
-        assertEquals(9001, result.getConceptCount());
+        assertThat(result.getOntologies()).isEmpty();
+        assertThat(result.getOntologyCount()).isEqualTo(42);
+        assertThat(result.getTotalCount()).isEqualTo(42);
+        assertThat(result.getConceptCount()).isEqualTo(9001);
         // Empty page must NOT trigger the batched metadata query or concept-count batch.
         verify(nkdSparqlClient, org.mockito.Mockito.never())
                 .executeSelect(org.mockito.ArgumentMatchers.contains(META_QUERY_MARKER));
@@ -583,17 +567,17 @@ class NkdDetailServiceImplTest {
 
         GetNkdOntologyListDto result = service.listAllOntologies(20, 0, "cs");
 
-        assertEquals(2, result.getOntologies().size());
-        assertEquals(iri1, result.getOntologies().get(0).getIri());
-        assertEquals(Map.of("cs", "A slovník"), result.getOntologies().get(0).getName());
-        assertEquals(7, result.getOntologies().get(0).getConceptCount());
-        assertEquals(iri2, result.getOntologies().get(1).getIri());
+        assertThat(result.getOntologies()).hasSize(2);
+        assertThat(result.getOntologies().get(0).getIri()).isEqualTo(iri1);
+        assertThat(result.getOntologies().get(0).getName()).isEqualTo(Map.of("cs", "A slovník"));
+        assertThat(result.getOntologies().get(0).getConceptCount()).isEqualTo(7);
+        assertThat(result.getOntologies().get(1).getIri()).isEqualTo(iri2);
         // Missing from concept-count batch result → defaulted to 0 (not null).
-        assertEquals(0, result.getOntologies().get(1).getConceptCount());
+        assertThat(result.getOntologies().get(1).getConceptCount()).isEqualTo(0);
 
-        assertEquals(2, result.getOntologyCount());
-        assertEquals(2, result.getTotalCount());
-        assertEquals(7, result.getConceptCount());
+        assertThat(result.getOntologyCount()).isEqualTo(2);
+        assertThat(result.getTotalCount()).isEqualTo(2);
+        assertThat(result.getConceptCount()).isEqualTo(7);
     }
 
     @Test
@@ -632,13 +616,13 @@ class NkdDetailServiceImplTest {
 
         GetNkdOntologyListDto result = service.listAllOntologies(20, 0, "cs");
 
-        assertEquals(1, result.getOntologies().size());
+        assertThat(result.getOntologies()).hasSize(1);
         var item = result.getOntologies().get(0);
-        assertEquals(Map.of("cs", "Štítek"), item.getName());
-        assertEquals(Map.of("cs", "Český popis", "en", "English description"), item.getDescription());
-        assertEquals("2024-01-02T10:00:00", item.getCreationDate());  // dateTime preferred
-        assertEquals("2024-03-04", item.getModificationDate());       // date fallback
-        assertEquals(3, item.getConceptCount());
+        assertThat(item.getName()).isEqualTo(Map.of("cs", "Štítek"));
+        assertThat(item.getDescription()).isEqualTo(Map.of("cs", "Český popis", "en", "English description"));
+        assertThat(item.getCreationDate()).isEqualTo("2024-01-02T10:00:00");  // dateTime preferred
+        assertThat(item.getModificationDate()).isEqualTo("2024-03-04");       // date fallback
+        assertThat(item.getConceptCount()).isEqualTo(3);
     }
 
     @Test
@@ -660,8 +644,8 @@ class NkdDetailServiceImplTest {
 
         GetNkdOntologyListDto result = service.listAllOntologies(20, 0, "cs");
 
-        assertEquals(1, result.getOntologies().size());
-        assertTrue(result.getOntologies().get(0).getName().isEmpty());
+        assertThat(result.getOntologies()).hasSize(1);
+        assertThat(result.getOntologies().get(0).getName()).isEmpty();
     }
 
     @Test
@@ -670,8 +654,7 @@ class NkdDetailServiceImplTest {
         when(nkdSparqlClient.executeSelect(anyString()))
                 .thenThrow(new QueryExceptionHTTP(503, "Service unavailable"));
 
-        assertThrows(NkdEndpointException.class,
-                () -> service.listAllOntologies(20, 0, "cs"));
+        assertThatThrownBy(() -> service.listAllOntologies(20, 0, "cs")).isInstanceOf(NkdEndpointException.class);
     }
 
     @Test
@@ -698,8 +681,8 @@ class NkdDetailServiceImplTest {
 
         GetNkdOntologyListDto result = service.listAllOntologies(20, 0, "cs");
 
-        assertEquals(1, result.getOntologies().size());
-        assertEquals(iriOk, result.getOntologies().get(0).getIri());
+        assertThat(result.getOntologies()).hasSize(1);
+        assertThat(result.getOntologies().get(0).getIri()).isEqualTo(iriOk);
     }
 
     @Test
@@ -742,7 +725,7 @@ class NkdDetailServiceImplTest {
 
         GetNkdOntologyDto dto = service.getOntologyDetail(ONTOLOGY_IRI);
 
-        assertEquals(3, dto.getOntologyDetail().getConceptCount());
+        assertThat(dto.getOntologyDetail().getConceptCount()).isEqualTo(3);
     }
 
     @Test
@@ -753,7 +736,7 @@ class NkdDetailServiceImplTest {
 
         GetNkdOntologyDto dto = service.getOntologyDetail(ONTOLOGY_IRI);
 
-        assertNull(dto.getOntologyDetail().getConceptCount());
+        assertThat(dto.getOntologyDetail().getConceptCount()).isNull();
     }
 
     // ── Download ──────────────────────────────────────────────────────
@@ -762,36 +745,36 @@ class NkdDetailServiceImplTest {
     void downloadOntology_endpointNotConfigured_throwsNkdEndpointException() {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(false);
 
-        assertThrows(NkdEndpointException.class,
-                () -> service.downloadOntology(ONTOLOGY_IRI, "ttl"));
+        assertThatThrownBy(() -> service.downloadOntology(ONTOLOGY_IRI, "ttl"))
+                .isInstanceOf(NkdEndpointException.class);
     }
 
     @Test
     void downloadOntology_invalidIri_throwsIllegalArgumentException() {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
-        assertThrows(IllegalArgumentException.class,
-                () -> service.downloadOntology("not an iri", "ttl"));
+        assertThatThrownBy(() -> service.downloadOntology("not an iri", "ttl"))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void downloadOntology_blankFormat_throwsIllegalArgumentException() {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
-        assertThrows(IllegalArgumentException.class,
-                () -> service.downloadOntology(ONTOLOGY_IRI, ""));
+        assertThatThrownBy(() -> service.downloadOntology(ONTOLOGY_IRI, ""))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void downloadOntology_nullFormat_throwsIllegalArgumentException() {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
-        assertThrows(IllegalArgumentException.class,
-                () -> service.downloadOntology(ONTOLOGY_IRI, null));
+        assertThatThrownBy(() -> service.downloadOntology(ONTOLOGY_IRI, null))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void downloadOntology_unsupportedFormat_throwsIllegalArgumentException() {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
-        assertThrows(IllegalArgumentException.class,
-                () -> service.downloadOntology(ONTOLOGY_IRI, "rdf-xml"));
+        assertThatThrownBy(() -> service.downloadOntology(ONTOLOGY_IRI, "rdf-xml"))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -799,8 +782,8 @@ class NkdDetailServiceImplTest {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
         when(nkdSparqlClient.fetchPublishedOntologyRaw(ONTOLOGY_IRI)).thenReturn(Optional.empty());
 
-        assertThrows(NkdResourceNotFoundException.class,
-                () -> service.downloadOntology(ONTOLOGY_IRI, "ttl"));
+        assertThatThrownBy(() -> service.downloadOntology(ONTOLOGY_IRI, "ttl"))
+                .isInstanceOf(NkdResourceNotFoundException.class);
     }
 
     @Test
@@ -809,8 +792,8 @@ class NkdDetailServiceImplTest {
         when(nkdSparqlClient.fetchPublishedOntologyRaw(ONTOLOGY_IRI))
                 .thenThrow(new QueryExceptionHTTP(503, "Service unavailable"));
 
-        assertThrows(NkdEndpointException.class,
-                () -> service.downloadOntology(ONTOLOGY_IRI, "ttl"));
+        assertThatThrownBy(() -> service.downloadOntology(ONTOLOGY_IRI, "ttl"))
+                .isInstanceOf(NkdEndpointException.class);
     }
 
     @Test
@@ -822,13 +805,13 @@ class NkdDetailServiceImplTest {
         byte[] result = service.downloadOntology(ONTOLOGY_IRI, "ttl");
 
         String body = new String(result, java.nio.charset.StandardCharsets.UTF_8);
-        assertTrue(body.contains(ONTOLOGY_IRI), "Turtle should include the ontology IRI: " + body);
-        assertTrue(body.contains("Test"), "Turtle should include the label: " + body);
+        assertThat(body).as("Turtle should include the ontology IRI: " + body).contains(ONTOLOGY_IRI);
+        assertThat(body).as("Turtle should include the label: " + body).contains("Test");
 
         // Format string is case-insensitive — second call gets a fresh model
         // because the service closes whatever model was passed in.
         byte[] result2 = service.downloadOntology(ONTOLOGY_IRI, "TTL");
-        assertTrue(new String(result2, java.nio.charset.StandardCharsets.UTF_8).contains(ONTOLOGY_IRI));
+        assertThat(new String(result2, java.nio.charset.StandardCharsets.UTF_8).contains(ONTOLOGY_IRI)).isTrue();
     }
 
     private static Model buildSimpleModel() {
@@ -848,7 +831,7 @@ class NkdDetailServiceImplTest {
 
         byte[] result = service.downloadOntology(ONTOLOGY_IRI, "json-ld");
 
-        assertEquals("{\"ok\":true}", new String(result, java.nio.charset.StandardCharsets.UTF_8));
+        assertThat(new String(result, java.nio.charset.StandardCharsets.UTF_8)).isEqualTo("{\"ok\":true}");
         verify(jsonExporter).exportToJson(model);
     }
 }

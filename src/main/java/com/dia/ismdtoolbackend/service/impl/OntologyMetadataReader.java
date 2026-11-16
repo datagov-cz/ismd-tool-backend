@@ -2,7 +2,8 @@ package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
-import com.dia.ismdtoolbackend.models.*;
+import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
+import com.dia.ismdtoolbackend.models.OntologyRef;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -21,7 +22,7 @@ class OntologyMetadataReader {
     private final OntologyMetadataMapper ontologyMetadataMapper;
     private final OntologyMetadataEnricher metadataEnricher;
 
-    List<OntologyMetadataModel> getAll(String userId, Boolean isPublished) {
+    List<OntologySummaryDto> getAll(String userId, Boolean isPublished) {
         List<OntologyMetadataEntity> ontologyMetadataEntities;
 
         if (userId != null && isPublished != null) {
@@ -37,7 +38,7 @@ class OntologyMetadataReader {
         return metadataEnricher.enrichEntitiesWithBatchMetadata(ontologyMetadataEntities);
     }
 
-    List<OntologyMetadataModel> getBySlugs(List<String> slugs) {
+    List<OntologySummaryDto> getBySlugs(List<String> slugs) {
         if (slugs == null || slugs.isEmpty()) {
             throw new OntologyException("Seznam slugů je prázdný");
         }
@@ -51,13 +52,13 @@ class OntologyMetadataReader {
         return metadataEnricher.enrichEntitiesWithBatchMetadata(ontologyMetadataEntities);
     }
 
-    OntologyMetadataModel getOntologyMetadata(Long ontologyId) {
-        return ontologyMetadataMapper.toDto(ontologyMetadataRepository.findById(ontologyId).orElseThrow());
+    OntologyRef getOntologyMetadata(Long ontologyId) {
+        return ontologyMetadataMapper.toRef(ontologyMetadataRepository.findById(ontologyId).orElseThrow());
     }
 
-    OntologyMetadataModel getOntologyMetadataBySlug(String ontologySlug) {
+    OntologyRef getOntologyMetadataBySlug(String ontologySlug) {
         return ontologyMetadataRepository.findBySlug(ontologySlug)
-                .map(ontologyMetadataMapper::toDto)
+                .map(ontologyMetadataMapper::toRef)
                 .orElseThrow(() -> {
                     log.error("ontologySlug {} not found", ontologySlug);
                     return new OntologyNotFoundException(

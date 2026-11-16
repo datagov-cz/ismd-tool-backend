@@ -1,7 +1,6 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
-import com.dia.utility.DataTypeConverter;
-import com.dia.utility.UtilityMethods;
+import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import org.apache.jena.rdf.model.*;
 
 import java.util.HashSet;
@@ -9,7 +8,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 import static com.dia.ismdtoolbackend.utility.editor.ConceptEditStatements.*;
 import static com.dia.ismdtoolbackend.utility.editor.RdfLangValues.removeAllByPredicate;
 
@@ -42,21 +41,12 @@ class ConceptGovernanceUpdater {
 
         Property agendaProperty = model.createProperty(DEFAULT_NS + AGENDOVY_104 + AGENDA_LONG);
 
-        if (agendaCode.trim().isEmpty()) {
-            removeAllByPredicate(oldConcept, agendaProperty, toRemove, toAdd);
-            return;
-        }
-
         removeAllByPredicate(newConcept, agendaProperty, toRemove, toAdd);
+        if (agendaCode.trim().isEmpty()) return;
 
         if (UtilityMethods.isValidAgendaValue(agendaCode)) {
             String transformed = UtilityMethods.transformAgendaValue(agendaCode);
-            if (DataTypeConverter.isUri(transformed)) {
-                toAdd.add(model.createStatement(newConcept, agendaProperty, model.createResource(transformed)));
-            } else {
-                Literal typedLiteral = DataTypeConverter.createTypedLiteral(transformed, model, null, AGENDA_LONG);
-                toAdd.add(model.createStatement(newConcept, agendaProperty, typedLiteral));
-            }
+            toAdd.add(model.createStatement(newConcept, agendaProperty, model.createResource(transformed)));
         }
     }
 
@@ -66,21 +56,12 @@ class ConceptGovernanceUpdater {
 
         Property aisProperty = model.createProperty(DEFAULT_NS + AGENDOVY_104 + UDAJE_AIS);
 
-        if (aisCode.trim().isEmpty()) {
-            removeAllByPredicate(oldConcept, aisProperty, toRemove, toAdd);
-            return;
-        }
-
         removeAllByPredicate(newConcept, aisProperty, toRemove, toAdd);
+        if (aisCode.trim().isEmpty()) return;
 
         if (UtilityMethods.isValidAISValue(aisCode)) {
             String transformed = UtilityMethods.transformAISValue(aisCode);
-            if (DataTypeConverter.isUri(transformed)) {
-                toAdd.add(model.createStatement(newConcept, aisProperty, model.createResource(transformed)));
-            } else {
-                Literal typedLiteral = DataTypeConverter.createTypedLiteral(transformed, model, null, UDAJE_AIS);
-                toAdd.add(model.createStatement(newConcept, aisProperty, typedLiteral));
-            }
+            toAdd.add(model.createStatement(newConcept, aisProperty, model.createResource(transformed)));
         }
     }
 

@@ -1,7 +1,7 @@
 package com.dia.ismdtoolbackend.models.concept;
 
 import com.dia.ismdtoolbackend.utility.sparql.SparqlSolutions;
-import com.dia.utility.UtilityMethods;
+import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import org.apache.jena.ontology.OntologyException;
 
 import java.util.List;

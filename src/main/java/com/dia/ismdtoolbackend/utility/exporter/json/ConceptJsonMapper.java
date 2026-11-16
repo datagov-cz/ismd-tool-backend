@@ -10,7 +10,7 @@ import java.util.*;
 import com.dia.ismdtoolbackend.exception.ConflictingConceptTypeException;
 import com.dia.ismdtoolbackend.exception.ModelProcessingException;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 
 /** Maps the concepts of an RDF model to their JSON / JSON-LD objects, one focused mapper per characteristic. */
 @Slf4j

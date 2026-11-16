@@ -10,7 +10,7 @@ import java.util.*;
 
 import com.dia.ismdtoolbackend.exception.ModelProcessingException;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 
 @Slf4j
 public class ModelAnalyzer {
@@ -250,7 +250,8 @@ public class ModelAnalyzer {
 
         boolean hasPojem = hasConceptOfType(model, POJEM);
 
-        boolean hasConceptualModelTypes = hasConceptOfType(model, TSP) ||
+        boolean hasConceptualModelTypes = hasConceptOfType(model, TRIDA) ||
+                                         hasConceptOfType(model, TSP) ||
                                          hasConceptOfType(model, TOP) ||
                                          hasConceptOfType(model, VLASTNOST) ||
                                          hasConceptOfType(model, VZTAH);

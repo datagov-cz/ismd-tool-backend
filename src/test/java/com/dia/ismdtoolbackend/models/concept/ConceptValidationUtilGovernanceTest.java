@@ -2,8 +2,7 @@ package com.dia.ismdtoolbackend.models.concept;
 
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class ConceptValidationUtilGovernanceTest {
 
@@ -11,15 +10,15 @@ class ConceptValidationUtilGovernanceTest {
 
     @Test
     void storedItemIriMapsBackToTheAllowedValue() {
-        assertEquals("veřejně přístupné", ConceptValidationUtil.governanceValueOf(ITEMS + "veřejně-přístupné"));
-        assertEquals("zpřístupňované pro výkon agendy",
-                ConceptValidationUtil.governanceValueOf(ITEMS + "zpřístupňované-pro-výkon-agendy"));
+        assertThat(ConceptValidationUtil.governanceValueOf(ITEMS + "veřejně-přístupné")).isEqualTo("veřejně přístupné");
+        assertThat(ConceptValidationUtil.governanceValueOf(ITEMS + "zpřístupňované-pro-výkon-agendy"))
+                .isEqualTo("zpřístupňované pro výkon agendy");
     }
 
     @Test
     void unknownItemAndPlainValuesAreReturnedUnchanged() {
-        assertEquals(ITEMS + "neznámé", ConceptValidationUtil.governanceValueOf(ITEMS + "neznámé"));
-        assertEquals("vlastní", ConceptValidationUtil.governanceValueOf("vlastní"));
-        assertNull(ConceptValidationUtil.governanceValueOf(null));
+        assertThat(ConceptValidationUtil.governanceValueOf(ITEMS + "neznámé")).isEqualTo(ITEMS + "neznámé");
+        assertThat(ConceptValidationUtil.governanceValueOf("vlastní")).isEqualTo("vlastní");
+        assertThat(ConceptValidationUtil.governanceValueOf(null)).isNull();
     }
 }

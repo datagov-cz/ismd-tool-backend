@@ -5,9 +5,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 class EsbirkaSPARQLQueryTest {
 
@@ -17,96 +16,44 @@ class EsbirkaSPARQLQueryTest {
             "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2006/187/2026-04-01";
 
     @Test
-    void lawSearch_emptyQ_parsesAndUsesRokDescOrder() {
-        String q = EsbirkaSPARQLQuery.buildLawSearchQuery(null, 20);
-        assertDoesNotThrow(() -> QueryFactory.create(q));
-        assertTrue(q.contains("https://slovník.gov.cz/datový/sbírka/pojem/právní-akt"));
-        assertTrue(q.contains("citace-právního-aktu"));
-        assertTrue(q.contains("ORDER BY DESC(?rok) ?cislo"), "empty-q must order by rok desc, cislo asc");
-        assertTrue(q.contains("LIMIT 20"));
-        assertFalse(q.contains("FILTER"), "empty-q must NOT include FILTER block");
-        assertFalse(q.contains("CONTAINS"));
-    }
-
-    @Test
-    void lawSearch_blankQ_treatedAsEmpty() {
-        String q = EsbirkaSPARQLQuery.buildLawSearchQuery("   ", 20);
-        assertFalse(q.contains("FILTER"));
-    }
-
-    @Test
-    void lawSearch_withQ_parsesAndAddsFilterAndRankedOrder() {
-        String q = EsbirkaSPARQLQuery.buildLawSearchQuery("187/2006", 50);
-        assertDoesNotThrow(() -> QueryFactory.create(q));
-        assertTrue(q.contains("FILTER(CONTAINS(LCASE(STR(?citace)), LCASE("));
-        // Jena escapes the literal — verify the value is present (not as a raw substring exposed to injection).
-        assertTrue(q.contains("\"187/2006\""));
-        assertTrue(q.contains("ORDER BY ?rank DESC(?rok) ?citace"),
-                "q-search must rank číslo matches ahead of year-only matches");
-        assertTrue(q.contains("LIMIT 50"));
-    }
-
-    @Test
-    void lawSearch_withQ_ranksCisloMatchesAheadOfYearMatches() {
-        // A bare CONTAINS matches "49" in 49/1997, 490/2001 and 1/2049 alike.
-        String q = EsbirkaSPARQLQuery.buildLawSearchQuery("49", 20);
-        assertDoesNotThrow(() -> QueryFactory.create(q));
-        assertTrue(q.contains("BIND(IF(LCASE(STR(?cislo)) = LCASE("), "tier 0: exact číslo match");
-        assertTrue(q.contains("IF(STRSTARTS(LCASE(STR(?citace)), LCASE("), "tier 1: citation prefix");
-        // citace is "<číslo>/<rok> Sb.", so a číslo-prefix tier would be unreachable.
-        assertFalse(q.contains("STRSTARTS(LCASE(STR(?cislo))"), "dead tier must not be emitted");
-        assertTrue(q.contains("AS ?rank)"));
-        // LIMIT applies after ORDER BY, so ranking client-side would truncate first.
-        assertTrue(q.indexOf("AS ?rank)") < q.indexOf("LIMIT"),
-                "rank must be bound inside the WHERE clause, before LIMIT");
-    }
-
-    @Test
-    void lawSearch_emptyQ_hasNoRankBinding() {
-        String q = EsbirkaSPARQLQuery.buildLawSearchQuery(null, 20);
-        assertFalse(q.contains("?rank"), "empty-q must not bind a relevance rank");
-    }
-
-
-    @Test
     void lawsByNumbers_matchesOnStrNotValues_forVirtuosoDatatypeQuirk() {
         // číslo-předpisu is a typed "49"^^xsd:string that Virtuoso will not equate with the
         // plain literal "49", so a VALUES block matches zero rows.
         String q = EsbirkaSPARQLQuery.buildLawsByNumbersQuery(java.util.List.of("49", "490"), null, 600);
-        assertDoesNotThrow(() -> QueryFactory.create(q));
-        assertTrue(q.contains("FILTER(STR(?cislo) IN ("), "must compare via STR(), not VALUES");
-        assertFalse(q.contains("VALUES ?cislo"), "a VALUES block silently returns nothing here");
-        assertTrue(q.contains("\"49\""));
-        assertTrue(q.contains("\"490\""));
-        assertTrue(q.contains("LIMIT 600"), "act fetch must carry a row cap");
+        assertThatCode(() -> QueryFactory.create(q)).doesNotThrowAnyException();
+        assertThat(q).as("must compare via STR(), not VALUES").contains("FILTER(STR(?cislo) IN (");
+        assertThat(q).as("a VALUES block silently returns nothing here").doesNotContain("VALUES ?cislo");
+        assertThat(q).contains("\"49\"");
+        assertThat(q).contains("\"490\"");
+        assertThat(q).as("act fetch must carry a row cap").contains("LIMIT 600");
         // Newest-first so the cap keeps recent acts rather than an arbitrary slice.
-        assertTrue(q.contains("ORDER BY DESC(?rok)"));
+        assertThat(q).contains("ORDER BY DESC(?rok)");
         // The service re-buckets by číslo, so server-side číslo ordering would be discarded.
-        assertFalse(q.contains("STRLEN"), "no redundant server-side číslo ordering");
+        assertThat(q).as("no redundant server-side číslo ordering").doesNotContain("STRLEN");
     }
 
     @Test
     void lawNumberGroups_aggregatesAndCapsGroups() {
         String q = EsbirkaSPARQLQuery.buildLawNumberGroupsQuery("49", null, 20);
-        assertDoesNotThrow(() -> QueryFactory.create(q));
+        assertThatCode(() -> QueryFactory.create(q)).doesNotThrowAnyException();
         // COUNT(*) counts solutions, so an act with two patří-do-sbírky or citace values
         // would inflate its group total.
-        assertTrue(q.contains("COUNT(DISTINCT ?akt)"), "must count acts, not solutions");
-        assertFalse(q.contains("rok-předpisu"), "unused join must not be in the aggregate");
-        assertFalse(q.contains("patří-do-sbírky"), "unused join must not be in the aggregate");
-        assertTrue(q.contains("GROUP BY ?cislo"));
+        assertThat(q).as("must count acts, not solutions").contains("COUNT(DISTINCT ?akt)");
+        assertThat(q).as("unused join must not be in the aggregate").doesNotContain("rok-předpisu");
+        assertThat(q).as("unused join must not be in the aggregate").doesNotContain("patří-do-sbírky");
+        assertThat(q).contains("GROUP BY ?cislo");
         // Prefix, not substring: "49" must not match 1490.
-        assertTrue(q.contains("STRSTARTS(LCASE(STR(?cislo))"));
-        assertFalse(q.contains("CONTAINS(LCASE(STR(?cislo))"));
+        assertThat(q).contains("STRSTARTS(LCASE(STR(?cislo))");
+        assertThat(q).doesNotContain("CONTAINS(LCASE(STR(?cislo))");
         // The cap applies to groups — LIMIT sits after GROUP BY.
-        assertTrue(q.indexOf("GROUP BY") < q.indexOf("LIMIT"));
+        assertThat(q.indexOf("GROUP BY")).isLessThan(q.indexOf("LIMIT"));
     }
 
     @Test
     void lawNumberGroups_blankQOmitsFilter() {
         String q = EsbirkaSPARQLQuery.buildLawNumberGroupsQuery("  ", null, 20);
-        assertDoesNotThrow(() -> QueryFactory.create(q));
-        assertFalse(q.contains("FILTER"));
+        assertThatCode(() -> QueryFactory.create(q)).doesNotThrowAnyException();
+        assertThat(q).doesNotContain("FILTER");
     }
 
     @Test
@@ -114,22 +61,22 @@ class EsbirkaSPARQLQueryTest {
         // rok-předpisu is xsd:gYear; STR() reaches its "1997" lexical form. Prefix, not
         // equality — the FE searches per keystroke, so "49/19" must return the 1900s.
         String q = EsbirkaSPARQLQuery.buildLawNumberGroupsQuery("49", "1997", 20);
-        assertDoesNotThrow(() -> QueryFactory.create(q));
-        assertTrue(q.contains("rok-předpisu"), "the year join is required to filter on it");
-        assertTrue(q.contains("STRSTARTS(STR(?rok)"));
-        assertTrue(q.contains("\"1997\""));
+        assertThatCode(() -> QueryFactory.create(q)).doesNotThrowAnyException();
+        assertThat(q).as("the year join is required to filter on it").contains("rok-předpisu");
+        assertThat(q).contains("STRSTARTS(STR(?rok)");
+        assertThat(q).contains("\"1997\"");
         // Both halves filter: dropping the číslo half would group every act of 1997.
-        assertTrue(q.contains("STRSTARTS(LCASE(STR(?cislo))"));
+        assertThat(q).contains("STRSTARTS(LCASE(STR(?cislo))");
         // The count must still be year-scoped, so the aggregate — not a later step — filters.
-        assertTrue(q.indexOf("STRSTARTS(STR(?rok)") < q.indexOf("GROUP BY"));
+        assertThat(q.indexOf("STRSTARTS(STR(?rok)")).isLessThan(q.indexOf("GROUP BY"));
     }
 
     @Test
     void lawNumberGroups_omitsTheYearJoinWhenNoYearIsGiven() {
         // A bare "49" must not pay for a join it does not filter on.
         String q = EsbirkaSPARQLQuery.buildLawNumberGroupsQuery("49", null, 20);
-        assertFalse(q.contains("rok-předpisu"), "unused join must not be in the aggregate");
-        assertFalse(q.contains("?rok"));
+        assertThat(q).as("unused join must not be in the aggregate").doesNotContain("rok-předpisu");
+        assertThat(q).doesNotContain("?rok");
     }
 
     @Test
@@ -137,17 +84,17 @@ class EsbirkaSPARQLQueryTest {
         // Step 1's counts are year-scoped. Without the same filter here the group would
         // display acts the count excludes — and bury the year the user actually asked for.
         String q = EsbirkaSPARQLQuery.buildLawsByNumbersQuery(java.util.List.of("49"), "1997", 600);
-        assertDoesNotThrow(() -> QueryFactory.create(q));
-        assertTrue(q.contains("STRSTARTS(STR(?rok)"));
-        assertTrue(q.contains("\"1997\""));
-        assertTrue(q.contains("FILTER(STR(?cislo) IN ("), "číslo matching is unchanged");
+        assertThatCode(() -> QueryFactory.create(q)).doesNotThrowAnyException();
+        assertThat(q).contains("STRSTARTS(STR(?rok)");
+        assertThat(q).contains("\"1997\"");
+        assertThat(q).as("číslo matching is unchanged").contains("FILTER(STR(?cislo) IN (");
     }
 
     @Test
     void lawsByNumbers_blankYearAddsNoFilter() {
         String q = EsbirkaSPARQLQuery.buildLawsByNumbersQuery(java.util.List.of("49"), "  ", 600);
-        assertDoesNotThrow(() -> QueryFactory.create(q));
-        assertFalse(q.contains("STRSTARTS(STR(?rok)"));
+        assertThatCode(() -> QueryFactory.create(q)).doesNotThrowAnyException();
+        assertThat(q).doesNotContain("STRSTARTS(STR(?rok)");
     }
 
 
@@ -156,97 +103,76 @@ class EsbirkaSPARQLQueryTest {
         // Whole versions exist with no citace at all, so requiring it returns zero rows and
         // renders the law blank; obsah is likewise absent on structural fragments.
         for (String q : new String[]{
-                EsbirkaSPARQLQuery.buildFragmentTreeQuery(VERSION_IRI),
                 EsbirkaSPARQLQuery.buildVersionContentQuery(VERSION_IRI)}) {
-            assertDoesNotThrow(() -> QueryFactory.create(q));
-            assertTrue(q.contains("OPTIONAL { ?fragment <https://slovn\u00EDk.gov.cz/datov\u00FD/sb\u00EDrka/pojem/citace-ozna\u010Den\u00ED-fragmentu-zn\u011Bn\u00ED-pr\u00E1vn\u00EDho-aktu> ?citace }"),
-                    "citace must be OPTIONAL — a required join blanks entire versions");
-            assertTrue(q.contains("OPTIONAL { ?fragment <https://slovn\u00EDk.gov.cz/datov\u00FD/sb\u00EDrka/pojem/m\u00E1-p\u0159edka> ?parent }"),
-                    "má-předka must be OPTIONAL — assembleTree re-parents by path walk");
+            assertThatCode(() -> QueryFactory.create(q)).doesNotThrowAnyException();
+            assertThat(q)
+                    .as("citace must be OPTIONAL — a required join blanks entire versions")
+                    .contains("OPTIONAL { ?fragment <https://slovn\u00EDk.gov.cz/datov\u00FD/sb\u00EDrka/pojem/citace-ozna\u010Den\u00ED-fragmentu-zn\u011Bn\u00ED-pr\u00E1vn\u00EDho-aktu> ?citace }");
+            assertThat(q)
+                    .as("má-předka must be OPTIONAL — assembleTree re-parents by path walk")
+                    .contains("OPTIONAL { ?fragment <https://slovn\u00EDk.gov.cz/datov\u00FD/sb\u00EDrka/pojem/m\u00E1-p\u0159edka> ?parent }");
             // pořadí is the one genuinely required predicate: it is the document order key.
-            assertTrue(q.contains("?fragment <https://slovn\u00EDk.gov.cz/datov\u00FD/sb\u00EDrka/pojem/po\u0159ad\u00ED-fragmentu-zn\u011Bn\u00ED-pr\u00E1vn\u00EDho-aktu> ?order ."),
-                    "pořadí stays required");
+            assertThat(q)
+                    .as("pořadí stays required")
+                    .contains("?fragment <https://slovn\u00EDk.gov.cz/datov\u00FD/sb\u00EDrka/pojem/po\u0159ad\u00ED-fragmentu-zn\u011Bn\u00ED-pr\u00E1vn\u00EDho-aktu> ?order .");
         }
-    }
-
-    @Test
-    void lawSearch_quoteInjectionAttempt_isEscaped() {
-        // Attempt to break out of the FILTER literal. Jena must escape this.
-        String malicious = "foo\"; DROP";
-        String q = EsbirkaSPARQLQuery.buildLawSearchQuery(malicious, 20);
-        assertDoesNotThrow(() -> QueryFactory.create(q),
-                "Injection attempt must still produce a parseable SPARQL query");
-        // Raw bare quote must NOT appear unescaped in the rendered query.
-        assertFalse(q.contains("foo\"; DROP"),
-                "Bare unescaped malicious string must not appear verbatim in query");
     }
 
     @Test
     void lawByNumberYear_parsesAndUsesExactEqualityNotContains() {
         String q = EsbirkaSPARQLQuery.buildLawByNumberYearQuery("49", 1997);
-        assertDoesNotThrow(() -> QueryFactory.create(q));
-        assertTrue(q.contains("číslo-předpisu"), "must filter on číslo-předpisu (with č intact)");
-        assertTrue(q.contains("rok-předpisu"));
-        assertTrue(q.contains("STR(?cislo) = "), "exact equality on number, not CONTAINS");
-        assertTrue(q.contains("STR(?rok) = "), "exact equality on year");
-        assertFalse(q.contains("CONTAINS"), "must NOT use substring match (would hit 149/1997 etc.)");
+        assertThatCode(() -> QueryFactory.create(q)).doesNotThrowAnyException();
+        assertThat(q).as("must filter on číslo-předpisu (with č intact)").contains("číslo-předpisu");
+        assertThat(q).contains("rok-předpisu");
+        assertThat(q).as("exact equality on number, not CONTAINS").contains("STR(?cislo) = ");
+        assertThat(q).as("exact equality on year").contains("STR(?rok) = ");
+        assertThat(q).as("must NOT use substring match (would hit 149/1997 etc.)").doesNotContain("CONTAINS");
         // Values inlined as escaped literals via PSS.
-        assertTrue(q.contains("\"49\""));
-        assertTrue(q.contains("\"1997\""));
-        assertTrue(q.contains("LIMIT 1"));
+        assertThat(q).contains("\"49\"");
+        assertThat(q).contains("\"1997\"");
+        assertThat(q).contains("LIMIT 1");
     }
 
     @Test
     void lawByNumberYear_numberInjectionIsEscaped() {
         String q = EsbirkaSPARQLQuery.buildLawByNumberYearQuery("49\" ; DROP", 1997);
-        assertDoesNotThrow(() -> QueryFactory.create(q));
-        assertFalse(q.contains("49\" ; DROP"), "bare malicious string must not appear verbatim");
+        assertThatCode(() -> QueryFactory.create(q)).doesNotThrowAnyException();
+        assertThat(q).as("bare malicious string must not appear verbatim").doesNotContain("49\" ; DROP");
     }
 
     @Test
     void versionList_parsesAndContainsKeyPredicates() {
         String q = EsbirkaSPARQLQuery.buildVersionListQuery(LAW_IRI);
-        assertDoesNotThrow(() -> QueryFactory.create(q));
-        assertTrue(q.contains("má-poslední-znění"));
-        assertTrue(q.contains("má-znění"));
-        assertTrue(q.contains("účinnost-znění-od"));
-        assertTrue(q.contains("účinnost-znění-do"));
-        assertTrue(q.contains("má-typ-znění-právního-aktu"));
-        assertTrue(q.contains("(?zneni = ?posledniZneni) AS ?isLatest"));
-        assertTrue(q.contains("ORDER BY DESC(?ucinnostOd)"));
-        assertTrue(q.contains("<" + LAW_IRI + ">"),
-                "lawIri must be inlined as <iri> via ParameterizedSparqlString.setIri");
-    }
-
-    @Test
-    void fragmentTree_parsesAndContainsKeyPredicates() {
-        String q = EsbirkaSPARQLQuery.buildFragmentTreeQuery(VERSION_IRI);
-        assertDoesNotThrow(() -> QueryFactory.create(q));
-        assertTrue(q.contains("má-fragment-znění"));
-        assertTrue(q.contains("má-předka"));
-        assertTrue(q.contains("citace-označení-fragmentu-znění-právního-aktu"));
-        assertTrue(q.contains("pořadí-fragmentu-znění-právního-aktu"));
-        assertTrue(q.contains("ORDER BY ?order"));
-        assertTrue(q.contains("<" + VERSION_IRI + ">"),
-                "versionIri must be inlined as <iri> via ParameterizedSparqlString.setIri");
+        assertThatCode(() -> QueryFactory.create(q)).doesNotThrowAnyException();
+        assertThat(q).contains("má-poslední-znění");
+        assertThat(q).contains("má-znění");
+        assertThat(q).contains("účinnost-znění-od");
+        assertThat(q).contains("účinnost-znění-do");
+        assertThat(q).contains("má-typ-znění-právního-aktu");
+        assertThat(q).contains("(?zneni = ?posledniZneni) AS ?isLatest");
+        assertThat(q).contains("ORDER BY DESC(?ucinnostOd)");
+        assertThat(q)
+                .as("lawIri must be inlined as <iri> via ParameterizedSparqlString.setIri")
+                .contains("<" + LAW_IRI + ">");
     }
 
     @Test
     void versionContent_parsesAndContainsTreePredicatesPlusObsah() {
         String q = EsbirkaSPARQLQuery.buildVersionContentQuery(VERSION_IRI);
-        assertDoesNotThrow(() -> QueryFactory.create(q));
-        // Same structural backbone as the lean fragment-tree query...
-        assertTrue(q.contains("má-fragment-znění"));
-        assertTrue(q.contains("má-předka"));
-        assertTrue(q.contains("citace-označení-fragmentu-znění-právního-aktu"));
-        assertTrue(q.contains("pořadí-fragmentu-znění-právního-aktu"));
-        assertTrue(q.contains("ORDER BY ?order"));
-        assertTrue(q.contains("<" + VERSION_IRI + ">"),
-                "versionIri must be inlined as <iri> via ParameterizedSparqlString.setIri");
+        assertThatCode(() -> QueryFactory.create(q)).doesNotThrowAnyException();
+        // Tree backbone...
+        assertThat(q).contains("má-fragment-znění");
+        assertThat(q).contains("má-předka");
+        assertThat(q).contains("citace-označení-fragmentu-znění-právního-aktu");
+        assertThat(q).contains("pořadí-fragmentu-znění-právního-aktu");
+        assertThat(q).contains("ORDER BY ?order");
+        assertThat(q)
+                .as("versionIri must be inlined as <iri> via ParameterizedSparqlString.setIri")
+                .contains("<" + VERSION_IRI + ">");
         // ...plus the HTML body.
-        assertTrue(q.contains("?obsah"), "obsah must be projected");
-        assertTrue(q.contains("obsahuje-fragment"));
-        assertTrue(q.contains("text-fragmentu"));
+        assertThat(q).as("obsah must be projected").contains("?obsah");
+        assertThat(q).contains("obsahuje-fragment");
+        assertThat(q).contains("text-fragmentu");
     }
 
     @Test
@@ -255,11 +181,12 @@ class EsbirkaSPARQLQueryTest {
         // text body. A non-OPTIONAL obsah join would silently drop them and break the tree.
         String q = EsbirkaSPARQLQuery.buildVersionContentQuery(VERSION_IRI);
         int optionalCount = q.split("(?i)OPTIONAL").length - 1;
-        assertTrue(optionalCount >= 1, "obsah join MUST be OPTIONAL; found " + optionalCount);
+        assertThat(optionalCount).as("obsah join MUST be OPTIONAL; found " + optionalCount).isGreaterThanOrEqualTo(1);
         // The obsah chain must sit inside an OPTIONAL block.
         String afterOptional = q.substring(q.toUpperCase().indexOf("OPTIONAL"));
-        assertTrue(afterOptional.contains("obsahuje-fragment"),
-                "the obsahuje-fragment/text-fragmentu chain must be wrapped in OPTIONAL");
+        assertThat(afterOptional)
+                .as("the obsahuje-fragment/text-fragmentu chain must be wrapped in OPTIONAL")
+                .contains("obsahuje-fragment");
     }
 
     /**
@@ -270,20 +197,20 @@ class EsbirkaSPARQLQueryTest {
     @Test
     void fragmentQueries_requireOnlyPoradi() {
         for (String q : List.of(
-                EsbirkaSPARQLQuery.buildVersionContentQuery(VERSION_IRI),
-                EsbirkaSPARQLQuery.buildFragmentTreeQuery(VERSION_IRI))) {
-            assertDoesNotThrow(() -> QueryFactory.create(q));
+                EsbirkaSPARQLQuery.buildVersionContentQuery(VERSION_IRI))) {
+            assertThatCode(() -> QueryFactory.create(q)).doesNotThrowAnyException();
             for (String fragile : List.of(
                     "citace-označení-fragmentu-znění-právního-aktu",
                     "má-předka",
                     "obsahuje-fragment")) {
                 if (!q.contains(fragile)) {
-                    continue; // not projected by this query (the lean tree query has no obsah)
+                    continue; // not projected by this query
                 }
-                assertTrue(inOptionalBlock(q, fragile),
-                        fragile + " MUST sit inside an OPTIONAL block: a required join that "
+                assertThat(inOptionalBlock(q, fragile))
+                        .as(fragile + " MUST sit inside an OPTIONAL block: a required join that "
                                 + "upstream stops populating returns zero rows and the law "
-                                + "renders blank. Query:\n" + q);
+                                + "renders blank. Query:\n" + q)
+                        .isTrue();
             }
         }
     }
@@ -292,10 +219,11 @@ class EsbirkaSPARQLQueryTest {
     void resolveFragmentQuery_citaceIsOptional() {
         String fragmentIri = VERSION_IRI + "/dokument/norma/cast_1/par_2/pism_d";
         String q = EsbirkaSPARQLQuery.buildResolveFragmentQuery(fragmentIri, VERSION_IRI, LAW_IRI);
-        assertDoesNotThrow(() -> QueryFactory.create(q));
-        assertTrue(inOptionalBlock(q, "citace-označení-fragmentu-znění-právního-aktu"),
-                "citace MUST be OPTIONAL; upstream no longer publishes it and a required "
-                        + "join silently kills every fragment resolution. Query:\n" + q);
+        assertThatCode(() -> QueryFactory.create(q)).doesNotThrowAnyException();
+        assertThat(inOptionalBlock(q, "citace-označení-fragmentu-znění-právního-aktu"))
+                .as("citace MUST be OPTIONAL; upstream no longer publishes it and a required "
+                        + "join silently kills every fragment resolution. Query:\n" + q)
+                .isTrue();
     }
 
     /**
@@ -330,15 +258,15 @@ class EsbirkaSPARQLQueryTest {
         String fragmentIri = VERSION_IRI + "/dokument/norma/cast_1/par_2/pism_d";
         String q = EsbirkaSPARQLQuery.buildResolveFragmentQuery(fragmentIri, VERSION_IRI, LAW_IRI);
 
-        assertDoesNotThrow(() -> QueryFactory.create(q));
-        assertTrue(q.contains("citace-označení-fragmentu-znění-právního-aktu"));
-        assertTrue(q.contains("má-poslední-znění"));
-        assertTrue(q.contains("účinnost-znění-do"));
-        assertTrue(q.contains("(?zneni = ?posledniZneni) AS ?isLatest"));
-        assertTrue(q.contains("LIMIT 1"));
-        assertTrue(q.contains("<" + fragmentIri + ">"), "fragmentIri must be inlined");
-        assertTrue(q.contains("<" + VERSION_IRI + ">"), "versionIri must be inlined");
-        assertTrue(q.contains("<" + LAW_IRI + ">"), "lawIri must be inlined");
+        assertThatCode(() -> QueryFactory.create(q)).doesNotThrowAnyException();
+        assertThat(q).contains("citace-označení-fragmentu-znění-právního-aktu");
+        assertThat(q).contains("má-poslední-znění");
+        assertThat(q).contains("účinnost-znění-do");
+        assertThat(q).contains("(?zneni = ?posledniZneni) AS ?isLatest");
+        assertThat(q).contains("LIMIT 1");
+        assertThat(q).as("fragmentIri must be inlined").contains("<" + fragmentIri + ">");
+        assertThat(q).as("versionIri must be inlined").contains("<" + VERSION_IRI + ">");
+        assertThat(q).as("lawIri must be inlined").contains("<" + LAW_IRI + ">");
     }
 
     @Test
@@ -346,13 +274,12 @@ class EsbirkaSPARQLQueryTest {
         String fragmentIri = VERSION_IRI + "/dokument/norma/cast_1/par_2/pism_d";
         String q = EsbirkaSPARQLQuery.buildResolveFragmentQuery(fragmentIri, VERSION_IRI, LAW_IRI);
 
-        assertTrue(q.contains("?obsah"), "obsah must be in SELECT/WHERE");
-        assertTrue(q.contains("obsahuje-fragment"),
-                "obsah is fetched via obsahuje-fragment/text-fragmentu chain");
-        assertTrue(q.contains("text-fragmentu"),
-                "obsah is fetched via obsahuje-fragment/text-fragmentu chain");
+        assertThat(q).as("obsah must be in SELECT/WHERE").contains("?obsah");
+        assertThat(q).as("obsah is fetched via obsahuje-fragment/text-fragmentu chain").contains("obsahuje-fragment");
+        assertThat(q).as("obsah is fetched via obsahuje-fragment/text-fragmentu chain").contains("text-fragmentu");
         int optionalCount = q.split("(?i)OPTIONAL").length - 1;
-        assertTrue(optionalCount >= 2,
-                "Both ucinnost-znění-do and obsah must be OPTIONAL; found " + optionalCount);
+        assertThat(optionalCount)
+                .as("Both ucinnost-znění-do and obsah must be OPTIONAL; found " + optionalCount)
+                .isGreaterThanOrEqualTo(2);
     }
 }

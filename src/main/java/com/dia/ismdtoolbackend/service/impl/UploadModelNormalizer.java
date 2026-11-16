@@ -6,7 +6,7 @@ import com.dia.ismdtoolbackend.exception.InSchemeDecisionRequiredException;
 import com.dia.ismdtoolbackend.exception.OntologyUploadMissingIriException;
 import com.dia.ismdtoolbackend.utility.exporter.turtle.OFNTypeNormalizer;
 import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
-import com.dia.utility.UtilityMethods;
+import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.rdf.model.ResIterator;

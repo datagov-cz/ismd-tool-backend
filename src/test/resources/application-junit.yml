@@ -34,6 +34,24 @@ spring:
     default-schema: ismd_schema
     liquibase-schema: PUBLIC
 
+# Outside SPARQL endpoints are blank, so no test reaches data.gov.cz, pod-develop, RPP or
+# e-Sbírka. Startup warm-ups skip, and clients report the endpoint as not configured.
+nkd:
+  sparql:
+    endpoint: ""
+nkod:
+  sparql:
+    endpoint: ""
+rpp:
+  sparql:
+    endpoint: ""
+esbirka:
+  sparql:
+    endpoint: ""
+  rest:
+    # Closed local port: a call fails at once instead of reaching api.e-sbirka.gov.cz.
+    base-url: http://127.0.0.1:9
+
 # Jena configuration for tests
 jena:
   fuseki:

@@ -1,7 +1,9 @@
 name: Trigger Deployment
 
 concurrency:
-  group: deploy-tool-backend-${{ github.event.workflow_run.head_branch || github.event.inputs.environment }}
+  # Keyed on the target environment, so a manual and an automatic deploy to the same env queue
+  # instead of overlapping (automatic: main -> test, dev -> dev).
+  group: deploy-tool-backend-${{ github.event_name == 'workflow_run' && (github.event.workflow_run.head_branch == 'main' && 'test' || 'dev') || github.event.inputs.environment }}
   cancel-in-progress: false
 
 on:
@@ -55,13 +57,23 @@ jobs:
       
       - name: Determine environment and version
         id: determine_params
+        env:
+          # Inputs through env, never ${{ }} inside the script
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_ENVIRONMENT: ${{ github.event.inputs.environment }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            ENVIRONMENT="${{ github.event.inputs.environment }}"
-            ENVIRONMENT="${ENVIRONMENT^^}"
-            
-            if [ -n "${{ github.event.inputs.version }}" ]; then
-              IMAGE_TAG="${{ github.event.inputs.version }}"
+          if [ "$EVENT_NAME" == "workflow_dispatch" ]; then
+            ENVIRONMENT="${INPUT_ENVIRONMENT^^}"
+
+            if [ -n "$INPUT_VERSION" ]; then
+              if ! [[ "$INPUT_VERSION" =~ ^[0-9A-Za-z._-]+$ ]]; then
+                echo "::error::Invalid version '$INPUT_VERSION' (allowed: letters, digits, '.', '_', '-')"
+                exit 1
+              fi
+              IMAGE_TAG="$INPUT_VERSION"
             else
               # Query GitHub Packages API for the latest available image tag
               REPO_OWNER='${{ github.repository_owner }}'
@@ -88,7 +100,7 @@ jobs:
             fi
           else
             # For automated triggers, determine environment from branch
-            if [ "${{ github.event.workflow_run.head_branch }}" == "main" ]; then
+            if [ "$RUN_HEAD_BRANCH" == "main" ]; then
               ENVIRONMENT="TEST"
             else
               ENVIRONMENT="DEV"
@@ -113,8 +125,8 @@ jobs:
             fi
           fi
 
-          if [ "${{ github.event_name }}" = "workflow_run" ]; then
-            REF="${{ github.event.workflow_run.head_sha }}"
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            REF="$RUN_HEAD_SHA"
           else
             REF="${GITHUB_SHA}"
           fi

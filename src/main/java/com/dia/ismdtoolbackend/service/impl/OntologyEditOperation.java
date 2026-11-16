@@ -1,13 +1,14 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.repository.*;
 import com.dia.ismdtoolbackend.utility.editor.OntologyEditor;
-import com.dia.utility.URIGenerator;
-import com.dia.utility.UtilityMethods;
+import com.dia.ismdtoolbackend.utility.URIGenerator;
+import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntologyException;
@@ -32,7 +33,7 @@ class OntologyEditOperation {
     private final OntologyMetadataEnricher metadataEnricher;
     private final InitialGraphGuard initialGraphGuard;
 
-    OntologyMetadataModel editOntology(Long id, OntologyEditModel ontologyEditModel) {
+    OntologySummaryDto editOntology(Long id, OntologyEditModel ontologyEditModel) {
         if (ontologyEditModel == null) {
             throw new OntologyException("Data pro úpravu slovníku jsou prázdná");
         }
@@ -57,8 +58,9 @@ class OntologyEditOperation {
         // makes updatedAt move at all.
         metadataTouchService.touchOntology(metadataEntity);
 
-        OntologyMetadataModel resultModel = ontologyMetadataMapper.toDto(metadataEntity);
+        OntologySummaryDto resultModel = ontologyMetadataMapper.toSummary(metadataEntity);
         metadataEnricher.enrichMetadataFromRDF(resultModel, metadataEntity);
+        resultModel.setConceptCount((int) conceptMetadataRepository.countByGraphName(metadataEntity.getGraphName()));
         return resultModel;
     }
 

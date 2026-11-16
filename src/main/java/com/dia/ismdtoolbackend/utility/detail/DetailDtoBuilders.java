@@ -14,7 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 import static com.dia.ismdtoolbackend.utility.detail.DetailValues.*;
 
 /** Builds the nested DTOs of a concept detail from raw export-map values. */
@@ -110,6 +110,7 @@ final class DetailDtoBuilders {
                 .eliPath(parsed.eliPath())
                 .level(parsed.level())
                 .lawIri(parsed.lawIri())
+                .lawWebUrl(parsed.lawWebUrl())
                 .versionIri(parsed.versionIri())
                 .fragmentIri(parsed.fragmentIri())
                 .lawNumber(parsed.lawNumber())

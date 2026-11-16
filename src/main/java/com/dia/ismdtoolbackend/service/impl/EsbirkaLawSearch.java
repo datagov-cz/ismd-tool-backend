@@ -1,11 +1,13 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.client.EsbirkaSparqlClient;
+import com.dia.ismdtoolbackend.client.EsbirkaClient;
 import com.dia.ismdtoolbackend.controller.dto.LawDto;
 import com.dia.ismdtoolbackend.controller.dto.LawSearchGroupDto;
 import com.dia.ismdtoolbackend.controller.dto.LawSearchResultDto;
 import com.dia.ismdtoolbackend.models.eli.LawModel;
 import com.dia.ismdtoolbackend.models.eli.LawNumberGroupModel;
+import com.dia.ismdtoolbackend.models.eli.LawNumberSearchModel;
+import com.dia.ismdtoolbackend.utility.eli.EsbirkaLawTitle;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,49 +20,37 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Searches laws in e-Sbírka, as a flat list or grouped by předpis number. */
+/** Searches laws in e-Sbírka, grouped by předpis number or matched by act name. */
 @Component
 @RequiredArgsConstructor
 @Slf4j
 class EsbirkaLawSearch {
 
-    private final EsbirkaSparqlClient client;
-
-    /** Row cap on the grouped search's act fetch; group size itself is unbounded. */
-    static final int GROUPED_ROW_LIMIT = 600;
+    private final EsbirkaClient client;
 
     /** Acts shown per group. The rest are reachable by narrowing the query (or by year). */
     static final int MAX_LAWS_PER_GROUP = 60;
 
-    // Keys join the raw values rather than Objects.hash(q, limit), which collides across
+    /**
+     * Grouped law search: the client returns the acts grouped by číslo with per-group counts;
+     * here groups are ordered best first and capped at {@code limit} <em>groups</em>. A query
+     * starting with a letter searches act names instead ({@link EsbirkaNameSearchResult}).
+     */
+    // The key joins the raw values rather than Objects.hash(q, limit), which collides across
     // needle/limit pairs and would serve another search's results. '\u0000' cannot occur in a URL query value,
     // so it is an unambiguous separator.
-    @Cacheable(cacheNames = "esbirkaLawSearch",
-            key = "'flat:' + (#q == null ? '' : #q) + '\u0000' + #limit",
-            sync = true)
-    public List<LawDto> searchLaws(String q, int limit) {
-        List<LawModel> rows = client.searchLaws(q, limit);
-        List<LawDto> out = new ArrayList<>(rows.size());
-        for (LawModel m : rows) {
-            out.add(toLawDto(m));
-        }
-        return out;
-    }
-
-    /**
-     * Grouped law search, in two SPARQL steps: aggregate the matching předpis numbers
-     * (capped at {@code limit} <em>groups</em>), then fetch the acts for exactly those
-     * numbers. The aggregate also yields the true per-group counts.
-     */
     @Cacheable(cacheNames = "esbirkaLawSearch",
             key = "'grouped:' + (#q == null ? '' : #q) + '\u0000' + #limit",
             sync = true)
     public LawSearchResultDto searchLawsGrouped(String q, int limit) {
         String needle = q == null ? null : q.trim();
+        if (EsbirkaNameSearchResult.isNameQuery(needle)) {
+            return EsbirkaNameSearchResult.search(needle, limit, client);
+        }
         GroupedNeedle parsed = splitGroupedNeedle(needle);
 
-        List<LawNumberGroupModel> numberGroups =
-                client.searchLawNumberGroups(parsed.cislo(), parsed.rok(), limit);
+        LawNumberSearchModel found = client.searchLawsByNumber(parsed.cislo(), parsed.rok(), limit);
+        List<LawNumberGroupModel> numberGroups = found.groups();
         if (numberGroups.isEmpty()) {
             return LawSearchResultDto.builder()
                     .query(blankToNull(needle))
@@ -71,15 +61,8 @@ class EsbirkaLawSearch {
                     .build();
         }
 
-        List<String> cisla = new ArrayList<>(numberGroups.size());
-        int totalMatches = 0;
-        for (LawNumberGroupModel g : numberGroups) {
-            cisla.add(g.cislo());
-            totalMatches += g.pocet();
-        }
-
         Map<String, List<LawDto>> byCislo = new HashMap<>();
-        for (LawModel m : client.fetchLawsByNumbers(cisla, parsed.rok(), GROUPED_ROW_LIMIT)) {
+        for (LawModel m : found.laws()) {
             byCislo.computeIfAbsent(m.getCislo() == null ? "" : m.getCislo(),
                     k -> new ArrayList<>()).add(toLawDto(m));
         }
@@ -99,7 +82,7 @@ class EsbirkaLawSearch {
             }
             groups.add(LawSearchGroupDto.builder()
                     .cislo(g.cislo())
-                    // Dataset-wide total from step 1's aggregate, not laws.size().
+                    // Dataset-wide total from the client, not laws.size().
                     .count(g.pocet())
                     // Compared against the číslo part alone: "49/1997" pins číslo 49 exactly,
                     // and matching the raw needle would make this permanently false.
@@ -108,8 +91,9 @@ class EsbirkaLawSearch {
                     .build());
         }
         groups.sort(BEST_GROUP_FIRST);
-
-        boolean truncated = numberGroups.size() >= limit;
+        boolean truncated = found.moreGroups() || groups.size() > limit;
+        groups = groups.size() > limit ? new ArrayList<>(groups.subList(0, limit)) : groups;
+        int totalMatches = groups.stream().mapToInt(LawSearchGroupDto::getCount).sum();
 
         return LawSearchResultDto.builder()
                 .query(blankToNull(needle))
@@ -131,7 +115,7 @@ class EsbirkaLawSearch {
      * Split a grouped-search needle on '/' into číslo and rok, tolerating a trailing " Sb." and
      * surrounding whitespace. Both halves are prefixes, and both may be blank.
      *
-     * <p>Deliberately tolerant, unlike {@link #parseNumberYear}: this runs per keystroke, so
+     * <p>Deliberately tolerant, unlike {@link EsbirkaLawReference#parseNumberYear}: this runs per keystroke, so
      * every intermediate state a user types — "49", "49/", "49/19", "49/1997 Sb." — must return
      * results rather than throw. Anything that is not a číslo/rok shape (letters, a second
      * slash) is passed through as a číslo prefix, where it simply matches nothing.
@@ -186,14 +170,14 @@ class EsbirkaLawSearch {
                     .thenComparing(LawSearchGroupDto::getCislo,
                             Comparator.nullsLast(Comparator.naturalOrder()));
 
-    private static LawDto toLawDto(LawModel m) {
+    static LawDto toLawDto(LawModel m) {
         String eliPath = SparqlIriValidator.extractEsbirkaEliPath(m.getIri());
         return new LawDto(
                 m.getIri(),
                 eliPath,
                 SparqlIriValidator.esbirkaDomain(),
                 m.getCitace(),
-                "Zákon č. " + m.getCitace(),
+                EsbirkaLawTitle.displayName(m.getCitace(), m.getNazev()),
                 m.getCislo(),
                 m.getRok(),
                 m.getSbirka()

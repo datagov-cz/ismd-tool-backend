@@ -13,7 +13,7 @@ import com.dia.ismdtoolbackend.utility.exporter.json.ModelStructure;
 
 import java.util.Map;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 
 /**
  * Shared test factory for constructing RDF models used by ConceptJsonMapper and TurtleFormatterUtil tests.

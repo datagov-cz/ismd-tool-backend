@@ -6,7 +6,7 @@ import org.apache.jena.vocabulary.RDF;
 
 import java.util.Set;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 
 /** Edits the code list a class concept takes its instances from. */
 class ConceptCodeListUpdater {

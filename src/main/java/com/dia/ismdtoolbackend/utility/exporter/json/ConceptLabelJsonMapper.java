@@ -6,7 +6,7 @@ import org.apache.jena.vocabulary.SKOS;
 
 import java.util.*;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 
 /** Maps multilingual labels, alternative names and the description. */
 final class ConceptLabelJsonMapper {

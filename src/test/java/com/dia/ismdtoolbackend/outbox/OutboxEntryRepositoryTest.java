@@ -1,14 +1,10 @@
 package com.dia.ismdtoolbackend.outbox;
 
-import org.junit.jupiter.api.BeforeEach;
+import com.dia.ismdtoolbackend.testsupport.pg.OutboxEntries;
+import com.dia.ismdtoolbackend.testsupport.pg.OutboxFlowIT;
+import com.dia.ismdtoolbackend.testsupport.pg.OutboxFlowTestBase;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.persistence.autoconfigure.EntityScan;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.context.annotation.Import;
-import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -16,6 +12,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
 
@@ -26,17 +24,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@code ddl-auto=validate} against REAL Postgres, the entity round-trips, and the claim query's
  * {@code FOR UPDATE SKIP LOCKED} actually skips a row another transaction holds. The last point is
  * exactly what H2 can't model, which is why this runs on Testcontainers.
+ *
+ * <p>Each test runs in a rolled-back test transaction unless it says otherwise.
  */
-@DataJpaTest
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@ActiveProfiles("junit")
-@Import(TransactionTemplateConfig.class)
-// Scope the persistence unit to the outbox package so ddl-auto=validate checks ONLY the outbox
-// schema. (Other entities — e.g. ValidationReportEntity — have a pre-existing Instant↔timestamptz
-// mapping that fails strict validation on real Postgres; that's out of T2's scope. See notes.)
-@EntityScan(basePackageClasses = OutboxEntry.class)
-@EnableJpaRepositories(basePackageClasses = OutboxEntryRepository.class)
-class OutboxEntryRepositoryTest extends PostgresIntegrationTestBase {
+@OutboxFlowIT
+@Transactional
+class OutboxEntryRepositoryTest extends OutboxFlowTestBase {
 
     @Autowired
     private OutboxEntryRepository repository;
@@ -44,21 +37,9 @@ class OutboxEntryRepositoryTest extends PostgresIntegrationTestBase {
     @Autowired
     private TransactionTemplate txTemplate;
 
-    @BeforeEach
-    void startFromEmpty() {
-        // The Postgres container is shared by every subclass; start from an empty table.
-        txTemplate.executeWithoutResult(tx -> repository.deleteAll());
-    }
-
     private OutboxEntry pending(String aggregateIri, String graph, long seq) {
-        OutboxEntry e = new OutboxEntry();
-        e.setAggregateIri(aggregateIri);
-        e.setGraphName(graph);
-        e.setOperation(OutboxOperation.UPSERT_CONCEPT);
+        OutboxEntry e = OutboxEntries.pending(graph, aggregateIri, OutboxOperation.UPSERT_CONCEPT, seq);
         e.setInsertTriples("<" + aggregateIri + "> <http://x/p> \"v\" .");
-        e.setStatus(OutboxStatus.PENDING);
-        e.setCreatedAt(Instant.now());
-        e.setSeq(seq);
         return e;
     }
 
@@ -162,7 +143,7 @@ class OutboxEntryRepositoryTest extends PostgresIntegrationTestBase {
      * not returned) by another claimer. H2 PG-compat can't reproduce this.
      *
      * <p>{@code NOT_SUPPORTED} so this method runs with NO ambient {@code @DataJpaTest} transaction —
-     * it drives two genuinely-independent transactions itself and cleans up its own rows.
+     * it drives two genuinely-independent transactions itself.
      */
     @Test
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -171,6 +152,7 @@ class OutboxEntryRepositoryTest extends PostgresIntegrationTestBase {
         txTemplate.executeWithoutResult(tx -> repository.save(pending("https://x/pojem/b", "https://g", 101L)));
 
         AtomicReference<List<Long>> claimedWhileLocked = new AtomicReference<>();
+        ExecutorService otherClaimer = Executors.newSingleThreadExecutor();
         try {
             // Open TX #1 that claims+holds row id1 (lowest seq); while it's held, TX #2 (separate
             // thread, own connection) claims and must skip the locked row.
@@ -182,7 +164,7 @@ class OutboxEntryRepositoryTest extends PostgresIntegrationTestBase {
                 CompletableFuture<List<Long>> other = CompletableFuture.supplyAsync(() ->
                         txTemplate.execute(tx2 ->
                                 repository.claimPendingBatch(10).stream()
-                                        .map(OutboxEntry::getId).toList()));
+                                        .map(OutboxEntry::getId).toList()), otherClaimer);
                 claimedWhileLocked.set(other.join());
             });
 
@@ -190,7 +172,7 @@ class OutboxEntryRepositoryTest extends PostgresIntegrationTestBase {
             assertThat(claimedWhileLocked.get()).doesNotContain(id1);
             assertThat(claimedWhileLocked.get()).hasSize(1);
         } finally {
-            txTemplate.executeWithoutResult(tx -> repository.deleteAll());
+            otherClaimer.shutdownNow();
         }
     }
 }

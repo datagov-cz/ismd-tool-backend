@@ -21,7 +21,9 @@ import java.util.concurrent.Semaphore;
  * a local connection view does not destroy the dataset).
  *
  * <p>Fault injection: {@link #failApplyForGraph(String)} makes writes to one graph throw
- * {@link JenaTDB2Exception}, to exercise the relay's retry/FAILED path.
+ * {@link JenaTDB2Exception}, to exercise the relay's retry/FAILED path. Whole-graph PUTs
+ * ({@code saveOntologyModel}) can fail before or after the write and run a hook on either side, and
+ * are counted with graph deletes. {@link #reset()} clears every fault and counter.
  */
 public class InMemoryTdb2 extends JenaTDB2Repository {
 
@@ -31,6 +33,12 @@ public class InMemoryTdb2 extends JenaTDB2Repository {
     private String failingGraph;
     /** Whole-graph fetches since the last {@link #resetFetchCount()}, for fan-out assertions. */
     private int fetchGraphCount;
+    private boolean failBeforeWrite;
+    private boolean failAfterWrite;
+    private Runnable beforeWrite = () -> {};
+    private Runnable afterWrite = () -> {};
+    private int writeCount;
+    private int deleteCount;
 
     public InMemoryTdb2() {
         super(new FusekiConnectionConfig(HttpClient.newHttpClient(), new Semaphore(4), 5000, UNUSED_ENDPOINT),
@@ -68,6 +76,54 @@ public class InMemoryTdb2 extends JenaTDB2Repository {
         dataset = DatasetFactory.createTxnMem();
         failingGraph = null;
         fetchGraphCount = 0;
+        failBeforeWrite = false;
+        failAfterWrite = false;
+        beforeWrite = () -> {};
+        afterWrite = () -> {};
+        writeCount = 0;
+        deleteCount = 0;
+    }
+
+    /** Whole-graph PUTs throw before anything is written. */
+    public void failBeforeWrite(boolean fail) {
+        this.failBeforeWrite = fail;
+    }
+
+    /** Whole-graph PUTs write, then throw, as if the acknowledgement was lost. */
+    public void failAfterWrite(boolean fail) {
+        this.failAfterWrite = fail;
+    }
+
+    public void beforeWrite(Runnable hook) {
+        this.beforeWrite = hook;
+    }
+
+    public void afterWrite(Runnable hook) {
+        this.afterWrite = hook;
+    }
+
+    /** Whole-graph PUTs that reached the dataset since the last {@link #reset()}. */
+    public int writeCount() {
+        return writeCount;
+    }
+
+    /** Graph deletes since the last {@link #reset()}. */
+    public int deleteCount() {
+        return deleteCount;
+    }
+
+    @Override
+    public void saveOntologyModel(String graphName, Model model) {
+        beforeWrite.run();
+        if (failBeforeWrite) {
+            throw new JenaTDB2Exception("Injected outage before RDF PUT");
+        }
+        writeCount++;
+        super.saveOntologyModel(graphName, model);
+        afterWrite.run();
+        if (failAfterWrite) {
+            throw new JenaTDB2Exception("Injected failure after RDF PUT");
+        }
     }
 
     public void resetFetchCount() {
@@ -90,6 +146,7 @@ public class InMemoryTdb2 extends JenaTDB2Repository {
 
     @Override
     public void deleteGraph(String graphName) {
+        deleteCount++;
         throwIfFailing(graphName);
         super.deleteGraph(graphName);
     }

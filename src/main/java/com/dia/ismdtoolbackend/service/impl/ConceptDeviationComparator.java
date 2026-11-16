@@ -9,10 +9,10 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 import java.util.function.Consumer;
 
-import static com.dia.constants.VocabularyConstants.NEVEREJNY_UDAJ_JSON_LD;
-import static com.dia.constants.VocabularyConstants.TOP_JSON_LD;
-import static com.dia.constants.VocabularyConstants.TSP_JSON_LD;
-import static com.dia.constants.VocabularyConstants.VEREJNY_UDAJ_JSON_LD;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.NEVEREJNY_UDAJ_JSON_LD;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TOP_JSON_LD;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TSP_JSON_LD;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VEREJNY_UDAJ_JSON_LD;
 import static com.dia.ismdtoolbackend.service.impl.DeviationValues.areDifferent;
 import static com.dia.ismdtoolbackend.service.impl.DeviationValues.eliListsDiffer;
 

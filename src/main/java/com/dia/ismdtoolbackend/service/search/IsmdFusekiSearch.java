@@ -5,6 +5,7 @@ import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.MatchedBy;
 import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.enums.SearchType;
+import com.dia.ismdtoolbackend.exception.ConflictingConceptTypeException;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -61,7 +62,7 @@ class IsmdFusekiSearch {
             // the role-narrowing post-merge filter — PG side carries the column
             // verbatim, but Fuseki-only rows would otherwise have conceptType=null.
             ConceptType conceptType = resolvedType == SearchType.CONCEPT
-                    ? conceptTypeByRdfTypes(typesField)
+                    ? conceptTypeOf(row.get("resourceIri"), typesField)
                     : null;
             results.add(SearchResultDto.builder()
                     .iri(row.get("resourceIri"))
@@ -107,6 +108,14 @@ class IsmdFusekiSearch {
      * the PG-authoritative type can still backfill (KONCEPT is a terminal
      * fallback for the projection endpoint, not a search signal).
      */
+    private static ConceptType conceptTypeOf(String iri, String types) {
+        try {
+            return conceptTypeByRdfTypes(types);
+        } catch (ConflictingConceptTypeException e) {
+            throw new ConflictingConceptTypeException(iri, e);
+        }
+    }
+
     static ConceptType conceptTypeByRdfTypes(String types) {
         if (types == null || types.isEmpty()) return null;
         ConceptType resolved = ConceptType.fromRdfTypes(java.util.Arrays.asList(types.split("\\|")));

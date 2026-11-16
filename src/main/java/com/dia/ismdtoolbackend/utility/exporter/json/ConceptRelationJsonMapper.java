@@ -8,7 +8,7 @@ import org.apache.jena.vocabulary.SKOS;
 
 import java.util.*;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 
 /** Maps exact matches, domain and range, and the class, property and SKOS hierarchies. */
 final class ConceptRelationJsonMapper {

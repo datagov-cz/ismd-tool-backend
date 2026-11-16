@@ -4,25 +4,25 @@ import com.dia.ismdtoolbackend.client.ai.IsmdAiClient;
 import com.dia.ismdtoolbackend.client.ai.dto.IsmdAiClassJobRequest;
 import com.dia.ismdtoolbackend.client.ai.dto.IsmdAiSelectedClassJobRequest;
 import com.dia.ismdtoolbackend.config.AiServiceConfig;
-import com.dia.ismdtoolbackend.controller.dto.ai.AiClassSuggestionsJobResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiClassSuggestionRequestDto;
+import com.dia.ismdtoolbackend.controller.dto.ai.AiClassSuggestionsJobResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiIdReferenceDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiJobStartResponseDto;
-import com.dia.ismdtoolbackend.controller.dto.ai.AiVocabularySuggestionRequestDto;
-import com.dia.ismdtoolbackend.controller.dto.ai.AiVocabularySuggestionsJobResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiKnownConceptualModelDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiSelectedClassSuggestionRequestDto;
+import com.dia.ismdtoolbackend.controller.dto.ai.AiVocabularySuggestionRequestDto;
+import com.dia.ismdtoolbackend.controller.dto.ai.AiVocabularySuggestionsJobResponseDto;
 import com.dia.ismdtoolbackend.enums.AiJobStatus;
 import com.dia.ismdtoolbackend.enums.AiTermType;
 import com.dia.ismdtoolbackend.mapper.AiKnownConceptualModelMapper;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
+import com.dia.ismdtoolbackend.models.OntologyDetailModel.ConceptDetailModel;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -31,17 +31,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertAll;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+/**
+ * The AI client is stubbed with the exact request the service must send, so a request with a wrong
+ * field matches no stub and fails under strict stubs. The known conceptual model comes from the real
+ * mapper over ontology details, and is compared with a model written out by hand.
+ */
 @ExtendWith(MockitoExtension.class)
 class AiSuggestionServiceImplTest {
 
@@ -55,15 +55,14 @@ class AiSuggestionServiceImplTest {
             List.of(FIRST_ONTOLOGY_SLUG, SECOND_ONTOLOGY_SLUG);
     private static final String SELECTED_CLASS_ID = "https://example.org/ontology/zadatel";
     private static final String TARGET_CLASS_ID = "https://example.org/ontology/zadost";
+    private static final String LAW_IRI = "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2024/1";
+    private static final String LAW_PATH = "/eli/cz/sb/2024/1";
 
     @Mock
     private IsmdAiClient aiClient;
 
     @Mock
     private OntologyService ontologyService;
-
-    @Mock
-    private AiKnownConceptualModelMapper knownConceptualModelMapper;
 
     private AiServiceConfig config;
 
@@ -73,56 +72,42 @@ class AiSuggestionServiceImplTest {
     void setUp() {
         config = new AiServiceConfig();
         config.setSuggestionCount(7);
-        service = new AiSuggestionServiceImpl(aiClient, config, ontologyService, knownConceptualModelMapper);
+        service = new AiSuggestionServiceImpl(aiClient, config, ontologyService, new AiKnownConceptualModelMapper());
     }
 
     @Test
     void startClassSuggestionsAddsConfiguredCountAndMapsCompleteRequest() {
         config.setMaxKnownConceptualModelSlugs(2);
-        AiKnownConceptualModelDto knownModel = knownModelDto();
         AiClassSuggestionRequestDto input = new AiClassSuggestionRequestDto(
                 List.of("/eli/cz/sb/2024/1/par_2", "/eli/cz/sb/2024/1/par_3"),
                 "Kontext tříd",
                 ONTOLOGY_SLUGS
         );
-        mockKnownConceptualModel(knownModel);
+        givenKnownOntologies();
         AiJobStartResponseDto expectedResponse = jobResponse();
-        when(aiClient.startClassSuggestions(
-                eq(BEARER_TOKEN),
-                eq(YEAR),
-                eq(NUMBER),
-                eq(DATE),
-                any(IsmdAiClassJobRequest.class)
-        )).thenReturn(expectedResponse);
+        when(aiClient.startClassSuggestions(BEARER_TOKEN, YEAR, NUMBER, DATE, new IsmdAiClassJobRequest(
+                7, input.structuralElementIds(), input.contextText(), expectedKnownModel())))
+                .thenReturn(expectedResponse);
 
-        AiJobStartResponseDto result = service.startClassSuggestions(
-                BEARER_TOKEN,
-                YEAR,
-                NUMBER,
-                DATE,
-                input
-        );
+        AiJobStartResponseDto result = service.startClassSuggestions(BEARER_TOKEN, YEAR, NUMBER, DATE, input);
 
-        assertSame(expectedResponse, result);
-        ArgumentCaptor<IsmdAiClassJobRequest> requestCaptor = ArgumentCaptor.forClass(IsmdAiClassJobRequest.class);
-        verify(aiClient).startClassSuggestions(
-                eq(BEARER_TOKEN),
-                eq(YEAR),
-                eq(NUMBER),
-                eq(DATE),
-                requestCaptor.capture()
-        );
-        IsmdAiClassJobRequest capturedRequest = requestCaptor.getValue();
-        assertEquals(
-                new IsmdAiClassJobRequest(
-                        7,
-                        input.structuralElementIds(),
-                        input.contextText(),
-                        knownModel
-                ),
-                capturedRequest
-        );
-        assertSame(knownModel, capturedRequest.knownConceptualModel());
+        assertThat(result).isSameAs(expectedResponse);
+    }
+
+    @Test
+    void startClassSuggestionsLoadsEachDistinctSlugOnce() {
+        config.setMaxKnownConceptualModelSlugs(2);
+        AiClassSuggestionRequestDto input = new AiClassSuggestionRequestDto(null, null,
+                List.of(FIRST_ONTOLOGY_SLUG, SECOND_ONTOLOGY_SLUG, FIRST_ONTOLOGY_SLUG));
+        givenKnownOntologies();
+        AiJobStartResponseDto expectedResponse = jobResponse();
+        when(aiClient.startClassSuggestions(BEARER_TOKEN, YEAR, NUMBER, DATE,
+                new IsmdAiClassJobRequest(7, null, null, expectedKnownModel())))
+                .thenReturn(expectedResponse);
+
+        assertThat(service.startClassSuggestions(BEARER_TOKEN, YEAR, NUMBER, DATE, input))
+                .isSameAs(expectedResponse);
+        verify(ontologyService).getOntologyDetail(FIRST_ONTOLOGY_SLUG);
     }
 
     @Test
@@ -134,16 +119,10 @@ class AiSuggestionServiceImplTest {
                 List.of(FIRST_ONTOLOGY_SLUG, SECOND_ONTOLOGY_SLUG, FIRST_ONTOLOGY_SLUG)
         );
 
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
-                () -> service.startClassSuggestions(BEARER_TOKEN, YEAR, NUMBER, DATE, input)
-        );
-
-        assertEquals(
-                "Maximální počet různých hodnot parametru knownConceptualModelSlugs je 1.",
-                exception.getMessage()
-        );
-        verifyNoInteractions(aiClient, ontologyService, knownConceptualModelMapper);
+        assertThatThrownBy(() -> service.startClassSuggestions(BEARER_TOKEN, YEAR, NUMBER, DATE, input))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Maximální počet různých hodnot parametru knownConceptualModelSlugs je 1.");
+        verifyNoInteractions(aiClient, ontologyService);
     }
 
     @ParameterizedTest
@@ -151,34 +130,14 @@ class AiSuggestionServiceImplTest {
     void startClassSuggestionsWithoutKnownModelSlugsForwardsNullKnownModel(List<String> slugs) {
         AiClassSuggestionRequestDto input = new AiClassSuggestionRequestDto(null, null, slugs);
         AiJobStartResponseDto expectedResponse = jobResponse();
-        when(aiClient.startClassSuggestions(
-                eq(BEARER_TOKEN),
-                eq(YEAR),
-                eq(NUMBER),
-                eq(DATE),
-                any(IsmdAiClassJobRequest.class)
-        )).thenReturn(expectedResponse);
+        when(aiClient.startClassSuggestions(BEARER_TOKEN, YEAR, NUMBER, DATE,
+                new IsmdAiClassJobRequest(7, null, null, null)))
+                .thenReturn(expectedResponse);
 
-        AiJobStartResponseDto result = service.startClassSuggestions(
-                BEARER_TOKEN,
-                YEAR,
-                NUMBER,
-                DATE,
-                input
-        );
+        AiJobStartResponseDto result = service.startClassSuggestions(BEARER_TOKEN, YEAR, NUMBER, DATE, input);
 
-        assertSame(expectedResponse, result);
-        ArgumentCaptor<IsmdAiClassJobRequest> requestCaptor =
-                ArgumentCaptor.forClass(IsmdAiClassJobRequest.class);
-        verify(aiClient).startClassSuggestions(
-                eq(BEARER_TOKEN),
-                eq(YEAR),
-                eq(NUMBER),
-                eq(DATE),
-                requestCaptor.capture()
-        );
-        assertNull(requestCaptor.getValue().knownConceptualModel());
-        verifyNoInteractions(ontologyService, knownConceptualModelMapper);
+        assertThat(result).isSameAs(expectedResponse);
+        verifyNoInteractions(ontologyService);
     }
 
     @Test
@@ -189,38 +148,14 @@ class AiSuggestionServiceImplTest {
                 "Kontext vlastností",
                 ONTOLOGY_SLUGS
         );
-        AiKnownConceptualModelDto knownModel = knownModelDto();
-        mockKnownConceptualModel(knownModel);
+        givenKnownOntologies();
         AiJobStartResponseDto expectedResponse = jobResponse();
-        when(aiClient.startPropertySuggestions(
-                eq(BEARER_TOKEN),
-                eq(YEAR),
-                eq(NUMBER),
-                eq(DATE),
-                any(IsmdAiSelectedClassJobRequest.class)
-        )).thenReturn(expectedResponse);
+        when(aiClient.startPropertySuggestions(BEARER_TOKEN, YEAR, NUMBER, DATE, expectedSelectedRequest(input)))
+                .thenReturn(expectedResponse);
 
-        AiJobStartResponseDto result = service.startPropertySuggestions(
-                BEARER_TOKEN,
-                YEAR,
-                NUMBER,
-                DATE,
-                input
-        );
+        AiJobStartResponseDto result = service.startPropertySuggestions(BEARER_TOKEN, YEAR, NUMBER, DATE, input);
 
-        assertSame(expectedResponse, result);
-        ArgumentCaptor<IsmdAiSelectedClassJobRequest> requestCaptor =
-                ArgumentCaptor.forClass(IsmdAiSelectedClassJobRequest.class);
-        verify(aiClient).startPropertySuggestions(
-                eq(BEARER_TOKEN),
-                eq(YEAR),
-                eq(NUMBER),
-                eq(DATE),
-                requestCaptor.capture()
-        );
-        IsmdAiSelectedClassJobRequest capturedRequest = requestCaptor.getValue();
-        assertEquals(expectedSelectedRequest(input, knownModel), capturedRequest);
-        assertSame(knownModel, capturedRequest.knownConceptualModel());
+        assertThat(result).isSameAs(expectedResponse);
     }
 
     @Test
@@ -231,38 +166,15 @@ class AiSuggestionServiceImplTest {
                 "Kontext vztahů",
                 ONTOLOGY_SLUGS
         );
-        AiKnownConceptualModelDto knownModel = knownModelDto();
-        mockKnownConceptualModel(knownModel);
+        givenKnownOntologies();
         AiJobStartResponseDto expectedResponse = jobResponse();
-        when(aiClient.startRelationshipSuggestions(
-                eq(BEARER_TOKEN),
-                eq(YEAR),
-                eq(NUMBER),
-                eq(DATE),
-                any(IsmdAiSelectedClassJobRequest.class)
-        )).thenReturn(expectedResponse);
+        when(aiClient.startRelationshipSuggestions(BEARER_TOKEN, YEAR, NUMBER, DATE, expectedSelectedRequest(input)))
+                .thenReturn(expectedResponse);
 
-        AiJobStartResponseDto result = service.startRelationshipSuggestions(
-                BEARER_TOKEN,
-                YEAR,
-                NUMBER,
-                DATE,
-                input
-        );
+        AiJobStartResponseDto result =
+                service.startRelationshipSuggestions(BEARER_TOKEN, YEAR, NUMBER, DATE, input);
 
-        assertSame(expectedResponse, result);
-        ArgumentCaptor<IsmdAiSelectedClassJobRequest> requestCaptor =
-                ArgumentCaptor.forClass(IsmdAiSelectedClassJobRequest.class);
-        verify(aiClient).startRelationshipSuggestions(
-                eq(BEARER_TOKEN),
-                eq(YEAR),
-                eq(NUMBER),
-                eq(DATE),
-                requestCaptor.capture()
-        );
-        IsmdAiSelectedClassJobRequest capturedRequest = requestCaptor.getValue();
-        assertEquals(expectedSelectedRequest(input, knownModel), capturedRequest);
-        assertSame(knownModel, capturedRequest.knownConceptualModel());
+        assertThat(result).isSameAs(expectedResponse);
     }
 
     @Test
@@ -272,10 +184,7 @@ class AiSuggestionServiceImplTest {
         List<AiClassSuggestionsJobResponseDto> expectedResponse = List.of();
         when(aiClient.getClassSuggestions(BEARER_TOKEN, jobIds)).thenReturn(expectedResponse);
 
-        List<AiClassSuggestionsJobResponseDto> result = service.getClassSuggestions(BEARER_TOKEN, jobIds);
-
-        assertSame(expectedResponse, result);
-        verify(aiClient).getClassSuggestions(BEARER_TOKEN, jobIds);
+        assertThat(service.getClassSuggestions(BEARER_TOKEN, jobIds)).isSameAs(expectedResponse);
     }
 
     @Test
@@ -283,31 +192,23 @@ class AiSuggestionServiceImplTest {
         config.setMaxJobIds(1);
         List<UUID> jobIds = List.of(UUID.randomUUID(), UUID.randomUUID());
 
-        assertAll(
-                () -> assertThrows(
-                        IllegalArgumentException.class,
-                        () -> service.getClassSuggestions(BEARER_TOKEN, jobIds)
-                ),
-                () -> assertThrows(
-                        IllegalArgumentException.class,
-                        () -> service.getPropertySuggestions(BEARER_TOKEN, jobIds)
-                ),
-                () -> assertThrows(
-                        IllegalArgumentException.class,
-                        () -> service.getRelationshipSuggestions(BEARER_TOKEN, jobIds)
-                )
-        );
+        assertThatThrownBy(() -> service.getClassSuggestions(BEARER_TOKEN, jobIds))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.getPropertySuggestions(BEARER_TOKEN, jobIds))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.getRelationshipSuggestions(BEARER_TOKEN, jobIds))
+                .isInstanceOf(IllegalArgumentException.class);
         verifyNoInteractions(aiClient);
     }
 
     @Test
     void vocabularyStartForwardsRequestWithoutCreatingOrLoadingOntologies() {
-        var input = new AiVocabularySuggestionRequestDto(2, 0, 1, null, "Vozidla", knownModelDto());
+        var input = new AiVocabularySuggestionRequestDto(2, 0, 1, null, "Vozidla", expectedKnownModel());
         var expected = jobResponse();
         when(aiClient.startVocabularySuggestions(BEARER_TOKEN, YEAR, NUMBER, DATE, input)).thenReturn(expected);
-        assertSame(expected, service.startVocabularySuggestions(BEARER_TOKEN, YEAR, NUMBER, DATE, input));
-        verify(aiClient).startVocabularySuggestions(BEARER_TOKEN, YEAR, NUMBER, DATE, input);
-        verifyNoInteractions(ontologyService, knownConceptualModelMapper);
+
+        assertThat(service.startVocabularySuggestions(BEARER_TOKEN, YEAR, NUMBER, DATE, input)).isSameAs(expected);
+        verifyNoInteractions(ontologyService);
     }
 
     @Test
@@ -316,40 +217,68 @@ class AiSuggestionServiceImplTest {
         var ids = List.of(UUID.randomUUID());
         List<AiVocabularySuggestionsJobResponseDto> expected = List.of();
         when(aiClient.getVocabularySuggestions(BEARER_TOKEN, ids)).thenReturn(expected);
-        assertSame(expected, service.getVocabularySuggestions(BEARER_TOKEN, ids));
-        assertThrows(IllegalArgumentException.class, () -> service.getVocabularySuggestions(
-                BEARER_TOKEN, List.of(UUID.randomUUID(), UUID.randomUUID())));
-        verify(aiClient).getVocabularySuggestions(BEARER_TOKEN, ids);
-        verifyNoInteractions(ontologyService, knownConceptualModelMapper);
+
+        assertThat(service.getVocabularySuggestions(BEARER_TOKEN, ids)).isSameAs(expected);
+        assertThatThrownBy(() -> service.getVocabularySuggestions(
+                BEARER_TOKEN, List.of(UUID.randomUUID(), UUID.randomUUID())))
+                .isInstanceOf(IllegalArgumentException.class);
+        verifyNoInteractions(ontologyService);
     }
 
-    private IsmdAiSelectedClassJobRequest expectedSelectedRequest(
-            AiSelectedClassSuggestionRequestDto input,
-            AiKnownConceptualModelDto knownModel
-    ) {
+    private IsmdAiSelectedClassJobRequest expectedSelectedRequest(AiSelectedClassSuggestionRequestDto input) {
         return new IsmdAiSelectedClassJobRequest(
                 7,
                 input.selectedClassId(),
                 input.structuralElementIds(),
                 input.contextText(),
-                knownModel
+                expectedKnownModel()
         );
     }
 
-    private void mockKnownConceptualModel(AiKnownConceptualModelDto knownModel) {
-        OntologyDetailModel firstOntologyDetail = OntologyDetailModel.builder()
+    /** The class and attribute live in the first ontology, the relationship in the second. */
+    private void givenKnownOntologies() {
+        ConceptDetailModel zadatel = ConceptDetailModel.builder()
+                .iri(SELECTED_CLASS_ID)
+                .types(List.of("Pojem", "Třída", "Typ subjektu práva"))
+                .name(Map.of("cs", "Žadatel", "en", "Applicant"))
+                .definition(Map.of("cs", "Osoba podávající žádost.", "en", "A person filing an application."))
+                .description(Map.of("cs", "Známá třída žadatele.", "en", "Known applicant class."))
+                .broaderClasses(List.of("https://example.org/ontology/osoba",
+                        "https://example.org/ontology/subjekt-prava"))
+                .definingLegalSources(List.of(LAW_IRI + "/2024-01-01/dokument/norma/par_2"))
+                .build();
+        ConceptDetailModel jmeno = ConceptDetailModel.builder()
+                .iri("https://example.org/ontology/jmeno")
+                .types(List.of("Pojem", "Vlastnost"))
+                .domain(SELECTED_CLASS_ID)
+                .name(Map.of("cs", "jméno", "en", "name"))
+                .definition(Map.of("cs", "Jméno žadatele.", "en", "Applicant name."))
+                .description(Map.of("cs", "Atribut jména.", "en", "Name attribute."))
+                .definingLegalSources(List.of(LAW_IRI + "/2024-01-01/dokument/norma/par_3"))
+                .build();
+        ConceptDetailModel podava = ConceptDetailModel.builder()
+                .iri("https://example.org/ontology/podava")
+                .types(List.of("Pojem", "Vztah"))
+                .domain(SELECTED_CLASS_ID)
+                .range(TARGET_CLASS_ID)
+                .name(Map.of("cs", "podává", "en", "files"))
+                .definition(Map.of("cs", "Žadatel podává žádost.", "en", "An applicant files an application."))
+                .description(Map.of("cs", "Vztah mezi žadatelem a žádostí.",
+                        "en", "Applicant-to-application relation."))
+                .definingLegalSources(List.of(LAW_IRI + "/2024-01-01/dokument/norma/par_4"))
+                .build();
+        when(ontologyService.getOntologyDetail(FIRST_ONTOLOGY_SLUG)).thenReturn(OntologyDetailModel.builder()
                 .iri("https://example.org/ontology/requests")
-                .build();
-        OntologyDetailModel secondOntologyDetail = OntologyDetailModel.builder()
+                .concepts(List.of(zadatel, jmeno))
+                .build());
+        when(ontologyService.getOntologyDetail(SECOND_ONTOLOGY_SLUG)).thenReturn(OntologyDetailModel.builder()
                 .iri("https://example.org/ontology/authorities")
-                .build();
-        when(ontologyService.getOntologyDetail(FIRST_ONTOLOGY_SLUG)).thenReturn(firstOntologyDetail);
-        when(ontologyService.getOntologyDetail(SECOND_ONTOLOGY_SLUG)).thenReturn(secondOntologyDetail);
-        when(knownConceptualModelMapper.map(List.of(firstOntologyDetail, secondOntologyDetail)))
-                .thenReturn(knownModel);
+                .concepts(List.of(podava))
+                .build());
     }
 
-    private AiKnownConceptualModelDto knownModelDto() {
+    /** What {@link #givenKnownOntologies()} maps to. */
+    private AiKnownConceptualModelDto expectedKnownModel() {
         return new AiKnownConceptualModelDto(
                 List.of(new AiKnownConceptualModelDto.KnownClassTermDto(
                         SELECTED_CLASS_ID,
@@ -361,7 +290,7 @@ class AiSuggestionServiceImplTest {
                                 new AiIdReferenceDto("https://example.org/ontology/osoba"),
                                 new AiIdReferenceDto("https://example.org/ontology/subjekt-prava")
                         ),
-                        "/eli/cz/sb/2024/1"
+                        LAW_PATH
                 )),
                 List.of(new AiKnownConceptualModelDto.KnownAttributeTermDto(
                         "https://example.org/ontology/jmeno",
@@ -369,7 +298,7 @@ class AiSuggestionServiceImplTest {
                         Map.of("cs", "jméno", "en", "name"),
                         Map.of("cs", "Jméno žadatele.", "en", "Applicant name."),
                         Map.of("cs", "Atribut jména.", "en", "Name attribute."),
-                        "/eli/cz/sb/2024/1"
+                        LAW_PATH
                 )),
                 List.of(new AiKnownConceptualModelDto.KnownRelationshipTermDto(
                         "https://example.org/ontology/podava",
@@ -378,7 +307,7 @@ class AiSuggestionServiceImplTest {
                         Map.of("cs", "podává", "en", "files"),
                         Map.of("cs", "Žadatel podává žádost.", "en", "An applicant files an application."),
                         Map.of("cs", "Vztah mezi žadatelem a žádostí.", "en", "Applicant-to-application relation."),
-                        "/eli/cz/sb/2024/1"
+                        LAW_PATH
                 ))
         );
     }

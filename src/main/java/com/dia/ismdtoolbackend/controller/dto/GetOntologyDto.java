@@ -1,7 +1,6 @@
 package com.dia.ismdtoolbackend.controller.dto;
 
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
-import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.models.PublishedOntologyDeviationModel;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -16,7 +15,7 @@ import java.util.Map;
 @Getter
 @Setter
 public class GetOntologyDto {
-    private OntologyMetadataModel ontologyMetadata;
+    private OntologyDetailMetadataDto ontologyMetadata;
     private OntologyDetailModel ontologyDetail;
 
     /** Working-copy deviation per concept ("concept vs its own NKD twin"); see {@code ConceptSourceTag}. */

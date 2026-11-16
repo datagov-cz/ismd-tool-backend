@@ -20,6 +20,8 @@ public record ParsedEli(
 ) {
     public enum Level { LAW, VERSION, FRAGMENT }
 
+    private static final String WEB_BASE = "https://e-sbirka.gov.cz/";
+
     public record FragmentSegment(String kind, String number) {}
 
     public boolean isValid() {
@@ -28,6 +30,12 @@ public record ParsedEli(
 
     public boolean isFragment() {
         return level == Level.FRAGMENT;
+    }
+
+    /** The law's text page on the e-Sbírka website; null for an invalid IRI. */
+    public String lawWebUrl() {
+        if (!isValid()) return null;
+        return WEB_BASE + sbirkaCode + "/" + lawYear + "/" + lawNumber + "?zalozka=text";
     }
 
     /**

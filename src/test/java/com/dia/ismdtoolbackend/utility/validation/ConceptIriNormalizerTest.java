@@ -17,10 +17,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class ConceptIriNormalizerTest {
 
@@ -30,20 +27,20 @@ class ConceptIriNormalizerTest {
 
     @Test
     void iri_stripsTrailingSlash() {
-        assertEquals(ELI, ConceptIriNormalizer.iri(ELI + "/"));
-        assertEquals(ELI, ConceptIriNormalizer.iri("  " + ELI + "//  "));
+        assertThat(ConceptIriNormalizer.iri(ELI + "/")).isEqualTo(ELI);
+        assertThat(ConceptIriNormalizer.iri("  " + ELI + "//  ")).isEqualTo(ELI);
     }
 
     @Test
     void iri_leavesSlashlessIriUntouched() {
-        assertEquals(ELI, ConceptIriNormalizer.iri(ELI));
+        assertThat(ConceptIriNormalizer.iri(ELI)).isEqualTo(ELI);
     }
 
     @Test
     void iri_leavesNonIriValuesAsSupplied() {
-        assertNull(ConceptIriNormalizer.iri(null));
-        assertEquals("", ConceptIriNormalizer.iri(""));
-        assertEquals("Nadřazená třída/", ConceptIriNormalizer.iri("Nadřazená třída/"));
+        assertThat(ConceptIriNormalizer.iri(null)).isNull();
+        assertThat(ConceptIriNormalizer.iri("")).isEqualTo("");
+        assertThat(ConceptIriNormalizer.iri("Nadřazená třída/")).isEqualTo("Nadřazená třída/");
     }
 
     @Test
@@ -58,12 +55,12 @@ class ConceptIriNormalizerTest {
 
         ConceptIriNormalizer.normalize(m);
 
-        assertEquals(CONCEPT, m.getIdentifier());
-        assertEquals(List.of(ELI), m.getDefiningLegalSource());
-        assertEquals(Arrays.asList(ELI, null, ELI), m.getRelatedLegalSource());
-        assertEquals(List.of(CONCEPT), m.getExactMatch());
-        assertEquals(List.of(ELI), m.getPrivacyProvisions());
-        assertEquals(List.of(CONCEPT), m.getBroaderConcept());
+        assertThat(m.getIdentifier()).isEqualTo(CONCEPT);
+        assertThat(m.getDefiningLegalSource()).isEqualTo(List.of(ELI));
+        assertThat(m.getRelatedLegalSource()).isEqualTo(Arrays.asList(ELI, null, ELI));
+        assertThat(m.getExactMatch()).isEqualTo(List.of(CONCEPT));
+        assertThat(m.getPrivacyProvisions()).isEqualTo(List.of(ELI));
+        assertThat(m.getBroaderConcept()).isEqualTo(List.of(CONCEPT));
     }
 
     @Test
@@ -76,10 +73,10 @@ class ConceptIriNormalizerTest {
 
         ConceptIriNormalizer.normalize(m);
 
-        assertEquals(List.of(ELI), m.getPrivacyProvisions());
-        assertEquals(CONCEPT, m.getDomain());
-        assertEquals(List.of(CONCEPT), m.getSuperProperty());
-        assertEquals("https://example.org/datatype", m.getDataType());
+        assertThat(m.getPrivacyProvisions()).isEqualTo(List.of(ELI));
+        assertThat(m.getDomain()).isEqualTo(CONCEPT);
+        assertThat(m.getSuperProperty()).isEqualTo(List.of(CONCEPT));
+        assertThat(m.getDataType()).isEqualTo("https://example.org/datatype");
     }
 
     @Test
@@ -92,10 +89,10 @@ class ConceptIriNormalizerTest {
 
         ConceptIriNormalizer.normalize(m);
 
-        assertEquals(List.of(ELI), m.getPrivacyProvisions());
-        assertEquals(CONCEPT, m.getDomain());
-        assertEquals(CONCEPT, m.getRange());
-        assertEquals(List.of(CONCEPT), m.getSuperRelation());
+        assertThat(m.getPrivacyProvisions()).isEqualTo(List.of(ELI));
+        assertThat(m.getDomain()).isEqualTo(CONCEPT);
+        assertThat(m.getRange()).isEqualTo(CONCEPT);
+        assertThat(m.getSuperRelation()).isEqualTo(List.of(CONCEPT));
     }
 
     @Test
@@ -110,12 +107,12 @@ class ConceptIriNormalizerTest {
 
         ConceptIriNormalizer.normalize(m);
 
-        assertEquals(CONCEPT, m.getIdentifier());
-        assertEquals(List.of(ELI), m.getDefiningLegalSource());
-        assertEquals(List.of(ELI), m.getRelatedLegalSource());
-        assertEquals(List.of(CONCEPT), m.getExactMatch());
-        assertEquals(List.of(ELI), m.getPrivacyProvisions());
-        assertEquals(List.of(CONCEPT), m.getBroaderConcept());
+        assertThat(m.getIdentifier()).isEqualTo(CONCEPT);
+        assertThat(m.getDefiningLegalSource()).isEqualTo(List.of(ELI));
+        assertThat(m.getRelatedLegalSource()).isEqualTo(List.of(ELI));
+        assertThat(m.getExactMatch()).isEqualTo(List.of(CONCEPT));
+        assertThat(m.getPrivacyProvisions()).isEqualTo(List.of(ELI));
+        assertThat(m.getBroaderConcept()).isEqualTo(List.of(CONCEPT));
     }
 
     @Test
@@ -127,9 +124,9 @@ class ConceptIriNormalizerTest {
 
         ConceptIriNormalizer.normalize(m);
 
-        assertEquals(List.of(ELI), m.getPrivacyProvisions());
-        assertEquals(CONCEPT, m.getDomain());
-        assertEquals(List.of(CONCEPT), m.getSuperProperty());
+        assertThat(m.getPrivacyProvisions()).isEqualTo(List.of(ELI));
+        assertThat(m.getDomain()).isEqualTo(CONCEPT);
+        assertThat(m.getSuperProperty()).isEqualTo(List.of(CONCEPT));
     }
 
     @Test
@@ -142,10 +139,10 @@ class ConceptIriNormalizerTest {
 
         ConceptIriNormalizer.normalize(m);
 
-        assertEquals(List.of(ELI), m.getPrivacyProvisions());
-        assertEquals(CONCEPT, m.getDomain());
-        assertEquals(CONCEPT, m.getRange());
-        assertEquals(List.of(CONCEPT), m.getSuperRelation());
+        assertThat(m.getPrivacyProvisions()).isEqualTo(List.of(ELI));
+        assertThat(m.getDomain()).isEqualTo(CONCEPT);
+        assertThat(m.getRange()).isEqualTo(CONCEPT);
+        assertThat(m.getSuperRelation()).isEqualTo(List.of(CONCEPT));
     }
 
     @Test
@@ -154,10 +151,10 @@ class ConceptIriNormalizerTest {
 
         ConceptIriNormalizer.normalize(m);
 
-        assertNull(m.getIdentifier());
-        assertNull(m.getDefiningLegalSource());
-        assertNull(m.getPrivacyProvisions());
-        assertNull(m.getBroaderConcept());
+        assertThat(m.getIdentifier()).isNull();
+        assertThat(m.getDefiningLegalSource()).isNull();
+        assertThat(m.getPrivacyProvisions()).isNull();
+        assertThat(m.getBroaderConcept()).isNull();
     }
 
     @Test
@@ -171,9 +168,9 @@ class ConceptIriNormalizerTest {
 
         ConceptIriNormalizer.normalize(m);
 
-        assertEquals("https://example.org/dokument/", m.getDefiningNonLegalSource().get(0).getUrl());
-        assertEquals("https://example.org/ciselnik/", m.getCodeListIri());
-        assertEquals("https://example.org/datova-sada/", m.getCodeListDataset());
+        assertThat(m.getDefiningNonLegalSource().get(0).getUrl()).isEqualTo("https://example.org/dokument/");
+        assertThat(m.getCodeListIri()).isEqualTo("https://example.org/ciselnik/");
+        assertThat(m.getCodeListDataset()).isEqualTo("https://example.org/datova-sada/");
     }
 
     @Test
@@ -196,16 +193,16 @@ class ConceptIriNormalizerTest {
         m.setType("objekt");
 
         ConceptIriNormalizer.normalize(m);
-        assertTrue(ConceptInputValidator.validate(m).isEmpty());
+        assertThat(ConceptInputValidator.validate(m)).isEmpty();
         Resource concept = new ConceptCreator().createSingleConcept(m);
 
-        assertEquals(CONCEPT, concept.getURI());
+        assertThat(concept.getURI()).isEqualTo(CONCEPT);
         List<String> objects = concept.listProperties().mapWith(s -> s.getObject())
                 .filterKeep(RDFNode::isURIResource).mapWith(o -> o.asResource().getURI()).toList();
-        assertTrue(objects.contains(ELI));
-        assertTrue(objects.contains("https://example.org/pojem/osoba"));
-        assertTrue(objects.contains("https://example.org/pojem/subjekt"));
-        assertTrue(objects.contains("https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A104"));
-        assertFalse(objects.stream().anyMatch(o -> o.endsWith("/")), objects.toString());
+        assertThat(objects).contains(ELI);
+        assertThat(objects).contains("https://example.org/pojem/osoba");
+        assertThat(objects).contains("https://example.org/pojem/subjekt");
+        assertThat(objects).contains("https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A104");
+        assertThat(objects.stream().anyMatch(o -> o.endsWith("/"))).as(objects.toString()).isFalse();
     }
 }

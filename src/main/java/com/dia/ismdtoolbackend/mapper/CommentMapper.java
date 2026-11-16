@@ -7,11 +7,18 @@ import com.dia.ismdtoolbackend.models.CommentCreateModel;
 import com.dia.ismdtoolbackend.models.CommentModel;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.mapstruct.factory.Mappers;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.List;
 
 @Mapper(componentModel = "spring")
 public interface CommentMapper {
+
+    /** Stateless instance for mappers that embed comments and are also built without Spring. */
+    CommentMapper INSTANCE = Mappers.getMapper(CommentMapper.class);
+
     // Comments now link by metadata id, not IRI string; the service resolves the request IRI to
     // the owning ontology/concept and sets the association, so the mapper ignores those targets.
     @Mapping(target = "id", ignore = true)
@@ -26,6 +33,14 @@ public interface CommentMapper {
     @Mapping(target = "ontologyIRI", expression = "java(ontologyIri(commentEntity.getOntologyMetadata()))")
     @Mapping(target = "conceptIRI", expression = "java(conceptIri(commentEntity.getConceptMetadata()))")
     CommentModel toDto(CommentEntity commentEntity);
+
+    /** Maps each comment with {@link #toDto}; a null or empty list gives an empty list. */
+    default List<CommentModel> toDtos(List<CommentEntity> commentEntities) {
+        if (commentEntities == null || commentEntities.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return commentEntities.stream().map(this::toDto).toList();
+    }
 
     default String ontologyIri(OntologyMetadataEntity ontologyMetadata) {
         return ontologyMetadata == null ? null : ontologyMetadata.getGraphName();

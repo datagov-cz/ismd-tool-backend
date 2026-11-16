@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
+import static com.dia.ismdtoolbackend.constants.ExportConstants.Common.DEFAULT_LANG;
 
 /** Small RDF read / staging helpers shared by the concept and ontology editors. */
 final class RdfLangValues {
@@ -24,7 +24,7 @@ final class RdfLangValues {
     /**
      * Collects all language-tagged literal values of {@code property} on
      * {@code resource} as a {@code lang -> value} map. Literals with no language
-     * tag are keyed under {@link com.dia.constants.ExportConstants.Common#DEFAULT_LANG}.
+     * tag are keyed under {@link com.dia.ismdtoolbackend.constants.ExportConstants.Common#DEFAULT_LANG}.
      */
     static Map<String, String> byLanguage(Resource resource, Property property) {
         Map<String, String> valuesWithLang = new HashMap<>();
@@ -68,7 +68,7 @@ final class RdfLangValues {
 
     /**
      * Picks the name used for IRI generation from a {@code lang -> value} map,
-     * preferring {@code "cs"}, then {@link com.dia.constants.ExportConstants.Common#DEFAULT_LANG},
+     * preferring {@code "cs"}, then {@link com.dia.ismdtoolbackend.constants.ExportConstants.Common#DEFAULT_LANG},
      * then any value. Returns {@code ""} for a null/empty map.
      */
     static String preferredName(Map<String, String> names) {

@@ -14,9 +14,11 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Slf4j
 @Component
@@ -72,7 +74,7 @@ public class NkdSearchProvider implements SearchProvider {
         for (SearchResultDto result : allResults) {
             if (result.getIri() != null) {
                 deduped.merge(result.getIri(), result, (existing, incoming) -> {
-                    mergeNonNullFields(existing, incoming);
+                    SearchResultMerge.mergeNonNullFields(existing, incoming);
                     return existing;
                 });
             }
@@ -199,6 +201,7 @@ public class NkdSearchProvider implements SearchProvider {
 
         boolean batchFailed = false;
         Map<String, Integer> counts = Map.of();
+        Set<String> unparseable = new HashSet<>();
         try {
             String sparql = NKDSPARQLBrowseQuery.buildConceptCountsForOntologiesQuery(iris);
             List<Map<String, String>> rows = nkdSparqlClient.executeSelect(sparql);
@@ -209,8 +212,8 @@ public class NkdSearchProvider implements SearchProvider {
                 if (iri != null && cnt != null) {
                     try {
                         counts.put(iri, Integer.parseInt(cnt));
-                    } catch (NumberFormatException ignored) {
-                        // Tolerate odd literals — leave that ontology's count null.
+                    } catch (NumberFormatException e) {
+                        unparseable.add(iri);
                     }
                 }
             }
@@ -223,7 +226,9 @@ public class NkdSearchProvider implements SearchProvider {
         for (SearchResultDto dto : ontologyResults) {
             // Default to 0 when present in the page IRI list but absent from
             // the count result (= ontology has no concepts).
-            dto.setConceptCount(counts.getOrDefault(dto.getIri(), 0));
+            if (!unparseable.contains(dto.getIri())) {
+                dto.setConceptCount(counts.getOrDefault(dto.getIri(), 0));
+            }
         }
     }
 
@@ -263,18 +268,5 @@ public class NkdSearchProvider implements SearchProvider {
             log.warn("Unparseable COUNT result from NKD: {}", value);
             return 0;
         }
-    }
-
-    private void mergeNonNullFields(SearchResultDto target, SearchResultDto source) {
-        if (source.getLabel() != null) target.setLabel(source.getLabel());
-        if (source.getLabelLang() != null) target.setLabelLang(source.getLabelLang());
-        if (source.getAltName() != null) target.setAltName(source.getAltName());
-        if (source.getDescription() != null) target.setDescription(source.getDescription());
-        if (source.getDefinition() != null) target.setDefinition(source.getDefinition());
-        if (source.getOntologyIri() != null) target.setOntologyIri(source.getOntologyIri());
-        if (source.getConceptType() != null) target.setConceptType(source.getConceptType());
-        if (source.getSlug() != null) target.setSlug(source.getSlug());
-        if (source.getLastModified() != null) target.setLastModified(source.getLastModified());
-        if (source.getConceptCount() != null) target.setConceptCount(source.getConceptCount());
     }
 }

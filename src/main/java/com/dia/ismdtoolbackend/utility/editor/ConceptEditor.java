@@ -15,7 +15,7 @@ import java.util.*;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
-import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
+import static com.dia.ismdtoolbackend.constants.ExportConstants.Common.DEFAULT_LANG;
 
 @Component
 @RequiredArgsConstructor

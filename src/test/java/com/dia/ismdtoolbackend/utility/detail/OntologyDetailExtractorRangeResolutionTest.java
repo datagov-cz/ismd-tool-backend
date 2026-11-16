@@ -20,10 +20,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 
-import static com.dia.constants.VocabularyConstants.OFN_NAMESPACE;
-import static com.dia.constants.VocabularyConstants.TRIDA;
-import static com.dia.constants.VocabularyConstants.VLASTNOST;
-import static com.dia.constants.VocabularyConstants.VZTAH;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OFN_NAMESPACE;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TRIDA;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VLASTNOST;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VZTAH;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -237,8 +237,7 @@ class OntologyDetailExtractorRangeResolutionTest {
 
     /**
      * The {@code bydlí-na} relationship has domain=osoba, range=adresa. The RANGE class
-     * (adresa) must list that relationship — regression for the bug where a class only
-     * surfaced relationships where it was the domain. Exercises the ConceptData (JSON) path.
+     * (adresa) lists that relationship, as the domain class does. Exercises the ConceptData (JSON) path.
      */
     @Test
     void conceptDataPath_rangeClass_listsRelationshipWhereItIsRange() {

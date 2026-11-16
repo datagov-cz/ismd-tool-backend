@@ -9,7 +9,7 @@ import com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.validation.ConceptInputValidator;
 import com.dia.ismdtoolbackend.utility.validation.ConceptInputView;
-import com.dia.utility.UtilityMethods;
+import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.rdf.model.Model;
@@ -29,7 +29,7 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 
 /**
  * Applies the create/edit concept rules to the concepts of an uploaded vocabulary, so an

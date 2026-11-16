@@ -15,19 +15,18 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import static com.dia.constants.VocabularyConstants.OFN_NAMESPACE;
-import static com.dia.constants.VocabularyConstants.TRIDA;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OFN_NAMESPACE;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TRIDA;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
 /**
- * Regression for the {@code ClassCastException} that blanked the NKD dictionary detail page
- * (observed live on {@code a124---datový-slovník-iskn}, concept {@code .../111/2009/pojem/fyzická-osoba},
- * which carries two {@code cs} {@code skos:prefLabel}s).
+ * A concept with two {@code skos:prefLabel}s in one language (as NKD's
+ * {@code .../111/2009/pojem/fyzická-osoba} has) yields a single-valued name per language.
  *
  * <p>{@code ConceptLabelJsonMapper.addValueToLanguageMap} promotes a duplicated language key to a
- * {@code List}; the old raw {@code (Map<String, String>)} cast in the extractor let that List slip
- * past type erasure, and Jackson threw {@code ClassCastException} while serializing {@code název.cs}.
+ * {@code List}; the extractor coerces it to the first value, so serialization never meets a
+ * {@code List} where a {@code String} is declared.
  */
 @ExtendWith(MockitoExtension.class)
 class OntologyDetailExtractorMultiLabelTest {

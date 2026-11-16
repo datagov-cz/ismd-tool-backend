@@ -1,6 +1,5 @@
 package com.dia.ismdtoolbackend.client.validation;
 
-import com.dia.validation.ValidatorErrorResponse;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
@@ -11,8 +10,8 @@ import org.springframework.web.client.HttpClientErrorException;
  * Pulls a readable reason out of the validator's 4xx error body so the tool can surface
  * the validator's <em>own</em> message instead of a generic rejection.
  *
- * <p>The validator returns the shared {@link ValidatorErrorResponse} body
- * ({@code {error, message, timestamp, requestId}}). We deserialize that type and read its
+ * <p>The validator returns its {@code ApiResponseDto} error body, mapped here as
+ * {@link ValidatorErrorResponse} ({@code {data, message, success, errorCode}}). We read its
  * {@code message}, falling back to the <strong>raw body string</strong> when the body is absent,
  * not that shape (e.g. an HTML page from a reverse proxy), or carries no usable message.
  *
@@ -35,7 +34,7 @@ class ValidatorErrorMessageExtractor {
         }
         try {
             ValidatorErrorResponse parsed = objectMapper.readValue(body, ValidatorErrorResponse.class);
-            String message = parsed.getMessage();
+            String message = parsed.message();
             if (message != null && !message.isBlank()) {
                 return message;
             }

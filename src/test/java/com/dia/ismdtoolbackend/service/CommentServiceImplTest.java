@@ -5,7 +5,7 @@ import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.exception.CommentException;
 import com.dia.ismdtoolbackend.exception.CommentNotFoundException;
-import com.dia.ismdtoolbackend.mapper.CommentMapper;
+import com.dia.ismdtoolbackend.mapper.CommentMapperImpl;
 import com.dia.ismdtoolbackend.models.CommentCreateModel;
 import com.dia.ismdtoolbackend.models.CommentModel;
 import com.dia.ismdtoolbackend.repository.CommentRepository;
@@ -16,25 +16,20 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.mockito.junit.jupiter.MockitoSettings;
-import org.mockito.quality.Strictness;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT)
 class CommentServiceImplTest {
-
-    @Mock
-    private CommentMapper commentMapper;
 
     @Mock
     private CommentRepository commentRepository;
@@ -45,12 +40,10 @@ class CommentServiceImplTest {
     @Mock
     private ConceptMetadataRepository conceptMetadataRepository;
 
-    @InjectMocks
     private CommentServiceImpl commentService;
 
     private CommentEntity testCommentEntity;
     private CommentCreateModel testCommentCreateModel;
-    private CommentModel testCommentModel;
     private OntologyMetadataEntity testOntologyMetadata;
     private ConceptMetadataEntity testConceptMetadata;
 
@@ -62,6 +55,10 @@ class CommentServiceImplTest {
 
     @BeforeEach
     void setUp() {
+        // The real mapper: the response is what the generated mapping produces from the saved row.
+        commentService = new CommentServiceImpl(new CommentMapperImpl(), commentRepository,
+                ontologyMetadataRepository, conceptMetadataRepository);
+
         testCommentEntity = new CommentEntity();
         testCommentEntity.setId(TEST_COMMENT_ID);
         testCommentEntity.setComment(TEST_COMMENT_TEXT);
@@ -70,11 +67,6 @@ class CommentServiceImplTest {
 
         testCommentCreateModel = new CommentCreateModel();
         testCommentCreateModel.setComment(TEST_COMMENT_TEXT);
-
-        testCommentModel = new CommentModel();
-        testCommentModel.setId(TEST_COMMENT_ID);
-        testCommentModel.setComment(TEST_COMMENT_TEXT);
-        testCommentModel.setUserId(TEST_USER_ID);
 
         testOntologyMetadata = new OntologyMetadataEntity();
         testOntologyMetadata.setId(10L);
@@ -85,35 +77,39 @@ class CommentServiceImplTest {
         testConceptMetadata.setConceptIri(TEST_CONCEPT_IRI);
     }
 
+    /** The repository assigns the id on save, as the database does. */
+    private void givenSaveAssignsId() {
+        when(commentRepository.save(any(CommentEntity.class))).thenAnswer(invocation -> {
+            CommentEntity saved = invocation.getArgument(0);
+            saved.setId(TEST_COMMENT_ID);
+            return saved;
+        });
+    }
+
     // ========== postComment Tests - Ontology Comments ==========
 
     @Test
     void postComment_ToOntology_Success() {
         testCommentCreateModel.setOntologyIRI(TEST_ONTOLOGY_IRI);
-
-        when(commentMapper.toEntity(eq(testCommentCreateModel), eq(TEST_USER_ID), any(LocalDateTime.class))).thenReturn(testCommentEntity);
         when(ontologyMetadataRepository.findByGraphName(TEST_ONTOLOGY_IRI)).thenReturn(Optional.of(testOntologyMetadata));
-        when(commentRepository.save(any(CommentEntity.class))).thenReturn(testCommentEntity);
-        when(commentMapper.toDto(testCommentEntity)).thenReturn(testCommentModel);
+        givenSaveAssignsId();
 
         CommentModel result = commentService.postComment(testCommentCreateModel, TEST_USER_ID);
 
-        assertNotNull(result);
-        assertEquals(TEST_COMMENT_ID, result.getId());
-        assertEquals(TEST_USER_ID, result.getUserId());
-
-        verify(commentRepository).save(any(CommentEntity.class));
-        verify(commentMapper).toDto(testCommentEntity);
+        assertThat(result.getId()).isEqualTo(TEST_COMMENT_ID);
+        assertThat(result.getUserId()).isEqualTo(TEST_USER_ID);
+        assertThat(result.getComment()).isEqualTo(TEST_COMMENT_TEXT);
+        assertThat(result.getPostedTime()).isNotNull();
+        // Derived back from the linked ontology row, not echoed from the request.
+        assertThat(result.getOntologyIRI()).isEqualTo(TEST_ONTOLOGY_IRI);
+        assertThat(result.getConceptIRI()).isNull();
     }
 
     @Test
     void postComment_ToOntology_LinksOwningOntologyMetadata() {
         testCommentCreateModel.setOntologyIRI(TEST_ONTOLOGY_IRI);
-
-        when(commentMapper.toEntity(eq(testCommentCreateModel), eq(TEST_USER_ID), any(LocalDateTime.class))).thenReturn(testCommentEntity);
         when(ontologyMetadataRepository.findByGraphName(TEST_ONTOLOGY_IRI)).thenReturn(Optional.of(testOntologyMetadata));
-        when(commentRepository.save(any(CommentEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(commentMapper.toDto(any(CommentEntity.class))).thenReturn(testCommentModel);
+        givenSaveAssignsId();
 
         commentService.postComment(testCommentCreateModel, TEST_USER_ID);
 
@@ -121,22 +117,25 @@ class CommentServiceImplTest {
         verify(commentRepository).save(captor.capture());
 
         CommentEntity savedEntity = captor.getValue();
-        assertSame(testOntologyMetadata, savedEntity.getOntologyMetadata(), "Comment should link the owning ontology");
-        assertNull(savedEntity.getConceptMetadata(), "Concept link should stay unset for an ontology comment");
-        assertEquals(TEST_USER_ID, savedEntity.getUserId(), "User ID should be set");
+        assertThat(savedEntity.getOntologyMetadata())
+                .as("Comment should link the owning ontology")
+                .isSameAs(testOntologyMetadata);
+        assertThat(savedEntity.getConceptMetadata())
+                .as("Concept link should stay unset for an ontology comment")
+                .isNull();
+        assertThat(savedEntity.getUserId()).as("User ID should be set").isEqualTo(TEST_USER_ID);
     }
 
     @Test
     void postComment_ToOntology_UnresolvableIRI_Rejected() {
         testCommentCreateModel.setOntologyIRI(TEST_ONTOLOGY_IRI);
-
-        when(commentMapper.toEntity(eq(testCommentCreateModel), eq(TEST_USER_ID), any(LocalDateTime.class))).thenReturn(testCommentEntity);
         when(ontologyMetadataRepository.findByGraphName(TEST_ONTOLOGY_IRI)).thenReturn(Optional.empty());
 
-        CommentException exception = assertThrows(CommentException.class,
-                () -> commentService.postComment(testCommentCreateModel, TEST_USER_ID));
+        CommentException exception = assertThatExceptionOfType(CommentException.class)
+                .isThrownBy(() -> commentService.postComment(testCommentCreateModel, TEST_USER_ID))
+                .actual();
 
-        assertTrue(exception.getMessage().contains("nebyl nalezen"));
+        assertThat(exception).hasMessageContaining("nebyl nalezen");
         verify(commentRepository, never()).save(any());
     }
 
@@ -145,27 +144,22 @@ class CommentServiceImplTest {
     @Test
     void postComment_ToConcept_Success() {
         testCommentCreateModel.setConceptIRI(TEST_CONCEPT_IRI);
-
-        when(commentMapper.toEntity(eq(testCommentCreateModel), eq(TEST_USER_ID), any(LocalDateTime.class))).thenReturn(testCommentEntity);
         when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.of(testConceptMetadata));
-        when(commentRepository.save(any(CommentEntity.class))).thenReturn(testCommentEntity);
-        when(commentMapper.toDto(testCommentEntity)).thenReturn(testCommentModel);
+        givenSaveAssignsId();
 
         CommentModel result = commentService.postComment(testCommentCreateModel, TEST_USER_ID);
 
-        assertNotNull(result);
-        assertEquals(TEST_COMMENT_ID, result.getId());
-        verify(commentRepository).save(any(CommentEntity.class));
+        assertThat(result.getId()).isEqualTo(TEST_COMMENT_ID);
+        assertThat(result.getComment()).isEqualTo(TEST_COMMENT_TEXT);
+        assertThat(result.getConceptIRI()).isEqualTo(TEST_CONCEPT_IRI);
+        assertThat(result.getOntologyIRI()).isNull();
     }
 
     @Test
     void postComment_ToConcept_LinksOwningConceptMetadata() {
         testCommentCreateModel.setConceptIRI(TEST_CONCEPT_IRI);
-
-        when(commentMapper.toEntity(eq(testCommentCreateModel), eq(TEST_USER_ID), any(LocalDateTime.class))).thenReturn(testCommentEntity);
         when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.of(testConceptMetadata));
-        when(commentRepository.save(any(CommentEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(commentMapper.toDto(any(CommentEntity.class))).thenReturn(testCommentModel);
+        givenSaveAssignsId();
 
         commentService.postComment(testCommentCreateModel, TEST_USER_ID);
 
@@ -173,21 +167,24 @@ class CommentServiceImplTest {
         verify(commentRepository).save(captor.capture());
 
         CommentEntity savedEntity = captor.getValue();
-        assertSame(testConceptMetadata, savedEntity.getConceptMetadata(), "Comment should link the owning concept");
-        assertNull(savedEntity.getOntologyMetadata(), "Ontology link should stay unset for a concept comment");
+        assertThat(savedEntity.getConceptMetadata())
+                .as("Comment should link the owning concept")
+                .isSameAs(testConceptMetadata);
+        assertThat(savedEntity.getOntologyMetadata())
+                .as("Ontology link should stay unset for a concept comment")
+                .isNull();
     }
 
     @Test
     void postComment_ToConcept_UnresolvableIRI_Rejected() {
         testCommentCreateModel.setConceptIRI(TEST_CONCEPT_IRI);
-
-        when(commentMapper.toEntity(eq(testCommentCreateModel), eq(TEST_USER_ID), any(LocalDateTime.class))).thenReturn(testCommentEntity);
         when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.empty());
 
-        CommentException exception = assertThrows(CommentException.class,
-                () -> commentService.postComment(testCommentCreateModel, TEST_USER_ID));
+        CommentException exception = assertThatExceptionOfType(CommentException.class)
+                .isThrownBy(() -> commentService.postComment(testCommentCreateModel, TEST_USER_ID))
+                .actual();
 
-        assertTrue(exception.getMessage().contains("nebyl nalezen"));
+        assertThat(exception).hasMessageContaining("nebyl nalezen");
         verify(commentRepository, never()).save(any());
     }
 
@@ -195,18 +192,19 @@ class CommentServiceImplTest {
 
     @Test
     void postComment_NullModel() {
-        assertThrows(NullPointerException.class,
-                () -> commentService.postComment(null, TEST_USER_ID));
+        assertThatThrownBy(() -> commentService.postComment(null, TEST_USER_ID))
+                .isInstanceOf(NullPointerException.class);
     }
 
     @Test
     void postComment_NullUserId() {
         testCommentCreateModel.setOntologyIRI(TEST_ONTOLOGY_IRI);
 
-        CommentException exception = assertThrows(CommentException.class,
-                () -> commentService.postComment(testCommentCreateModel, null));
+        CommentException exception = assertThatExceptionOfType(CommentException.class)
+                .isThrownBy(() -> commentService.postComment(testCommentCreateModel, null))
+                .actual();
 
-        assertTrue(exception.getMessage().contains("povinné"));
+        assertThat(exception).hasMessageContaining("povinné");
         verify(commentRepository, never()).save(any());
     }
 
@@ -214,10 +212,11 @@ class CommentServiceImplTest {
     void postComment_EmptyUserId() {
         testCommentCreateModel.setOntologyIRI(TEST_ONTOLOGY_IRI);
 
-        CommentException exception = assertThrows(CommentException.class,
-                () -> commentService.postComment(testCommentCreateModel, "  "));
+        CommentException exception = assertThatExceptionOfType(CommentException.class)
+                .isThrownBy(() -> commentService.postComment(testCommentCreateModel, "  "))
+                .actual();
 
-        assertTrue(exception.getMessage().contains("povinné"));
+        assertThat(exception).hasMessageContaining("povinné");
         verify(commentRepository, never()).save(any());
     }
 
@@ -226,10 +225,11 @@ class CommentServiceImplTest {
         testCommentCreateModel.setComment(null);
         testCommentCreateModel.setOntologyIRI(TEST_ONTOLOGY_IRI);
 
-        CommentException exception = assertThrows(CommentException.class,
-                () -> commentService.postComment(testCommentCreateModel, TEST_USER_ID));
+        CommentException exception = assertThatExceptionOfType(CommentException.class)
+                .isThrownBy(() -> commentService.postComment(testCommentCreateModel, TEST_USER_ID))
+                .actual();
 
-        assertTrue(exception.getMessage().contains("Text komentáře je povinný"));
+        assertThat(exception).hasMessageContaining("Text komentáře je povinný");
         verify(commentRepository, never()).save(any());
     }
 
@@ -238,10 +238,11 @@ class CommentServiceImplTest {
         testCommentCreateModel.setComment("  ");
         testCommentCreateModel.setOntologyIRI(TEST_ONTOLOGY_IRI);
 
-        CommentException exception = assertThrows(CommentException.class,
-                () -> commentService.postComment(testCommentCreateModel, TEST_USER_ID));
+        CommentException exception = assertThatExceptionOfType(CommentException.class)
+                .isThrownBy(() -> commentService.postComment(testCommentCreateModel, TEST_USER_ID))
+                .actual();
 
-        assertTrue(exception.getMessage().contains("Text komentáře je povinný"));
+        assertThat(exception).hasMessageContaining("Text komentáře je povinný");
         verify(commentRepository, never()).save(any());
     }
 
@@ -250,19 +251,21 @@ class CommentServiceImplTest {
         testCommentCreateModel.setOntologyIRI(TEST_ONTOLOGY_IRI);
         testCommentCreateModel.setConceptIRI(TEST_CONCEPT_IRI);
 
-        CommentException exception = assertThrows(CommentException.class,
-                () -> commentService.postComment(testCommentCreateModel, TEST_USER_ID));
+        CommentException exception = assertThatExceptionOfType(CommentException.class)
+                .isThrownBy(() -> commentService.postComment(testCommentCreateModel, TEST_USER_ID))
+                .actual();
 
-        assertTrue(exception.getMessage().contains("buď ke slovníku nebo k pojmu"));
+        assertThat(exception).hasMessageContaining("buď ke slovníku nebo k pojmu");
         verify(commentRepository, never()).save(any());
     }
 
     @Test
     void postComment_NeitherOntologyNorConcept() {
-        CommentException exception = assertThrows(CommentException.class,
-                () -> commentService.postComment(testCommentCreateModel, TEST_USER_ID));
+        CommentException exception = assertThatExceptionOfType(CommentException.class)
+                .isThrownBy(() -> commentService.postComment(testCommentCreateModel, TEST_USER_ID))
+                .actual();
 
-        assertTrue(exception.getMessage().contains("musí být specifikován"));
+        assertThat(exception).hasMessageContaining("musí být specifikován");
         verify(commentRepository, never()).save(any());
     }
 
@@ -296,10 +299,11 @@ class CommentServiceImplTest {
     void deleteComment_CommentNotFound() {
         when(commentRepository.findById(TEST_COMMENT_ID)).thenReturn(Optional.empty());
 
-        CommentNotFoundException exception = assertThrows(CommentNotFoundException.class,
-                () -> commentService.deleteComment(TEST_COMMENT_ID));
+        CommentNotFoundException exception = assertThatExceptionOfType(CommentNotFoundException.class)
+                .isThrownBy(() -> commentService.deleteComment(TEST_COMMENT_ID))
+                .actual();
 
-        assertTrue(exception.getMessage().contains("nebyl nalezen"));
+        assertThat(exception).hasMessageContaining("nebyl nalezen");
         verify(commentRepository, never()).deleteById(any());
     }
 

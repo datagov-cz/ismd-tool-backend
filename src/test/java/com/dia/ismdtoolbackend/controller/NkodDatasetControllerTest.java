@@ -6,146 +6,155 @@ import com.dia.ismdtoolbackend.controller.dto.NkodDatasetListDto;
 import com.dia.ismdtoolbackend.controller.dto.NkodDatasetListItemDto;
 import com.dia.ismdtoolbackend.exception.NkdResourceNotFoundException;
 import com.dia.ismdtoolbackend.service.nkod.NkodDatasetService;
+import com.dia.ismdtoolbackend.testsupport.web.ControllerSliceTest;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.http.ResponseEntity;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@ExtendWith(MockitoExtension.class)
+@ControllerSliceTest(controllers = NkodDatasetController.class)
 class NkodDatasetControllerTest {
 
-    @Mock
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockitoBean
     private NkodDatasetService nkodDatasetService;
 
-    @InjectMocks
-    private NkodDatasetController controller;
-
+    /** Without parameters the list asks for the first page of 20 in Czech, with no filter. */
     @Test
-    void listDatasetsReturnsEnvelopeWithTotalCount() {
-        NkodDatasetListDto dto = new NkodDatasetListDto(
-                List.of(NkodDatasetListItemDto.builder()
-                        .iri("urn:a")
-                        .name(Map.of("cs", "Adresy"))
-                        .build()),
-                42);
-        when(nkodDatasetService.listDatasets(any(), anyInt(), anyInt(), anyString())).thenReturn(dto);
+    void listDatasets_appliesDefaults() throws Exception {
+        when(nkodDatasetService.listDatasets(null, 20, 0, "cs")).thenReturn(new NkodDatasetListDto(
+                List.of(NkodDatasetListItemDto.builder().iri("urn:a").name(Map.of("cs", "Adresy")).build()),
+                42));
 
-        ResponseEntity<?> response = controller.listDatasets("adr", 20, 0, "cs");
+        mockMvc.perform(get("/api/nkod/dataset/all"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Seznam datových sad byl úspěšně načten."))
+                .andExpect(jsonPath("$.data['celkový-počet']").value(42))
+                .andExpect(jsonPath("$.data.datasets.length()").value(1))
+                .andExpect(jsonPath("$.data.datasets[0].iri").value("urn:a"))
+                .andExpect(jsonPath("$.data.datasets[0]['název'].cs").value("Adresy"));
 
-        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
-        assertThat(dto.getTotalCount()).isEqualTo(42);
+        verify(nkodDatasetService).listDatasets(null, 20, 0, "cs");
     }
 
-    /** The search term must reach the service rather than being silently dropped. */
+    /** Every parameter reaches the service as sent. */
     @Test
-    void listDatasetsPassesQueryThrough() {
-        when(nkodDatasetService.listDatasets(any(), anyInt(), anyInt(), anyString()))
+    void listDatasets_passesParametersThrough() throws Exception {
+        when(nkodDatasetService.listDatasets("registr", 50, 100, "en"))
                 .thenReturn(new NkodDatasetListDto(List.of(), 0));
 
-        controller.listDatasets("registr", 50, 100, "en");
+        mockMvc.perform(get("/api/nkod/dataset/all")
+                        .param("q", "registr")
+                        .param("limit", "50")
+                        .param("offset", "100")
+                        .param("lang", "en"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data['celkový-počet']").value(0))
+                .andExpect(jsonPath("$.data.datasets").isEmpty());
 
         verify(nkodDatasetService).listDatasets("registr", 50, 100, "en");
     }
 
     @Test
-    void detailReturnsConceptsForDataset() {
-        GetNkodDatasetDto dto = GetNkodDatasetDto.builder()
+    void listDatasets_nonNumericLimit_isRejected() throws Exception {
+        mockMvc.perform(get("/api/nkod/dataset/all").param("limit", "many"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false));
+
+        verifyNoInteractions(nkodDatasetService);
+    }
+
+    @Test
+    void detail_returnsConceptsForDataset() throws Exception {
+        when(nkodDatasetService.getDatasetDetail("urn:ds")).thenReturn(GetNkodDatasetDto.builder()
                 .iri("urn:ds")
                 .name(Map.of("cs", "Registr řidičů"))
                 .concepts(List.of(MinimalConceptDto.builder().iri("urn:pojem").build()))
                 .conceptCount(1)
-                .build();
-        when(nkodDatasetService.getDatasetDetail(eq("urn:ds"))).thenReturn(dto);
+                .build());
 
-        ResponseEntity<?> response = controller.getDatasetDetail("urn:ds");
-
-        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
-        assertThat(dto.getConcepts()).hasSize(1);
+        mockMvc.perform(get("/api/nkod/dataset/detail").param("iri", "urn:ds"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Detail datové sady byl úspěšně načten."))
+                .andExpect(jsonPath("$.data.iri").value("urn:ds"))
+                .andExpect(jsonPath("$.data['název'].cs").value("Registr řidičů"))
+                .andExpect(jsonPath("$.data.pojmy.length()").value(1))
+                .andExpect(jsonPath("$.data.pojmy[0].iri").value("urn:pojem"))
+                .andExpect(jsonPath("$.data['počet-pojmů']").value(1));
     }
 
-    /**
-     * The expected state until publishers populate the annotation — an empty list is a valid
-     * 200, not an error.
-     */
+    /** Until publishers annotate datasets, an empty concept list is a valid 200. */
     @Test
-    void detailReturnsOkWithEmptyConceptList() {
-        GetNkodDatasetDto dto = GetNkodDatasetDto.builder()
-                .iri("urn:ds")
-                .concepts(List.of())
-                .conceptCount(0)
-                .build();
-        when(nkodDatasetService.getDatasetDetail(anyString())).thenReturn(dto);
+    void detail_emptyConceptList_isOk() throws Exception {
+        when(nkodDatasetService.getDatasetDetail("urn:ds")).thenReturn(GetNkodDatasetDto.builder()
+                .iri("urn:ds").concepts(List.of()).conceptCount(0).build());
 
-        ResponseEntity<?> response = controller.getDatasetDetail("urn:ds");
-
-        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
-        assertThat(dto.getConcepts()).isEmpty();
+        mockMvc.perform(get("/api/nkod/dataset/detail").param("iri", "urn:ds"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.pojmy").isEmpty())
+                .andExpect(jsonPath("$.data['počet-pojmů']").value(0));
     }
 
     @Test
-    void detailPropagatesNotFound() {
-        when(nkodDatasetService.getDatasetDetail(anyString()))
-                .thenThrow(new NkdResourceNotFoundException("nenalezeno"));
+    void detail_notFound_mapsTo404() throws Exception {
+        when(nkodDatasetService.getDatasetDetail("urn:missing"))
+                .thenThrow(new NkdResourceNotFoundException("Datová sada urn:missing nebyla nalezena."));
 
-        assertThatThrownBy(() -> controller.getDatasetDetail("urn:missing"))
-                .isInstanceOf(NkdResourceNotFoundException.class);
+        mockMvc.perform(get("/api/nkod/dataset/detail").param("iri", "urn:missing"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errorCode").value("NKD_RESOURCE_NOT_FOUND"))
+                .andExpect(jsonPath("$.message").value("Datová sada urn:missing nebyla nalezena."))
+                .andExpect(jsonPath("$.data").doesNotExist());
     }
 
-    /**
-     * The concept IRI must reach the service verbatim — no re-encoding on the way through, or
-     * the raw-UTF-8 match in the query silently finds nothing.
-     */
     @Test
-    void byConceptPassesIriThrough() {
+    void detail_missingIri_isRejected() throws Exception {
+        mockMvc.perform(get("/api/nkod/dataset/detail"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("MISSING_PARAMETER"));
+
+        verifyNoInteractions(nkodDatasetService);
+    }
+
+    /** The concept IRI reaches the service verbatim; a re-encoded IRI would match nothing in the raw-UTF-8 query. */
+    @Test
+    void byConcept_passesIriThroughVerbatim() throws Exception {
         String conceptIri = "https://slovník.gov.cz/generický/pojem/číslo";
-        when(nkodDatasetService.listDatasetsByConcept(anyString()))
-                .thenReturn(new NkodDatasetListDto(List.of(), 0));
+        when(nkodDatasetService.listDatasetsByConcept(conceptIri)).thenReturn(new NkodDatasetListDto(
+                List.of(NkodDatasetListItemDto.builder().iri("urn:a").name(Map.of("cs", "Adresy")).build()), 1));
 
-        controller.listDatasetsByConcept(conceptIri);
+        mockMvc.perform(get("/api/nkod/concept/datasets").param("iri", conceptIri))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Datové sady propojené s pojmem byly úspěšně načteny."))
+                .andExpect(jsonPath("$.data['celkový-počet']").value(1))
+                .andExpect(jsonPath("$.data.datasets[0].iri").value("urn:a"));
 
-        verify(nkodDatasetService).listDatasetsByConcept(eq(conceptIri));
+        verify(nkodDatasetService).listDatasetsByConcept(conceptIri);
     }
 
     /** An unannotated concept is a 200 with an empty list, not a 404. */
     @Test
-    void byConceptReturnsOkWithEmptyList() {
-        NkodDatasetListDto dto = new NkodDatasetListDto(List.of(), 0);
-        when(nkodDatasetService.listDatasetsByConcept(anyString())).thenReturn(dto);
+    void byConcept_noAnnotations_isOkWithEmptyList() throws Exception {
+        when(nkodDatasetService.listDatasetsByConcept("urn:concept"))
+                .thenReturn(new NkodDatasetListDto(List.of(), 0));
 
-        ResponseEntity<?> response = controller.listDatasetsByConcept("urn:concept");
-
-        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
-        assertThat(dto.getDatasets()).isEmpty();
-    }
-
-    @Test
-    void byConceptReturnsEnvelopeWithDatasets() {
-        NkodDatasetListDto dto = new NkodDatasetListDto(
-                List.of(NkodDatasetListItemDto.builder()
-                        .iri("urn:a")
-                        .name(Map.of("cs", "Adresy"))
-                        .build()),
-                1);
-        when(nkodDatasetService.listDatasetsByConcept(anyString())).thenReturn(dto);
-
-        ResponseEntity<?> response = controller.listDatasetsByConcept("urn:concept");
-
-        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
-        assertThat(dto.getDatasets()).singleElement()
-                .extracting(NkodDatasetListItemDto::getIri).isEqualTo("urn:a");
+        mockMvc.perform(get("/api/nkod/concept/datasets").param("iri", "urn:concept"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.datasets").isEmpty())
+                .andExpect(jsonPath("$.data['celkový-počet']").value(0));
     }
 }

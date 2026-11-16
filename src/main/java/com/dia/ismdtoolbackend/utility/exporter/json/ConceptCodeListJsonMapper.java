@@ -6,7 +6,7 @@ import org.apache.jena.vocabulary.RDF;
 
 import java.util.*;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 
 /** Maps the code list that defines a concept's instances, with its NKOD dataset. */
 final class ConceptCodeListJsonMapper {

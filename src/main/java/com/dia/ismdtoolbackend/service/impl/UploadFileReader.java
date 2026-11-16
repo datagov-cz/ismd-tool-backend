@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.exceptions.ConversionException;
+import com.dia.ismdtoolbackend.exception.ConversionException;
 import com.dia.ismdtoolbackend.exception.EmptyFileException;
 import com.dia.ismdtoolbackend.exception.OntologyUploadException;
 import com.dia.ismdtoolbackend.exception.OntologyUploadFileTooLargeException;

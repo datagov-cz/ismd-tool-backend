@@ -22,7 +22,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 
 /** Resolves the role of each concept in an upload and takes the unresolvable ones out of the vocabulary. */
 @Component

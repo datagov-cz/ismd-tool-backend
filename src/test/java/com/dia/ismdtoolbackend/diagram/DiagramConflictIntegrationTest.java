@@ -2,50 +2,25 @@ package com.dia.ismdtoolbackend.diagram;
 
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramConflictDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
-import com.dia.ismdtoolbackend.controller.dto.diagram.MaterializeResultDto;
-import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
-import com.dia.ismdtoolbackend.entity.DiagramEntity;
-import com.dia.ismdtoolbackend.entity.DiagramPendingEditEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.exception.DiagramConflictResolutionException;
 import com.dia.ismdtoolbackend.exception.DiagramEditConflictException;
-import com.dia.ismdtoolbackend.mapper.DiagramMapper;
 import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
-import com.dia.ismdtoolbackend.outbox.OutboxEntry;
-import com.dia.ismdtoolbackend.outbox.OutboxEntryRepository;
-import com.dia.ismdtoolbackend.outbox.PostgresIntegrationTestBase;
-import com.dia.ismdtoolbackend.outbox.TransactionTemplateConfig;
-import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
 import com.dia.ismdtoolbackend.repository.DiagramRepository;
-import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
-import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.DiagramService.ConflictResolution;
-import com.dia.ismdtoolbackend.service.OntologyLabelLookup;
-import com.dia.ismdtoolbackend.service.impl.DiagramLayoutReconciler;
 import com.dia.ismdtoolbackend.service.impl.DiagramMaterializeService;
-import com.dia.ismdtoolbackend.service.impl.DiagramServiceBeans;
 import com.dia.ismdtoolbackend.service.impl.DiagramServiceImpl;
-import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
+import com.dia.ismdtoolbackend.testsupport.pg.DiagramServiceIT;
+import com.dia.ismdtoolbackend.testsupport.pg.PgTestData;
+import com.dia.ismdtoolbackend.testsupport.pg.PostgresIntegrationTestBase;
 import jakarta.persistence.EntityNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.boot.persistence.autoconfigure.EntityScan;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Import;
-import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -55,9 +30,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 
 /**
@@ -79,20 +52,11 @@ import static org.mockito.Mockito.verify;
  *       to — so treating them as compatible would trade a clear 409 for a confusing one later.</li>
  * </ol>
  */
-@DataJpaTest
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@ActiveProfiles("junit")
-@Import({DiagramConflictIntegrationTest.Beans.class, DiagramServiceBeans.class, TransactionTemplateConfig.class,
-        com.dia.ismdtoolbackend.config.JpaAuditingConfig.class})
-@EntityScan(basePackageClasses = {OutboxEntry.class, ConceptMetadataEntity.class, DiagramEntity.class})
-@EnableJpaRepositories(basePackageClasses = {OutboxEntryRepository.class, ConceptMetadataRepository.class,
-        DiagramRepository.class})
-@Transactional(propagation = Propagation.NOT_SUPPORTED)
+@DiagramServiceIT
 class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
 
     private static final String GRAPH = "https://slovnik.gov.cz/conflict";
     private static final String SLUG = "conflict-ontology";
-    private static final String USER = "user123";
     private static final String CLASS_A = GRAPH + "/pojem/trida-a";
     private static final String CLASS_B = GRAPH + "/pojem/trida-b";
     private static final String REL = GRAPH + "/pojem/vztah";
@@ -101,31 +65,24 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
     private static final String OTHER_GRAPH = "https://slovnik.gov.cz/conflict-other";
     private static final String OTHER_SLUG = "conflict-other-ontology";
 
-    @Autowired private ConceptMetadataRepository conceptRepo;
-    @Autowired private OntologyMetadataRepository ontologyRepo;
     @Autowired private DiagramRepository diagramRepo;
-    /** Spied so one test can stage a competing edit from inside the detection query itself. */
-    @MockitoSpyBean private DiagramPendingEditRepository pendingEditRepo;
+    /** A spy, so one test can stage a competing edit from inside the detection query itself. */
+    @Autowired private DiagramPendingEditRepository pendingEditRepo;
     @Autowired private TransactionTemplate txTemplate;
     @Autowired private DiagramServiceImpl diagramService;
     @Autowired private DiagramMaterializeService materializeService;
+    @Autowired private PgTestData data;
+
+    private OntologyMetadataEntity ontology;
+    private OntologyMetadataEntity otherOntology;
 
     @BeforeEach
     void setUp() {
-        reset(materializeService, pendingEditRepo);
-        txTemplate.executeWithoutResult(tx -> {
-            pendingEditRepo.deleteAllInBatch();
-            diagramRepo.deleteAllInBatch();
-            conceptRepo.deleteAllInBatch();
-            ontologyRepo.deleteAllInBatch();
-        });
-        txTemplate.executeWithoutResult(tx -> {
-            OntologyMetadataEntity o = ontology(SLUG, GRAPH);
-            seedConcept(o, CLASS_A, "Třída A", ConceptType.TRIDA);
-            seedConcept(o, CLASS_B, "Třída B", ConceptType.TRIDA);
-            seedConcept(o, REL, "vztah", ConceptType.VZTAH);
-            ontology(OTHER_SLUG, OTHER_GRAPH);
-        });
+        ontology = data.createOntology(SLUG, GRAPH);
+        data.createConcept(ontology, CLASS_A, "Třída A", ConceptType.TRIDA);
+        data.createConcept(ontology, CLASS_B, "Třída B", ConceptType.TRIDA);
+        data.createConcept(ontology, REL, "vztah", ConceptType.VZTAH);
+        otherOntology = data.createOntology(OTHER_SLUG, OTHER_GRAPH);
     }
 
     // ---- detection ------------------------------------------------------------------------------
@@ -133,8 +90,8 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
     /** The headline case: the same concept staged on two canvases refuses to materialize. */
     @Test
     void sameConceptStagedOnTwoDiagrams_refusesWithAReport() {
-        Long mine = diagram("Hlavní diagram");
-        Long theirs = diagram("Pohled HR");
+        Long mine = createDiagram("Hlavní diagram");
+        Long theirs = createDiagram("Pohled HR");
         stage(mine, REL, range(CLASS_A));
         stage(theirs, REL, range(CLASS_B));
 
@@ -166,8 +123,8 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
      */
     @Test
     void aRefusedMaterialize_leavesBothSidesStaged() {
-        Long mine = diagram("Hlavní diagram");
-        Long theirs = diagram("Pohled HR");
+        Long mine = createDiagram("Hlavní diagram");
+        Long theirs = createDiagram("Pohled HR");
         stage(mine, REL, range(CLASS_A));
         stage(theirs, REL, range(CLASS_B));
 
@@ -186,8 +143,8 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
      */
     @Test
     void identicalStagedValues_stillConflict() {
-        Long mine = diagram("Hlavní diagram");
-        Long theirs = diagram("Pohled HR");
+        Long mine = createDiagram("Hlavní diagram");
+        Long theirs = createDiagram("Pohled HR");
         stage(mine, REL, range(CLASS_A));
         stage(theirs, REL, range(CLASS_A));   // the SAME value
 
@@ -199,8 +156,8 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
     /** Different concepts on two canvases are not a conflict — they cannot disturb each other. */
     @Test
     void differentConceptsOnTwoDiagrams_doNotConflict() {
-        Long mine = diagram("Hlavní diagram");
-        Long theirs = diagram("Pohled HR");
+        Long mine = createDiagram("Hlavní diagram");
+        Long theirs = createDiagram("Pohled HR");
         stage(mine, CLASS_A, exactMatch(CLASS_B));
         stage(theirs, CLASS_B, exactMatch(CLASS_A));
 
@@ -220,14 +177,11 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
      */
     @Test
     void aSiblingStagingDuringDetection_isCaughtBeforeRdfIsWritten() {
-        Long mine = diagram("Hlavní diagram");
-        Long theirs = diagram("Pohled HR");
+        Long mine = createDiagram("Hlavní diagram");
+        Long theirs = createDiagram("Pohled HR");
         stage(mine, REL, range(CLASS_A));
         // `theirs` stages nothing yet, so the first detection query sees a clean board.
 
-        // Only the FIRST detection query is intercepted: it stages the sibling's edit and reports a clean
-        // board, exactly as a save committing right after that read would look. Every later call — the
-        // re-detect gate included — runs for real against the now-conflicting rows.
         // Only the FIRST detection query is intercepted: it stages the sibling's edit and reports a clean
         // board, exactly as a save committing right after that read would look. Every later call — the
         // re-detect gate included — is answered from the now-conflicting rows.
@@ -256,7 +210,7 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
     /** A lone diagram never conflicts with itself. */
     @Test
     void singleDiagram_neverConflicts() {
-        Long only = diagram("Hlavní diagram");
+        Long only = createDiagram("Hlavní diagram");
         stage(only, REL, range(CLASS_A));
 
         diagramService.materialize(SLUG, only, null, null);
@@ -270,16 +224,11 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
      */
     @Test
     void aSiblingInAnotherOntology_isNotAConflict() {
-        Long mine = diagram("Hlavní diagram");
+        Long mine = createDiagram("Hlavní diagram");
         stage(mine, REL, range(CLASS_A));
 
-        Long elsewhere = txTemplate.execute(tx -> {
-            DiagramEntity d = new DiagramEntity();
-            d.setOntologyMetadata(ontologyRepo.findBySlug(OTHER_SLUG).orElseThrow());
-            d.setName("Cizí diagram");
-            return diagramRepo.saveAndFlush(d).getId();
-        });
-        stageOn(elsewhere, OTHER_SLUG, REL, range(CLASS_A));
+        Long elsewhere = data.createDiagram(otherOntology, "Cizí diagram");
+        data.stagePendingEdit(elsewhere, otherOntology, REL, range(CLASS_A));
 
         diagramService.materialize(SLUG, mine, null, null);
 
@@ -292,8 +241,8 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
     /** ACCEPT_MINE clears the sibling's edit and lets this diagram proceed. */
     @Test
     void acceptMine_removesTheSiblingsEditAndProceeds() {
-        Long mine = diagram("Hlavní diagram");
-        Long theirs = diagram("Pohled HR");
+        Long mine = createDiagram("Hlavní diagram");
+        Long theirs = createDiagram("Pohled HR");
         stage(mine, REL, range(CLASS_A));
         stage(theirs, REL, range(CLASS_B));
 
@@ -315,8 +264,8 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
      */
     @Test
     void acceptTheirs_removesOwnEditAndMaterializesTheNamedDiagram() {
-        Long mine = diagram("Hlavní diagram");
-        Long theirs = diagram("Pohled HR");
+        Long mine = createDiagram("Hlavní diagram");
+        Long theirs = createDiagram("Pohled HR");
         stage(mine, REL, range(CLASS_A));
         stage(theirs, REL, range(CLASS_B));
 
@@ -341,8 +290,8 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
      */
     @Test
     void acceptTheirs_leavesOwnNonConflictingEdits() {
-        Long mine = diagram("Hlavní diagram");
-        Long theirs = diagram("Pohled HR");
+        Long mine = createDiagram("Hlavní diagram");
+        Long theirs = createDiagram("Pohled HR");
         stage(mine, REL, range(CLASS_A));            // contested
         stage(mine, CLASS_A, exactMatch(CLASS_B));   // mine alone — nobody contests it
         stage(theirs, REL, range(CLASS_B));
@@ -364,8 +313,8 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
      */
     @Test
     void acceptMine_leavesTheSiblingsNonConflictingEdits() {
-        Long mine = diagram("Hlavní diagram");
-        Long theirs = diagram("Pohled HR");
+        Long mine = createDiagram("Hlavní diagram");
+        Long theirs = createDiagram("Pohled HR");
 
         // BOTH concepts are staged here, but only REL is staged on the sibling too. The distinction
         // matters: a resolution scoped to "everything this diagram staged" rather than "the concepts
@@ -401,9 +350,9 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
      */
     @Test
     void acceptMine_clearsEverySiblingStagingTheSameConcept() {
-        Long mine = diagram("Hlavní diagram");
-        Long theirsOne = diagram("Pohled HR");
-        Long theirsTwo = diagram("Pohled Finance");
+        Long mine = createDiagram("Hlavní diagram");
+        Long theirsOne = createDiagram("Pohled HR");
+        Long theirsTwo = createDiagram("Pohled Finance");
         stage(mine, REL, range(CLASS_A));
         stage(theirsOne, REL, range(CLASS_B));
         stage(theirsTwo, REL, range(CLASS_A));
@@ -434,9 +383,9 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
      */
     @Test
     void acceptTheirs_clearsEveryLoserIncludingThisDiagram() {
-        Long mine = diagram("Hlavní diagram");
-        Long winner = diagram("Pohled HR");
-        Long alsoLoses = diagram("Pohled Finance");
+        Long mine = createDiagram("Hlavní diagram");
+        Long winner = createDiagram("Pohled HR");
+        Long alsoLoses = createDiagram("Pohled Finance");
         stage(mine, REL, range(CLASS_A));
         stage(mine, CLASS_B, exactMatch(CLASS_A));      // mine alone — nobody contests it
         stage(winner, REL, range(CLASS_B));
@@ -475,8 +424,8 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
      */
     @Test
     void acceptTheirs_withoutAWinner_isRejected() {
-        Long mine = diagram("Hlavní diagram");
-        Long theirs = diagram("Pohled HR");
+        Long mine = createDiagram("Hlavní diagram");
+        Long theirs = createDiagram("Pohled HR");
         stage(mine, REL, range(CLASS_A));
         stage(theirs, REL, range(CLASS_B));
 
@@ -496,9 +445,9 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
      */
     @Test
     void acceptTheirs_namingADiagramNotInTheConflictSet_isRejected() {
-        Long mine = diagram("Hlavní diagram");
-        Long theirs = diagram("Pohled HR");
-        Long uninvolved = diagram("Pohled Finance");   // same ontology, but stages nothing contested
+        Long mine = createDiagram("Hlavní diagram");
+        Long theirs = createDiagram("Pohled HR");
+        Long uninvolved = createDiagram("Pohled Finance");   // same ontology, but stages nothing contested
         stage(mine, REL, range(CLASS_A));
         stage(theirs, REL, range(CLASS_B));
         stage(uninvolved, CLASS_A, exactMatch(CLASS_B));
@@ -520,8 +469,8 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
      */
     @Test
     void acceptTheirs_withNoConflictAtAll_isRejected() {
-        Long mine = diagram("Hlavní diagram");
-        Long theirs = diagram("Pohled HR");
+        Long mine = createDiagram("Hlavní diagram");
+        Long theirs = createDiagram("Pohled HR");
         stage(mine, REL, range(CLASS_A));
         stage(theirs, CLASS_A, exactMatch(CLASS_B));   // different concept — no collision
 
@@ -535,7 +484,7 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
     /** ACCEPT_MINE with no conflict is a plain materialize — the resolution simply has nothing to do. */
     @Test
     void acceptMine_withNoConflict_materializesNormally() {
-        Long only = diagram("Hlavní diagram");
+        Long only = createDiagram("Hlavní diagram");
         stage(only, REL, range(CLASS_A));
 
         diagramService.materialize(SLUG, only, ConflictResolution.ACCEPT_MINE, null);
@@ -553,12 +502,7 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
      */
     @Test
     void addressingADiagramOfAnotherOntology_isRefusedOnEveryIdBearingPath() {
-        Long elsewhere = txTemplate.execute(tx -> {
-            DiagramEntity d = new DiagramEntity();
-            d.setOntologyMetadata(ontologyRepo.findBySlug(OTHER_SLUG).orElseThrow());
-            d.setName("Cizí diagram");
-            return diagramRepo.saveAndFlush(d).getId();
-        });
+        Long elsewhere = data.createDiagram(otherOntology, "Cizí diagram");
 
         assertThatThrownBy(() -> diagramService.materialize(SLUG, elsewhere, null, null))
                 .as("materialize")
@@ -582,7 +526,7 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
     // ---- fixtures -------------------------------------------------------------------------------
 
     private Long ontologyId() {
-        return ontologyRepo.findBySlug(SLUG).orElseThrow().getId();
+        return ontology.getId();
     }
 
     private DiagramPendingEdit range(String iri) {
@@ -597,88 +541,11 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
         return e;
     }
 
-    private Long diagram(String name) {
-        return txTemplate.execute(tx -> {
-            DiagramEntity d = new DiagramEntity();
-            d.setOntologyMetadata(ontologyRepo.findBySlug(SLUG).orElseThrow());
-            d.setName(name);
-            return diagramRepo.saveAndFlush(d).getId();
-        });
+    private Long createDiagram(String name) {
+        return data.createDiagram(ontology, name);
     }
 
     private void stage(Long diagramId, String conceptIri, DiagramPendingEdit edit) {
-        stageOn(diagramId, SLUG, conceptIri, edit);
-    }
-
-    private void stageOn(Long diagramId, String ontologySlug, String conceptIri, DiagramPendingEdit edit) {
-        txTemplate.executeWithoutResult(tx -> {
-            DiagramPendingEditEntity row = new DiagramPendingEditEntity();
-            row.setDiagram(diagramRepo.findById(diagramId).orElseThrow());
-            row.setOntologyMetadata(ontologyRepo.findBySlug(ontologySlug).orElseThrow());
-            row.setConceptIri(conceptIri);
-            row.setPendingEdit(edit);
-            pendingEditRepo.saveAndFlush(row);
-        });
-    }
-
-    private OntologyMetadataEntity ontology(String slug, String graphName) {
-        OntologyMetadataEntity o = new OntologyMetadataEntity();
-        o.setSlug(slug);
-        o.setGraphName(graphName);
-        o.setUserId(USER);
-        o.setIsPublished(false);
-        o.setCreatedAt(LocalDateTime.now());
-        return ontologyRepo.save(o);
-    }
-
-    private void seedConcept(OntologyMetadataEntity ontology, String iri, String name, ConceptType type) {
-        ConceptMetadataEntity c = new ConceptMetadataEntity();
-        c.setConceptIri(iri);
-        c.setConceptName(name);
-        c.setConceptType(type);
-        c.setGraphName(GRAPH);
-        c.setUserId(USER);
-        c.setOntologyMetadata(ontology);
-        c.setSlug(iri.substring(iri.lastIndexOf('/') + 1));
-        c.setCreatedAt(LocalDateTime.now());
-        c.setUpdatedAt(LocalDateTime.now());
-        conceptRepo.save(c);
-    }
-
-    @TestConfiguration
-    static class Beans {
-
-        @Bean JenaTDB2Repository jenaTDB2Repository() {
-            return mock(JenaTDB2Repository.class);
-        }
-
-        @Bean OntologyDetailExtractor ontologyDetailExtractor() {
-            return mock(OntologyDetailExtractor.class);
-        }
-
-        @Bean DiagramMapper diagramMapper() {
-            return new DiagramMapper();
-        }
-
-        @Bean DiagramLayoutReconciler diagramLayoutReconciler(DiagramMapper mapper,
-                                                              ConceptMetadataRepository conceptRepo,
-                                                              DiagramPendingEditRepository pendingEditRepo) {
-            return new DiagramLayoutReconciler(mapper, conceptRepo, pendingEditRepo);
-        }
-
-        /**
-         * Materialize itself is mocked: this class is about what happens BEFORE the fan-out — whether it
-         * is reached at all, and with what left staged. {@link DiagramMaterializeIntegrationTest} covers
-         * the applying half against real RDF.
-         */
-        @Bean DiagramMaterializeService diagramMaterializeService() {
-            return mock(DiagramMaterializeService.class);
-        }
-
-        @Bean OntologyLabelLookup ontologyLabelLookup() {
-
-            return mock(OntologyLabelLookup.class);
-
-        }
+        data.stagePendingEdit(diagramId, ontology, conceptIri, edit);
     }
 }

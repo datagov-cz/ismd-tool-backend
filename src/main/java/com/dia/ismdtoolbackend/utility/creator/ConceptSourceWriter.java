@@ -3,9 +3,9 @@ package com.dia.ismdtoolbackend.utility.creator;
 import com.dia.ismdtoolbackend.models.concept.*;
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
-import com.dia.utility.DataTypeConverter;
-import com.dia.utility.URIGenerator;
-import com.dia.utility.UtilityMethods;
+import com.dia.ismdtoolbackend.utility.DataTypeConverter;
+import com.dia.ismdtoolbackend.utility.URIGenerator;
+import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.rdf.model.*;
@@ -13,8 +13,8 @@ import org.apache.jena.vocabulary.RDF;
 
 import java.util.List;
 
-import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.ExportConstants.Common.DEFAULT_LANG;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 
 /** Writes legal and non-legal sources, including their digital documents. */
 @Slf4j
@@ -105,14 +105,14 @@ final class ConceptSourceWriter {
 
         if (source.getName() != null && !source.getName().trim().isEmpty()) {
             Property titleProperty = ontModel.createProperty(DCT_NS + "title");
-            DataTypeConverter.addTypedProperty(digitalDocument, titleProperty,
-                    source.getName().trim(), DEFAULT_LANG, ontModel);
+            DataTypeConverter.addLangLiteral(digitalDocument, titleProperty,
+                    source.getName().trim(), DEFAULT_LANG);
         }
 
         if (source.getDescription() != null && !source.getDescription().trim().isEmpty()) {
             Property descriptionProperty = ontModel.createProperty(DCT_NS + "description");
-            DataTypeConverter.addTypedProperty(digitalDocument, descriptionProperty,
-                    source.getDescription().trim(), DEFAULT_LANG, ontModel);
+            DataTypeConverter.addLangLiteral(digitalDocument, descriptionProperty,
+                    source.getDescription().trim(), DEFAULT_LANG);
         }
 
         resource.addProperty(property, digitalDocument);

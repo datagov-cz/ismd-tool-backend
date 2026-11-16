@@ -1,574 +1,288 @@
 package com.dia.ismdtoolbackend.utility.exporter.json;
 
-import org.apache.jena.ontology.OntModel;
-import org.apache.jena.ontology.OntModelSpec;
+import com.dia.ismdtoolbackend.exception.JsonExportException;
+import com.dia.ismdtoolbackend.testsupport.rdf.JsonLd;
+import com.dia.ismdtoolbackend.testsupport.rdf.Ttl;
 import org.apache.jena.rdf.model.Model;
-import org.apache.jena.rdf.model.ModelFactory;
-import org.apache.jena.rdf.model.Property;
+import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
-import org.apache.jena.vocabulary.OWL;
 import org.apache.jena.vocabulary.RDF;
-import org.apache.jena.vocabulary.SKOS;
-import org.json.JSONArray;
-import org.json.JSONObject;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.CsvSource;
 
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
-import java.util.*;
-import java.util.stream.Stream;
+import java.util.HashSet;
+import java.util.Set;
 
-import static com.dia.constants.VocabularyConstants.*;
-import static org.junit.jupiter.api.Assertions.*;
+import static com.dia.ismdtoolbackend.testsupport.rdf.RdfAssert.assertIsomorphic;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Test class for validating that JSON exports from JsonExporter conform to the JSON-LD context structure.
- * This class performs structural validation.
+ * The JSON export is JSON-LD: expanded through the published OFN context it must yield the
+ * vocabulary's triples. Each test exports a Turtle fixture, expands the result with the bundled
+ * context ({@link JsonLd}) and compares triples, so a field the exporter drops, renames or shapes
+ * wrongly fails here.
  */
+@DisplayName("JsonExporter - JSON-LD context conformance")
 class JsonExporterContextConformanceTest {
 
-    private static final String TEST_NAMESPACE = "http://test.example.org/vocabulary/";
-    private static final String OFN_NAMESPACE = "https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/";
-    private static final String CONTEXT_RESOURCE_PATH = "/com/dia/context/json_ld_context.jsonld";
+    private static final String VOCABULARY_HEADER = """
+            ex: a owl:Ontology, skos:ConceptScheme, slovníky:slovník ;
+                skos:prefLabel "Testovací slovník"@cs ;
+                dct:description "Popis slovníku"@cs .
+            """;
 
-    private static JSONObject contextDefinition;
-    private static Set<String> validContextFields;
-    private static Set<String> validVocabularyTypes;
+    /** Every field the exporter writes: the vocabulary timestamps and five concepts covering the OFN roles. */
+    private static final String FULL_VOCABULARY = VOCABULARY_HEADER + """
+            ex: slovníky:okamžik-vytvoření [ a čas:časový-okamžik ; čas:datum-a-čas "2025-01-01T10:00:00Z" ] ;
+                slovníky:okamžik-poslední-změny [ a čas:časový-okamžik ; čas:datum "2025-02-01"^^xsd:date ] .
 
-    private JsonExporter jsonExporter;
+            pojem:subjekt a skos:Concept, slovníky:pojem, owl:Class, slovníky:třída ;
+                skos:prefLabel "Subjekt"@cs .
 
-    @BeforeAll
-    static void loadContext() throws Exception {
-        try (InputStream is = JsonExporterContextConformanceTest.class.getResourceAsStream(CONTEXT_RESOURCE_PATH)) {
-            assertNotNull(is, "JSON-LD context file not found at " + CONTEXT_RESOURCE_PATH);
-            String contextContent = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            pojem:osoba a skos:Concept, slovníky:pojem, owl:Class, slovníky:třída ;
+                skos:prefLabel "Osoba"@cs, "Person"@en ;
+                skos:altLabel "Člověk"@cs, "Fyzická osoba"@cs ;
+                skos:definition "Fyzická osoba."@cs ;
+                dct:description "Popis osoby."@cs ;
+                skos:exactMatch <http://eurovoc.europa.eu/100157> ;
+                skos:broader pojem:subjekt ;
+                rdfs:subClassOf pojem:subjekt ;
+                slovníky:definující-ustanovení <https://zakon.example.org/sb/89-2012/par/23> ;
+                slovníky:související-ustanovení <https://zakon.example.org/sb/89-2012/par/24> ;
+                slovníky:definující-nelegislativní-zdroj <https://example.org/doc/1> ;
+                slovníky:související-nelegislativní-zdroj <https://example.org/doc/2> ;
+                slovníky:má-instance-definované-číselníkem <https://example.org/číselníky/osoby> .
 
-            JSONObject fullContext = new JSONObject(contextContent);
-            contextDefinition = fullContext.getJSONObject("@context");
+            <https://example.org/doc/1> a do:digitální-objekt ;
+                dct:title "Norma"@cs ;
+                dct:description "Popis normy"@cs ;
+                schema:url <https://example.org/files/norma.pdf> .
 
-            // Extract valid field names and categorize them
-            extractContextMetadata();
-        }
-    }
+            <https://example.org/doc/2> a do:digitální-objekt ;
+                dct:title "Metodika"@cs .
 
-    private static void extractContextMetadata() {
-        validContextFields = new HashSet<>();
-        validVocabularyTypes = new HashSet<>();
+            <https://example.org/číselníky/osoby> a l111:číselník ;
+                l111:má-v-nkod-zastřešující-datovou-sadu <https://data.gov.cz/zdroj/datové-sady/1> .
 
-        @SuppressWarnings("unchecked")
-        Iterator<String> keys = contextDefinition.keys();
-        while (keys.hasNext()) {
-            String key = keys.next();
-            if (!key.startsWith("@")) {
-                validContextFields.add(key);
-            }
-        }
+            pojem:má-sídlo a skos:Concept, slovníky:pojem, owl:ObjectProperty, slovníky:vztah ;
+                skos:prefLabel "má sídlo"@cs .
 
-        // Define valid vocabulary types
-        validVocabularyTypes.add("Tezaurus");
-        validVocabularyTypes.add("Konceptuální model");
-        validVocabularyTypes.add("Slovník");
-    }
+            pojem:má-adresu a skos:Concept, slovníky:pojem, owl:ObjectProperty, slovníky:vztah ;
+                skos:prefLabel "má adresu"@cs ;
+                rdfs:domain pojem:osoba ;
+                rdfs:range pojem:subjekt ;
+                rdfs:subPropertyOf pojem:má-sídlo .
 
-    @BeforeEach
-    void setUp() {
-        jsonExporter = new JsonExporter();
-    }
+            pojem:rodné-číslo a skos:Concept, slovníky:pojem, owl:DatatypeProperty, slovníky:vlastnost,
+                    l111:neveřejný-údaj ;
+                skos:prefLabel "Rodné číslo"@cs ;
+                rdfs:domain pojem:osoba ;
+                rdfs:range xsd:string ;
+                a104:je-sdílen-v-propojeném-datovém-fondu true ;
+                a104:sdružuje-údaje-vedené-nebo-vytvářené-v-rámci-agendy <https://rpp.example.org/agenda/A1> ;
+                a104:údaje-jsou-v-ais <https://rpp.example.org/ais/42> ;
+                l111:ustanovení-dokládající-neveřejnost-údaje <https://zakon.example.org/sb/133-2000/par/3> ;
+                slovníky:má-způsob-sdílení-údaje <https://data.dia.gov.cz/zdroj/číselníky/způsoby-sdílení-údajů/položky/ppdf> ;
+                slovníky:má-způsob-získání-údaje <https://data.dia.gov.cz/zdroj/číselníky/způsoby-získání-údajů/položky/vlastní> ;
+                slovníky:má-typ-obsahu-údaje <https://data.dia.gov.cz/zdroj/číselníky/typy-obsahu-údajů/položky/osobní> .
+            """;
 
-    // ========== Root Structure Tests ==========
+    /**
+     * {@link #FULL_VOCABULARY} as the context reads it back: OFN role classes become their OWL
+     * counterparts, concepts join the scheme through {@code skos:inScheme}, a source URL becomes
+     * an {@code xsd:anyURI} literal and the timestamps are typed by the context.
+     */
+    private static final String FULL_VOCABULARY_EXPANDED = """
+            ex: a owl:Ontology, skos:ConceptScheme, slovníky:slovník ;
+                skos:prefLabel "Testovací slovník"@cs ;
+                dct:description "Popis slovníku"@cs ;
+                slovníky:okamžik-vytvoření [ a čas:časový-okamžik ;
+                    čas:datum-a-čas "2025-01-01T10:00:00Z"^^xsd:dateTimeStamp ] ;
+                slovníky:okamžik-poslední-změny [ a čas:časový-okamžik ; čas:datum "2025-02-01"^^xsd:date ] .
 
-    @Test
-    void exportToJson_HasRequiredRootFields() throws Exception {
-        Model model = createBasicVocabularyModel();
-        String jsonOutput = jsonExporter.exportToJson(model);
-        JSONObject json = new JSONObject(jsonOutput);
+            pojem:subjekt a skos:Concept, slovníky:pojem, owl:Class ;
+                skos:inScheme ex: ;
+                skos:prefLabel "Subjekt"@cs .
 
-        assertTrue(json.has("@context"), "JSON should have @context field");
-        assertTrue(json.has("iri"), "JSON should have iri field");
-        assertTrue(json.has("typ"), "JSON should have typ field");
-        assertTrue(json.has("název"), "JSON should have název field");
-    }
+            pojem:osoba a skos:Concept, slovníky:pojem, owl:Class ;
+                skos:inScheme ex: ;
+                skos:prefLabel "Osoba"@cs, "Person"@en ;
+                skos:altLabel "Člověk"@cs, "Fyzická osoba"@cs ;
+                skos:definition "Fyzická osoba."@cs ;
+                dct:description "Popis osoby."@cs ;
+                skos:exactMatch <http://eurovoc.europa.eu/100157> ;
+                skos:broader pojem:subjekt ;
+                rdfs:subClassOf pojem:subjekt ;
+                slovníky:definující-ustanovení <https://zakon.example.org/sb/89-2012/par/23> ;
+                slovníky:související-ustanovení <https://zakon.example.org/sb/89-2012/par/24> ;
+                slovníky:definující-nelegislativní-zdroj <https://example.org/doc/1> ;
+                slovníky:související-nelegislativní-zdroj <https://example.org/doc/2> ;
+                slovníky:má-instance-definované-číselníkem <https://example.org/číselníky/osoby> .
 
-    @Test
-    void exportToJson_HasPojmyArray() throws Exception {
-        Model model = createModelWithConcept();
-        String jsonOutput = jsonExporter.exportToJson(model);
-        JSONObject json = new JSONObject(jsonOutput);
+            <https://example.org/doc/1> a do:digitální-objekt ;
+                dct:title "Norma"@cs ;
+                dct:description "Popis normy"@cs ;
+                schema:url "https://example.org/files/norma.pdf"^^xsd:anyURI .
 
-        assertTrue(json.has("pojmy"), "JSON should have pojmy field");
-        assertInstanceOf(JSONArray.class, json.get("pojmy"), "pojmy should be an array");
-    }
+            <https://example.org/doc/2> a do:digitální-objekt ;
+                dct:title "Metodika"@cs .
 
-    @Test
-    void exportToJson_VocabularyTypesMatchContext() throws Exception {
-        Model model = createBasicVocabularyModel();
-        String jsonOutput = jsonExporter.exportToJson(model);
-        JSONObject json = new JSONObject(jsonOutput);
+            <https://example.org/číselníky/osoby> a l111:číselník ;
+                l111:má-v-nkod-zastřešující-datovou-sadu <https://data.gov.cz/zdroj/datové-sady/1> .
 
-        assertTrue(json.has("typ"), "JSON should have typ field");
-        JSONArray types = json.getJSONArray("typ");
+            pojem:má-sídlo a skos:Concept, slovníky:pojem, owl:ObjectProperty ;
+                skos:inScheme ex: ;
+                skos:prefLabel "má sídlo"@cs .
 
-        for (int i = 0; i < types.length(); i++) {
-            String type = types.getString(i);
-            assertTrue(validVocabularyTypes.contains(type),
-                "Vocabulary type '" + type + "' should be defined in context");
-        }
-    }
+            pojem:má-adresu a skos:Concept, slovníky:pojem, owl:ObjectProperty ;
+                skos:inScheme ex: ;
+                skos:prefLabel "má adresu"@cs ;
+                rdfs:domain pojem:osoba ;
+                rdfs:range pojem:subjekt ;
+                rdfs:subPropertyOf pojem:má-sídlo .
 
-    // ========== Field Name Conformance Tests ==========
+            pojem:rodné-číslo a skos:Concept, slovníky:pojem, owl:DatatypeProperty, l111:neveřejný-údaj ;
+                skos:inScheme ex: ;
+                skos:prefLabel "Rodné číslo"@cs ;
+                rdfs:domain pojem:osoba ;
+                rdfs:range xsd:string ;
+                a104:je-sdílen-v-propojeném-datovém-fondu true ;
+                a104:sdružuje-údaje-vedené-nebo-vytvářené-v-rámci-agendy <https://rpp.example.org/agenda/A1> ;
+                a104:údaje-jsou-v-ais <https://rpp.example.org/ais/42> ;
+                l111:je-vymezen-ustanovením-stanovujícím-jeho-neveřejnost <https://zakon.example.org/sb/133-2000/par/3> ;
+                slovníky:má-způsob-sdílení-údaje <https://data.dia.gov.cz/zdroj/číselníky/způsoby-sdílení-údajů/položky/ppdf> ;
+                slovníky:má-způsob-získání-údaje <https://data.dia.gov.cz/zdroj/číselníky/způsoby-získání-údajů/položky/vlastní> ;
+                slovníky:má-typ-obsahu-údaje <https://data.dia.gov.cz/zdroj/číselníky/typy-obsahu-údajů/položky/osobní> .
+            """;
 
-    @Test
-    void exportToJson_RootLevelFieldsExistInContext() throws Exception {
-        Model model = createBasicVocabularyModel();
-        String jsonOutput = jsonExporter.exportToJson(model);
-        JSONObject json = new JSONObject(jsonOutput);
+    /**
+     * The concept identifier ({@code dct:identifier}) has no term in the OFN context, so a JSON-LD
+     * processor drops it.
+     */
+    private static final Set<String> CONCEPT_KEYS_MISSING_FROM_CONTEXT = Set.of("identifikátor");
 
-        List<String> undefinedFields = new ArrayList<>();
-        @SuppressWarnings("unchecked")
-        Iterator<String> keys = json.keys();
-        while (keys.hasNext()) {
-            String key = keys.next();
-            if (!key.equals("@context") && !key.equals("pojmy") && !validContextFields.contains(key)) {
-                undefinedFields.add(key);
-            }
-        }
+    private final JsonExporter exporter = new JsonExporter();
 
-        if (!undefinedFields.isEmpty()) {
-            System.out.println("WARNING: Root-level fields not in context: " + undefinedFields);
-        }
-    }
-
-    @Test
-    void exportToJson_ConceptFieldsExistInContext() throws Exception {
-        Model model = createModelWithConcept();
-        String jsonOutput = jsonExporter.exportToJson(model);
-        JSONObject json = new JSONObject(jsonOutput);
-
-        if (json.has("pojmy")) {
-            JSONArray concepts = json.getJSONArray("pojmy");
-            for (int i = 0; i < concepts.length(); i++) {
-                JSONObject concept = concepts.getJSONObject(i);
-                List<String> undefinedFields = new ArrayList<>();
-
-                @SuppressWarnings("unchecked")
-                Iterator<String> keys = concept.keys();
-                while (keys.hasNext()) {
-                    String key = keys.next();
-                    if (!validContextFields.contains(key)) {
-                        undefinedFields.add(key);
-                    }
-                }
-
-                if (!undefinedFields.isEmpty()) {
-                    System.out.println("WARNING: Concept fields not in context: " + undefinedFields);
-                }
-            }
-        }
-    }
-
-    // ========== Data Type Tests ==========
-
-    @Test
-    void exportToJson_MultilingualFieldsHaveCorrectStructure() throws Exception {
-        Model model = createModelWithMultilingualConcept();
-        String jsonOutput = jsonExporter.exportToJson(model);
-        JSONObject json = new JSONObject(jsonOutput);
-
-        // Check vocabulary-level multilingual fields
-        if (json.has("název")) {
-            assertInstanceOf(JSONObject.class, json.get("název"), "název should be an object");
-            JSONObject nazev = json.getJSONObject("název");
-            assertTrue(nazev.has("cs") || nazev.has("en"), "název should have language tags");
-        }
-
-        // Check concept-level multilingual fields
-        if (json.has("pojmy")) {
-            JSONArray concepts = json.getJSONArray("pojmy");
-            if (concepts.length() > 0) {
-                JSONObject concept = concepts.getJSONObject(0);
-                if (concept.has("název")) {
-                    assertInstanceOf(JSONObject.class, concept.get("název"), "Concept název should be an object");
-                }
-                if (concept.has("definice")) {
-                    assertInstanceOf(JSONObject.class, concept.get("definice"), "Concept definice should be an object");
-                }
-            }
-        }
+    private static JsonNode read(String json) {
+        return JsonMapper.builder().build().readTree(json);
     }
 
     @Test
-    void exportToJson_TypeFieldsAreArrays() throws Exception {
-        Model model = createModelWithConcept();
-        String jsonOutput = jsonExporter.exportToJson(model);
-        JSONObject json = new JSONObject(jsonOutput);
+    @DisplayName("Every exported field expands to the source triple under the OFN context")
+    void fullVocabularyExpandsToItsTriples() {
+        String json = exporter.exportToJson(Ttl.parseOnt(FULL_VOCABULARY));
 
-        assertInstanceOf(JSONArray.class, json.get("typ"), "Root typ should be an array");
-
-        if (json.has("pojmy")) {
-            JSONArray concepts = json.getJSONArray("pojmy");
-            for (int i = 0; i < concepts.length(); i++) {
-                JSONObject concept = concepts.getJSONObject(i);
-                assertInstanceOf(JSONArray.class, concept.get("typ"), "Concept typ should be an array");
-            }
-        }
+        assertIsomorphic(FULL_VOCABULARY_EXPANDED, JsonLd.expand(json));
     }
 
     @Test
-    void exportToJson_IriFieldsContainValidStrings() throws Exception {
-        Model model = createModelWithConcept();
-        String jsonOutput = jsonExporter.exportToJson(model);
-        JSONObject json = new JSONObject(jsonOutput);
+    @DisplayName("A vocabulary without concepts expands to its header only")
+    void emptyVocabularyExpandsToHeader() {
+        String json = exporter.exportToJson(Ttl.parseOnt(VOCABULARY_HEADER));
 
-        // Check root IRI
-        assertTrue(json.has("iri"), "JSON should have iri field");
-        assertInstanceOf(String.class, json.get("iri"), "iri should be a string");
-        String iri = json.getString("iri");
-        assertTrue(iri.startsWith("http://") || iri.startsWith("https://"),
-            "iri should be a valid URI");
-
-        // Check concept IRIs
-        if (json.has("pojmy")) {
-            JSONArray concepts = json.getJSONArray("pojmy");
-            for (int i = 0; i < concepts.length(); i++) {
-                JSONObject concept = concepts.getJSONObject(i);
-                assertTrue(concept.has("iri"), "Concept should have iri field");
-                String conceptIri = concept.getString("iri");
-                assertTrue(conceptIri.startsWith("http://") || conceptIri.startsWith("https://"),
-                    "Concept iri should be a valid URI");
-            }
-        }
+        assertIsomorphic("""
+                ex: a slovníky:slovník ;
+                    skos:prefLabel "Testovací slovník"@cs ;
+                    dct:description "Popis slovníku"@cs .
+                """, JsonLd.expand(json));
+        assertThat(read(json).get("pojmy")).isEmpty();
     }
 
     @Test
-    void exportToJson_BooleanFieldsAreBoolean() throws Exception {
-        Model model = createModelWithGovernanceMetadata();
-        String jsonOutput = jsonExporter.exportToJson(model);
-        JSONObject json = new JSONObject(jsonOutput);
+    @DisplayName("Root keys, timestamps included, are context terms")
+    void rootKeysAreContextTerms() {
+        String json = exporter.exportToJson(Ttl.parseOnt(VOCABULARY_HEADER + """
+                ex: slovníky:okamžik-vytvoření [ a čas:časový-okamžik ;
+                        čas:datum-a-čas "2025-01-01T10:00:00Z"^^xsd:dateTimeStamp ] ;
+                    slovníky:okamžik-poslední-změny [ a čas:časový-okamžik ;
+                        čas:datum "2025-02-01"^^xsd:date ] .
+                """));
 
-        if (json.has("pojmy")) {
-            JSONArray concepts = json.getJSONArray("pojmy");
-            for (int i = 0; i < concepts.length(); i++) {
-                JSONObject concept = concepts.getJSONObject(i);
-                if (concept.has("je-sdílen-v-ppdf")) {
-                    assertInstanceOf(Boolean.class, concept.get("je-sdílen-v-ppdf"),
-                        "je-sdílen-v-ppdf should be a boolean");
-                }
-            }
-        }
-    }
+        Set<String> undefined = new HashSet<>(read(json).propertyNames());
+        undefined.removeAll(JsonLd.rootTerms());
+        undefined.remove("@context");
 
-    // ========== Concept Type Coverage Tests (Parameterized) ==========
-
-    @ParameterizedTest
-    @MethodSource("provideConceptTypeTestCases")
-    void exportToJson_ConceptTypeMatchesContext(String conceptType, Resource typeResource) throws Exception {
-        Model model = createModelWithConceptOfType(conceptType, typeResource);
-        String jsonOutput = jsonExporter.exportToJson(model);
-        JSONObject json = new JSONObject(jsonOutput);
-
-        assertTrue(json.has("pojmy"), "JSON should have pojmy array");
-        JSONArray concepts = json.getJSONArray("pojmy");
-        assertTrue(concepts.length() > 0, "Should have at least one concept");
-
-        JSONObject concept = concepts.getJSONObject(0);
-        assertTrue(concept.has("typ"), "Concept should have typ field");
-
-        JSONArray types = concept.getJSONArray("typ");
-        List<String> typeList = new ArrayList<>();
-        for (int i = 0; i < types.length(); i++) {
-            typeList.add(types.getString(i));
-        }
-
-        boolean hasExpectedType = typeList.contains(conceptType);
-        assertTrue(hasExpectedType, "Concept should have type: " + conceptType);
-    }
-
-    private static Stream<Arguments> provideConceptTypeTestCases() {
-        OntModel tempModel = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM);
-        return Stream.of(
-            Arguments.of("Pojem", tempModel.getResource(OFN_NAMESPACE + "pojem")),
-            Arguments.of("Třída", OWL.Class),
-            Arguments.of("Vlastnost", OWL.DatatypeProperty),
-            Arguments.of("Vztah", OWL.ObjectProperty),
-            Arguments.of("Typ objektu práva", tempModel.getResource(OFN_NAMESPACE + "typ-objektu-práva")),
-            Arguments.of("Typ subjektu práva", tempModel.getResource(OFN_NAMESPACE + "typ-subjektu-práva")),
-            Arguments.of("Veřejný údaj", tempModel.getResource(OFN_NAMESPACE_LEGAL + "veřejný-údaj")),
-            Arguments.of("Neveřejný údaj", tempModel.getResource(OFN_NAMESPACE_LEGAL + "neveřejný-údaj"))
-        );
-    }
-
-    // ========== Edge Case Tests ==========
-
-    @Test
-    void exportToJson_MultipleLanguagesHandledCorrectly() throws Exception {
-        Model model = createModelWithMultipleLanguages();
-        String jsonOutput = jsonExporter.exportToJson(model);
-        JSONObject json = new JSONObject(jsonOutput);
-
-        if (json.has("pojmy")) {
-            JSONArray concepts = json.getJSONArray("pojmy");
-            if (concepts.length() > 0) {
-                JSONObject concept = concepts.getJSONObject(0);
-                if (concept.has("název")) {
-                    JSONObject nazev = concept.getJSONObject("název");
-                    // Should have both Czech and English
-                    assertTrue(nazev.has("cs") || nazev.has("en"),
-                        "Should have at least one language");
-                }
-            }
-        }
+        assertThat(read(json).propertyNames()).contains("vytvořeno", "aktualizováno");
+        assertThat(undefined).isEmpty();
     }
 
     @Test
-    void exportToJson_ConceptsWithMultipleTypes() throws Exception {
-        Model model = createModelWithMultipleConceptTypes();
-        String jsonOutput = jsonExporter.exportToJson(model);
-        JSONObject json = new JSONObject(jsonOutput);
+    @DisplayName("Concept keys are terms of the pojmy context, apart from the known identifier gap")
+    void conceptKeysAreContextTerms() {
+        String json = exporter.exportToJson(Ttl.parseOnt(FULL_VOCABULARY + """
+                pojem:osoba dct:identifier "OS-1" .
+                """));
 
-        if (json.has("pojmy")) {
-            JSONArray concepts = json.getJSONArray("pojmy");
-            if (concepts.length() > 0) {
-                JSONObject concept = concepts.getJSONObject(0);
-                JSONArray types = concept.getJSONArray("typ");
+        JsonNode concepts = read(json).get("pojmy");
+        assertThat(concepts).hasSize(5);
+        Set<String> undefined = new HashSet<>();
+        concepts.forEach(concept -> undefined.addAll(concept.propertyNames()));
+        undefined.removeAll(JsonLd.conceptTerms());
+        undefined.removeAll(Set.of("iri", "typ"));
 
-                // Should have multiple types
-                assertTrue(types.length() >= 1, "Concept should have at least one type");
-            }
-        }
+        assertThat(undefined).containsExactlyInAnyOrderElementsOf(CONCEPT_KEYS_MISSING_FROM_CONTEXT);
+    }
+
+    @ParameterizedTest(name = "{0} ⇒ vocabulary types {1}")
+    @CsvSource(delimiter = '|', value = {
+            "slovníky:pojem                             | Slovník,Tezaurus",
+            "slovníky:pojem, owl:Class, slovníky:třída  | Slovník,Tezaurus,Konceptuální model",
+            "slovníky:pojem, slovníky:vztah             | Slovník,Tezaurus,Konceptuální model",
+            "slovníky:typ-objektu-práva                 | Slovník,Tezaurus,Konceptuální model",
+            "slovníky:pojem, slovníky:vlastnost         | Slovník,Tezaurus,Konceptuální model",
+            "skos:Concept                               | Slovník",
+    })
+    @DisplayName("Vocabulary types follow the concept roles and are context terms")
+    void vocabularyTypesFollowConceptRoles(String conceptTypes, String expectedTypes) {
+        String json = exporter.exportToJson(Ttl.parseOnt(VOCABULARY_HEADER
+                + "pojem:x a " + conceptTypes + " ; skos:prefLabel \"X\"@cs ."));
+
+        JsonNode types = read(json).get("typ");
+        assertThat(types).map(JsonNode::asString)
+                .containsExactly(expectedTypes.split(","))
+                .allSatisfy(t -> assertThat(JsonLd.rootTerms()).contains(t));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @CsvSource(delimiter = '|', value = {
+            "slovníky:pojem                                 | slovníky:pojem, skos:Concept",
+            "skos:Concept                                   | slovníky:pojem, skos:Concept",
+            "owl:Class                                      | slovníky:pojem, skos:Concept, owl:Class",
+            "slovníky:třída                                 | slovníky:pojem, skos:Concept, owl:Class",
+            "owl:ObjectProperty                             | slovníky:pojem, skos:Concept, owl:ObjectProperty",
+            "slovníky:vztah                                 | slovníky:pojem, skos:Concept, owl:ObjectProperty",
+            "owl:DatatypeProperty                           | slovníky:pojem, skos:Concept, owl:DatatypeProperty",
+            "slovníky:vlastnost                             | slovníky:pojem, skos:Concept, owl:DatatypeProperty",
+            "slovníky:třída, slovníky:typ-subjektu-práva    | slovníky:pojem, skos:Concept, owl:Class, vsgov:typ-subjektu-práva",
+            "slovníky:třída, slovníky:typ-objektu-práva     | slovníky:pojem, skos:Concept, owl:Class, vsgov:typ-objektu-práva",
+            "slovníky:pojem, l111:veřejný-údaj              | slovníky:pojem, skos:Concept, l111:veřejný-údaj",
+            "slovníky:pojem, l111:neveřejný-údaj            | slovníky:pojem, skos:Concept, l111:neveřejný-údaj",
+    })
+    @DisplayName("Concept rdf:type expands through the context's type terms")
+    void conceptTypeExpandsThroughContext(String sourceTypes, String expandedTypes) {
+        String json = exporter.exportToJson(Ttl.parseOnt(VOCABULARY_HEADER
+                + "pojem:x a " + sourceTypes + " ; skos:prefLabel \"X\"@cs ."));
+
+        Model expanded = JsonLd.expand(json);
+        Resource concept = expanded.getResource(Ttl.POJEM + "x");
+        Set<RDFNode> actual = expanded.listObjectsOfProperty(concept, RDF.type).toSet();
+        Model expected = Ttl.parse("pojem:x a " + expandedTypes + " .");
+
+        assertThat(actual).containsExactlyInAnyOrderElementsOf(
+                expected.listObjectsOfProperty(expected.getResource(Ttl.POJEM + "x"), RDF.type).toSet());
     }
 
     @Test
-    void exportToJson_HierarchicalRelationships() throws Exception {
-        Model model = createModelWithHierarchy();
-        String jsonOutput = jsonExporter.exportToJson(model);
-        JSONObject json = new JSONObject(jsonOutput);
-
-        if (json.has("pojmy")) {
-            JSONArray concepts = json.getJSONArray("pojmy");
-            boolean foundHierarchicalField = false;
-
-            for (int i = 0; i < concepts.length(); i++) {
-                JSONObject concept = concepts.getJSONObject(i);
-
-                // Check for hierarchical fields
-                if (concept.has("nadřazená-třída") ||
-                    concept.has("nadřazená-vlastnost") ||
-                    concept.has("nadřazený-vztah") ||
-                    concept.has("nadřazený-pojem")) {
-                    foundHierarchicalField = true;
-                    break;
-                }
-            }
-
-            assertTrue(foundHierarchicalField, "Should find hierarchical relationship fields");
-        }
-    }
-
-    // ========== Helper Methods: RDF Model Builders ==========
-
-    private Model createBasicVocabularyModel() {
-        OntModel ontModel = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM);
-
-        ontModel.createOntology(TEST_NAMESPACE);
-        Resource ontologyResource = ontModel.getResource(TEST_NAMESPACE);
-
-        if (ontologyResource != null) {
-            ontologyResource.addProperty(RDF.type, ontModel.getResource("http://www.w3.org/2002/07/owl#Ontology"));
-            ontologyResource.addProperty(RDF.type, SKOS.ConceptScheme);
-            ontologyResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + "slovník"));
-            ontologyResource.addProperty(SKOS.prefLabel, "Test Vocabulary", "cs");
-        }
-
-        return ontModel;
-    }
-
-    private Model createModelWithConcept() {
-        OntModel ontModel = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM);
-
-        ontModel.createOntology(TEST_NAMESPACE);
-        Resource ontologyResource = ontModel.getResource(TEST_NAMESPACE);
-        if (ontologyResource != null) {
-            ontologyResource.addProperty(RDF.type, ontModel.getResource("http://www.w3.org/2002/07/owl#Ontology"));
-            ontologyResource.addProperty(RDF.type, SKOS.ConceptScheme);
-            ontologyResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + "slovník"));
-            ontologyResource.addProperty(SKOS.prefLabel, "Test Vocabulary", "cs");
-        }
-
-        String conceptURI = TEST_NAMESPACE + "concept1";
-        Resource concept = ontModel.createResource(conceptURI);
-        concept.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + "pojem"));
-        concept.addProperty(SKOS.prefLabel, "Test Concept", "cs");
-
-        return ontModel;
-    }
-
-    private Model createModelWithMultilingualConcept() {
-        OntModel ontModel = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM);
-
-        ontModel.createOntology(TEST_NAMESPACE);
-        Resource ontologyResource = ontModel.getResource(TEST_NAMESPACE);
-        if (ontologyResource != null) {
-            ontologyResource.addProperty(RDF.type, ontModel.getResource("http://www.w3.org/2002/07/owl#Ontology"));
-            ontologyResource.addProperty(RDF.type, SKOS.ConceptScheme);
-            ontologyResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + "slovník"));
-            ontologyResource.addProperty(SKOS.prefLabel, "Testovací slovník", "cs");
-            Property descProperty = ontModel.createProperty("http://purl.org/dc/terms/description");
-            ontologyResource.addProperty(descProperty, "Popis slovníku", "cs");
-        }
-
-        String conceptURI = TEST_NAMESPACE + "concept1";
-        Resource concept = ontModel.createResource(conceptURI);
-        concept.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + "pojem"));
-        concept.addProperty(SKOS.prefLabel, "Testovací pojem", "cs");
-        concept.addProperty(SKOS.definition, "Definice pojmu", "cs");
-
-        return ontModel;
-    }
-
-    private Model createModelWithConceptOfType(String typeName, Resource typeResource) {
-        OntModel ontModel = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM);
-
-        ontModel.createOntology(TEST_NAMESPACE);
-        Resource ontologyResource = ontModel.getResource(TEST_NAMESPACE);
-        if (ontologyResource != null) {
-            ontologyResource.addProperty(RDF.type, ontModel.getResource("http://www.w3.org/2002/07/owl#Ontology"));
-            ontologyResource.addProperty(RDF.type, SKOS.ConceptScheme);
-            ontologyResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + "slovník"));
-            ontologyResource.addProperty(SKOS.prefLabel, "Test Vocabulary", "cs");
-        }
-
-        String conceptURI = TEST_NAMESPACE + "concept_" + typeName.replaceAll("\\s+", "_");
-        Resource concept = ontModel.createResource(conceptURI);
-
-        concept.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + "pojem"));
-
-        String typeURI = typeResource.getURI();
-        if (typeURI != null) {
-            if (typeURI.contains("owl")) {
-                concept.addProperty(RDF.type, typeResource);
-
-                if (typeResource.equals(OWL.Class)) {
-                    concept.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + "třída"));
-                } else if (typeResource.equals(OWL.DatatypeProperty)) {
-                    concept.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + "vlastnost"));
-                } else if (typeResource.equals(OWL.ObjectProperty)) {
-                    concept.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + "vztah"));
-                }
-            } else {
-                concept.addProperty(RDF.type, typeResource);
-
-                if (typeURI.contains("typ-subjektu-práva") || typeURI.contains("typ-objektu-práva")) {
-                    concept.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + "třída"));
-                }
-            }
-        }
-
-        concept.addProperty(SKOS.prefLabel, "Test " + typeName, "cs");
-
-        return ontModel;
-    }
-
-    private Model createModelWithGovernanceMetadata() {
-        OntModel ontModel = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM);
-
-        ontModel.createOntology(TEST_NAMESPACE);
-        Resource ontologyResource = ontModel.getResource(TEST_NAMESPACE);
-        if (ontologyResource != null) {
-            ontologyResource.addProperty(RDF.type, ontModel.getResource("http://www.w3.org/2002/07/owl#Ontology"));
-            ontologyResource.addProperty(RDF.type, SKOS.ConceptScheme);
-            ontologyResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + "slovník"));
-            ontologyResource.addProperty(SKOS.prefLabel, "Test Vocabulary", "cs");
-        }
-
-        String conceptURI = TEST_NAMESPACE + "governanceConcept";
-        Resource concept = ontModel.createResource(conceptURI);
-        concept.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + "pojem"));
-        concept.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + "veřejný-údaj"));
-        concept.addProperty(SKOS.prefLabel, "Veřejný údaj", "cs");
-
-        Property ppdfProperty = ontModel.createProperty(TEST_NAMESPACE + "je-sdílen-v-ppdf");
-        concept.addProperty(ppdfProperty, ontModel.createTypedLiteral(true));
-
-        return ontModel;
-    }
-
-    private Model createModelWithMultipleLanguages() {
-        OntModel ontModel = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM);
-
-        ontModel.createOntology(TEST_NAMESPACE);
-        Resource ontologyResource = ontModel.getResource(TEST_NAMESPACE);
-        if (ontologyResource != null) {
-            ontologyResource.addProperty(RDF.type, ontModel.getResource("http://www.w3.org/2002/07/owl#Ontology"));
-            ontologyResource.addProperty(RDF.type, SKOS.ConceptScheme);
-            ontologyResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + "slovník"));
-            ontologyResource.addProperty(SKOS.prefLabel, "Testovací slovník", "cs");
-            ontologyResource.addProperty(SKOS.prefLabel, "Test Vocabulary", "en");
-        }
-
-        String conceptURI = TEST_NAMESPACE + "multilingualConcept";
-        Resource concept = ontModel.createResource(conceptURI);
-        concept.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + "pojem"));
-        concept.addProperty(SKOS.prefLabel, "Vícejazyčný pojem", "cs");
-        concept.addProperty(SKOS.prefLabel, "Multilingual Concept", "en");
-        concept.addProperty(SKOS.definition, "Definice v češtině", "cs");
-        concept.addProperty(SKOS.definition, "Definition in English", "en");
-
-        return ontModel;
-    }
-
-    private Model createModelWithMultipleConceptTypes() {
-        OntModel ontModel = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM);
-
-        ontModel.createOntology(TEST_NAMESPACE);
-        Resource ontologyResource = ontModel.getResource(TEST_NAMESPACE);
-        if (ontologyResource != null) {
-            ontologyResource.addProperty(RDF.type, ontModel.getResource("http://www.w3.org/2002/07/owl#Ontology"));
-            ontologyResource.addProperty(RDF.type, SKOS.ConceptScheme);
-            ontologyResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + "slovník"));
-            ontologyResource.addProperty(SKOS.prefLabel, "Test Vocabulary", "cs");
-        }
-
-        String conceptURI = TEST_NAMESPACE + "multiTypeConcept";
-        Resource concept = ontModel.createResource(conceptURI);
-        concept.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + "pojem"));
-        concept.addProperty(RDF.type, OWL.Class);
-        concept.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + "třída"));
-        concept.addProperty(SKOS.prefLabel, "Pojem s více typy", "cs");
-
-        return ontModel;
-    }
-
-    private Model createModelWithHierarchy() {
-        OntModel ontModel = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM);
-
-        ontModel.createOntology(TEST_NAMESPACE);
-        Resource ontologyResource = ontModel.getResource(TEST_NAMESPACE);
-        if (ontologyResource != null) {
-            ontologyResource.addProperty(RDF.type, ontModel.getResource("http://www.w3.org/2002/07/owl#Ontology"));
-            ontologyResource.addProperty(RDF.type, SKOS.ConceptScheme);
-            ontologyResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + "slovník"));
-            ontologyResource.addProperty(SKOS.prefLabel, "Test Vocabulary", "cs");
-        }
-
-        String parentURI = TEST_NAMESPACE + "ParentClass";
-        Resource parentClass = ontModel.createResource(parentURI);
-        parentClass.addProperty(RDF.type, OWL.Class);
-        parentClass.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + "třída"));
-        parentClass.addProperty(SKOS.prefLabel, "Nadřazená třída", "cs");
-
-        String childURI = TEST_NAMESPACE + "ChildClass";
-        Resource childClass = ontModel.createResource(childURI);
-        childClass.addProperty(RDF.type, OWL.Class);
-        childClass.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + "třída"));
-        childClass.addProperty(SKOS.prefLabel, "Podřazená třída", "cs");
-        Property subClassOfProperty = ontModel.createProperty("http://www.w3.org/2000/01/rdf-schema#subClassOf");
-        childClass.addProperty(subClassOfProperty, parentClass);
-
-        return ontModel;
+    @DisplayName("A concept typed as both vztah and vlastnost fails the export")
+    void propertyAndRelationshipConflictFailsExport() {
+        assertThatThrownBy(() -> exporter.exportToJson(Ttl.parseOnt(VOCABULARY_HEADER
+                + "pojem:x a slovníky:vztah, slovníky:vlastnost ; skos:prefLabel \"X\"@cs .")))
+                .isInstanceOf(JsonExportException.class)
+                .hasMessageContaining(Ttl.POJEM + "x");
     }
 }
