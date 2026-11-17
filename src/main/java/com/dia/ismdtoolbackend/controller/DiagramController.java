@@ -12,6 +12,7 @@ import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramSummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.MaterializeResultDto;
 import com.dia.ismdtoolbackend.service.DiagramService;
 import com.dia.ismdtoolbackend.service.impl.DiagramConceptUsageService;
+import com.dia.ismdtoolbackend.service.security.OntologySecurityService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -48,6 +49,9 @@ public class DiagramController {
      */
     private final DiagramConceptUsageService conceptUsageService;
 
+    /** Decides who sees staged edits; reading a diagram only needs authentication. */
+    private final OntologySecurityService ontologySecurityService;
+
     @Operation(
             summary = "Seznam diagramů",
             description = "Vrací odlehčený seznam všech diagramů (identita + počet uzlů), např. pro výběr diagramu. "
@@ -55,7 +59,7 @@ public class DiagramController {
                     + "bez něj se vrací všechny. Vyžaduje oprávnění přihlášeného uživatele."
     )
     @GetMapping("/all")
-    @PreAuthorize("@ontologySecurityService.canViewResource()")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponseDto<List<DiagramSummaryDto>>> getAllDiagrams(
             @Parameter(description = "Vrátí jen diagramy slovníků tohoto uživatele. Bez parametru se vrací všechny.")
             @RequestParam(required = false) String userId,
@@ -73,7 +77,7 @@ public class DiagramController {
                     + "Slovník jich může mít více. Vyžaduje oprávnění přihlášeného uživatele."
     )
     @GetMapping("/{ontologySlug}/list")
-    @PreAuthorize("@ontologySecurityService.canViewResource()")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponseDto<List<DiagramSummaryDto>>> listForOntology(
             @PathVariable String ontologySlug,
             @AuthenticationPrincipal SecurityUser securityUser
@@ -90,11 +94,12 @@ public class DiagramController {
                     + "a se strukturou pojmu tak, jak ji daný diagram zobrazuje — definiční obor, obor hodnot a "
                     + "hierarchie, vše resolvované. Pokrývá všechny tři podoby: třída jako uzel, vztah jako hrana, "
                     + "vlastnost jako řádek uvnitř své třídy. Pokud má diagram na pojmu rozpracovanou změnu, je "
-                    + "zohledněna a diagram je označen `pending`. Prázdný seznam znamená, že pojem není na žádném "
+                    + "zohledněna a diagram je označen `pending` — jen pro vlastníka slovníku diagramu nebo administrátora, "
+                    + "ostatním se vrací živý stav. Prázdný seznam znamená, že pojem není na žádném "
                     + "plátně. Vyžaduje oprávnění přihlášeného uživatele."
     )
     @GetMapping("/usage/concept/{conceptSlug}")
-    @PreAuthorize("@ontologySecurityService.canViewResource()")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponseDto<DiagramConceptUsageDto>> getConceptUsage(
             @PathVariable String conceptSlug,
             @AuthenticationPrincipal SecurityUser securityUser
@@ -102,7 +107,8 @@ public class DiagramController {
         log.info("Diagram concept usage requested, conceptSlug: {}, userId: {}",
                 conceptSlug, securityUser.getUserId());
 
-        DiagramConceptUsageDto usage = conceptUsageService.usageForSlug(conceptSlug);
+        DiagramConceptUsageDto usage =
+                conceptUsageService.usageForSlug(conceptSlug, ontologySecurityService::canSeePendingEdits);
         return ResponseEntity.ok().body(
                 ApiResponseDto.success(usage, "Výskyt pojmu na diagramech byl úspěšně načten."));
     }
@@ -177,10 +183,11 @@ public class DiagramController {
     @Operation(
             summary = "Načtení diagramu",
             description = "Vrací render-ready diagram — rozvržení spojené s živým obsahem pojmů, s aplikovanými "
-                    + "overlayi (pending edits) a projektovanými hranami. Vyžaduje oprávnění přihlášeného uživatele."
+                    + "overlayi (pending edits) a projektovanými hranami. Rozpracované změny vidí jen vlastník slovníku "
+                    + "nebo administrátor; ostatní přihlášení uživatelé dostanou živý stav bez nich."
     )
     @GetMapping("/{ontologySlug}/{diagramId}/detail")
-    @PreAuthorize("@ontologySecurityService.canViewResource()")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponseDto<DiagramDto>> getDiagram(
             @PathVariable String ontologySlug,
             @PathVariable Long diagramId,
@@ -189,7 +196,8 @@ public class DiagramController {
         log.info("Diagram read requested, ontologySlug: {}, diagramId: {}, userId: {}",
                 ontologySlug, diagramId, securityUser.getUserId());
 
-        DiagramDto diagram = diagramService.getDiagram(ontologySlug, diagramId);
+        DiagramDto diagram = diagramService.getDiagram(ontologySlug, diagramId,
+                ontologySecurityService.canSeePendingEdits(ontologySlug));
         return ResponseEntity.ok().body(ApiResponseDto.success(diagram, "Diagram byl úspěšně načten."));
     }
 

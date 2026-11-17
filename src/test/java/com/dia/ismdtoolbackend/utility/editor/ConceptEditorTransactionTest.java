@@ -53,7 +53,7 @@ class ConceptEditorTransactionTest extends ConceptEditorTestBase {
 
         assertThatThrownBy(() -> conceptEditor.editConcept(CONCEPT_IRI, failingOnType(cause), model, null))
                 .isExactlyInstanceOf(OntologyException.class)
-                .hasMessage("Failed to edit concept: " + CONCEPT_IRI + " - Simulated failure")
+                .hasMessage("Failed to edit concept: " + CONCEPT_IRI)
                 .hasCause(cause);
     }
 

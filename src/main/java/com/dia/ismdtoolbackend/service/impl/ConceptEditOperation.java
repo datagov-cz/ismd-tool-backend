@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.exception.OntologyExceptions;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
@@ -164,7 +165,7 @@ class ConceptEditOperation {
             throw e;
         } catch (Exception e) {
             log.error("Failed to edit concept", e);
-            throw new OntologyException("Nepodařilo se upravit pojem: " + e.getMessage());
+            throw OntologyExceptions.withCause("Nepodařilo se upravit pojem.", e);
         }
     }
 
@@ -211,7 +212,7 @@ class ConceptEditOperation {
             return conceptMetadataMapper.toDto(savedMetadata);
         } catch (Exception e) {
             log.error("Failed to update concept metadata", e);
-            throw new OntologyException("Nepodařilo se aktualizovat metadata pojmu: " + e.getMessage());
+            throw OntologyExceptions.withCause("Nepodařilo se aktualizovat metadata pojmu.", e);
         }
     }
 

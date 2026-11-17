@@ -507,7 +507,7 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
         assertThatThrownBy(() -> diagramService.materialize(SLUG, elsewhere, null, null))
                 .as("materialize")
                 .isInstanceOf(EntityNotFoundException.class);
-        assertThatThrownBy(() -> diagramService.getDiagram(SLUG, elsewhere))
+        assertThatThrownBy(() -> diagramService.getDiagram(SLUG, elsewhere, true))
                 .as("detail")
                 .isInstanceOf(EntityNotFoundException.class);
         assertThatThrownBy(() -> diagramService.saveLayout(SLUG, elsewhere,

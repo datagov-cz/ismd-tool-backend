@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.controller.dto.ConceptSummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
@@ -65,7 +66,7 @@ public class ConceptServiceImpl implements ConceptService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<ConceptMetadataModel> getAll(String userId, Boolean isPublished) {
+    public List<ConceptSummaryDto> getAll(String userId, Boolean isPublished) {
         return detailReader.getAll(userId, isPublished);
     }
 

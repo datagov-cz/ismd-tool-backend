@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.config.NkdConfig;
+import com.dia.ismdtoolbackend.controller.dto.ConceptSummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.LinkSnapshotDto;
 import com.dia.ismdtoolbackend.service.snapshot.LinkSnapshotAssembler;
@@ -27,7 +28,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
 
 /** Reads concepts: the metadata list, and one concept's detail with references, deviation and link snapshots. */
@@ -49,7 +49,7 @@ class ConceptDetailReader {
     private final NkdConfig nkdConfig;
     private final com.dia.ismdtoolbackend.service.WorkingCopyDeviationService workingCopyDeviationService;
 
-    List<ConceptMetadataModel> getAll(String userId, Boolean isPublished) {
+    List<ConceptSummaryDto> getAll(String userId, Boolean isPublished) {
         List<ConceptMetadataEntity> conceptMetadataEntities;
 
         if (userId != null && isPublished != null) {
@@ -62,23 +62,7 @@ class ConceptDetailReader {
             conceptMetadataEntities = conceptMetadataRepository.findAll();
         }
 
-        List<Long> conceptIds = conceptMetadataEntities.stream()
-                .map(ConceptMetadataEntity::getId)
-                .toList();
-        Map<Long, List<CommentEntity>> commentsByConceptId = conceptIds.isEmpty()
-                ? Map.of()
-                : commentRepository.findByConceptMetadataIdIn(conceptIds).stream()
-                        .collect(Collectors.groupingBy(c -> c.getConceptMetadata().getId()));
-
-        return conceptMetadataEntities.stream()
-                .map(entity -> {
-                    ConceptMetadataModel model = conceptMetadataMapper.toDto(entity);
-                    List<CommentEntity> commentEntities =
-                            commentsByConceptId.getOrDefault(entity.getId(), List.of());
-                    model.setComments(conceptMetadataMapper.commentEntitiesToModels(commentEntities));
-                    return model;
-                })
-                .toList();
+        return conceptMetadataEntities.stream().map(conceptMetadataMapper::toSummary).toList();
     }
 
     GetConceptDto getConceptDetail(String conceptSlug) {

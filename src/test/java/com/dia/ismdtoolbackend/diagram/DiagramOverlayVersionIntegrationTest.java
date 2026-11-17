@@ -190,7 +190,7 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
                 broaderOverlay(CLASS_A, CLASS_B),
                 new DiagramLayoutDto.Overlay(DiagramMapper.NODE_ID_PREFIX + REL,
                         null, CLASS_B, null, null, null));
-        assertThat(diagramService.getDiagram(SLUG, diagramId).pendingEdits()).hasSize(2);
+        assertThat(diagramService.getDiagram(SLUG, diagramId, true).pendingEdits()).hasSize(2);
 
         // null overlays — the FE's ReactFlow-built autosave body.
         DiagramDto afterNull = diagramService.saveLayout(SLUG, diagramId, new DiagramLayoutDto(
@@ -265,6 +265,26 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
                 .as("the all-null entry discarded CLASS_A's overlay").isFalse();
         assertThat(after.pendingEdits().size())
                 .as("the REL's overlay is untouched").isEqualTo(1);
+    }
+
+    /** A reader who does not own the ontology gets the live diagram: no staged edit anywhere in the response. */
+    @Test
+    void readWithoutPendingEdits_rendersLiveContentOnly() {
+        seedCanvas();
+        saveWithOverlays(broaderOverlay(CLASS_A, CLASS_B));
+
+        DiagramDto owner = diagramService.getDiagram(SLUG, diagramId, true);
+        DiagramDto other = diagramService.getDiagram(SLUG, diagramId, false);
+
+        assertThat(owner.pendingEdits()).hasSize(1);
+        assertThat(owner.nodes()).anySatisfy(n -> assertThat(n.data().hasPendingEdits()).isTrue());
+        assertThat(other.pendingEdits()).isEmpty();
+        assertThat(other.nodes()).isNotEmpty().allSatisfy(n -> {
+            assertThat(n.data().hasPendingEdits()).isFalse();
+            assertThat(n.data().pendingEdit()).isNull();
+        });
+        assertThat(other.edges()).noneSatisfy(e -> assertThat(e.data().pending()).isTrue());
+        assertThat(other.version()).isEqualTo(owner.version());
     }
 
     /** A save carrying overlays advances the version and returns the POST-increment value to echo. */
@@ -358,7 +378,7 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
         seedCanvas();
         saveWithOverlays(broaderOverlay(CLASS_A, CLASS_B));
 
-        DiagramDto diagram = diagramService.getDiagram(SLUG, diagramId);
+        DiagramDto diagram = diagramService.getDiagram(SLUG, diagramId, true);
 
         assertThat(diagram.version()).as("the diagram itself carries the version").isNotNull();
         assertThat(diagram.nodes()).isNotEmpty();
@@ -388,7 +408,7 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
                 .satisfies(n -> assertThat(n.collapsed()).isTrue());
 
         // ...and still there on a fresh read, which is what a page reload actually does.
-        DiagramDto reloaded = diagramService.getDiagram(SLUG, diagramId);
+        DiagramDto reloaded = diagramService.getDiagram(SLUG, diagramId, true);
         assertThat(reloaded.nodes())
                 .filteredOn(n -> (DiagramMapper.NODE_ID_PREFIX + CLASS_A).equals(n.id()))
                 .singleElement()
@@ -498,7 +518,7 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
             return ModelFactory.createDefaultModel();
         });
 
-        diagramService.getDiagram(SLUG, diagramId);
+        diagramService.getDiagram(SLUG, diagramId, true);
 
         assertThat(txActiveDuringFetch)
                 .as("the fat read's graph fetch must not run inside the PG transaction").isFalse();

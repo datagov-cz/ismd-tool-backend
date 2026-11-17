@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.controller;
 
+import com.dia.ismdtoolbackend.controller.dto.ConceptSummaryDto;
 import com.dia.ismdtoolbackend.config.security.SecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
@@ -44,10 +45,11 @@ public class ConceptController {
             @PathVariable String slug,
             @AuthenticationPrincipal SecurityUser securityUser
     ) {
-        log.info("Concept create requested, namespace: {}, name: {}, description: {}, userId: {}", conceptCreateModel.getNamespace(), conceptCreateModel.getNameModel(), conceptCreateModel.getDescriptionModel(), securityUser.getUserId());
+        log.info("Concept create requested, ontology: {}, namespace: {}, userId: {}",
+                slug, conceptCreateModel.getNamespace(), securityUser.getUserId());
 
         ConceptMetadataModel createdConcept = conceptService.createConcept(conceptCreateModel, securityUser.getUserId());
-        log.info("Concept create successful: {}", createdConcept);
+        log.info("Concept create successful, conceptId: {}, slug: {}", createdConcept.getId(), createdConcept.getSlug());
 
         return ResponseEntity.ok().body(ApiResponseDto.success(createdConcept, "Pojem úspěšně vytvořen: "));
     }
@@ -107,7 +109,7 @@ public class ConceptController {
         log.info("Concept edit requested, conceptId: {}, userId: {}", conceptId, securityUser.getUserId());
 
         ConceptMetadataModel editedConceptModel = conceptService.editConcept(conceptId, conceptEditModel);
-        log.info("Concept edit successful: {}", editedConceptModel);
+        log.info("Concept edit successful, conceptId: {}, slug: {}", editedConceptModel.getId(), editedConceptModel.getSlug());
 
         return ResponseEntity.ok().body(ApiResponseDto.success(editedConceptModel, "Pojem úspěšně upraven: "));
     }
@@ -117,13 +119,13 @@ public class ConceptController {
             description = "Vrací seznam pojmů s možností filtrování podle uživatele nebo stavu publikace. Veřejný endpoint."
     )
     @GetMapping("/list")
-    public ResponseEntity<ApiResponseDto<List<ConceptMetadataModel>>> getConceptList(
+    public ResponseEntity<ApiResponseDto<List<ConceptSummaryDto>>> getConceptList(
             @RequestParam(required = false) String userId,
             @RequestParam(required = false) Boolean isPublished
     ) {
         log.info("Concept list requested, userId: {}, isPublished: {}", userId, isPublished);
 
-        List<ConceptMetadataModel> concepts = conceptService.getAll(userId, isPublished);
+        List<ConceptSummaryDto> concepts = conceptService.getAll(userId, isPublished);
         return ResponseEntity.ok().body(ApiResponseDto.success(concepts, "Žádost o seznam pojmů proběhla úspěšně."));
     }
 

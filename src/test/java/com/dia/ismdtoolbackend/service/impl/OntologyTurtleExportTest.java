@@ -84,7 +84,8 @@ class OntologyTurtleExportTest {
 
         assertThatThrownBy(() -> export.getTtlContentFromOntology(metadata(GRAPH)))
                 .isInstanceOf(OntologyException.class)
-                .hasMessage("Failed to retrieve TTL content: TDB2 locked");
+                .hasMessage("Failed to retrieve TTL content.")
+                .hasRootCauseMessage("TDB2 locked");
     }
 
     private static OntologyRef metadata(String graphName) {

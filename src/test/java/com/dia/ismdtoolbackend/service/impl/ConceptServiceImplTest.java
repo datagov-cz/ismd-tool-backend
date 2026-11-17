@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.controller.dto.ConceptSummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptModel;
@@ -97,7 +98,7 @@ class ConceptServiceImplTest {
 
     @Test
     void getAllDelegates() {
-        List<ConceptMetadataModel> all = List.of(metadata("a"));
+        List<ConceptSummaryDto> all = List.of(new ConceptSummaryDto());
         when(detailReader.getAll(USER_ID, true)).thenReturn(all);
 
         assertThat(service.getAll(USER_ID, true)).isSameAs(all);

@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.exception.OntologyExceptions;
 import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsResponseDto;
@@ -101,7 +102,7 @@ class OntologyCreateOperation {
                 metadataEntity = createOntologyMetadata(ontologyIRI, userId);
                 ontologyMetadataRepository.flush();
             } catch (Exception e) {
-                throw new OntologyException("Nepodařilo se uložit metadata slovníku: " + e.getMessage());
+                throw OntologyExceptions.withCause("Nepodařilo se uložit metadata slovníku.", e);
             }
             outboxWriter.enqueueCreateGraph(ontologyIRI, graphModel);
             outboxRelayTrigger.nudgeAfterCommit();

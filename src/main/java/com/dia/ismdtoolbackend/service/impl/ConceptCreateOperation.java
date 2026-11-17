@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.exception.OntologyExceptions;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
@@ -78,7 +79,7 @@ class ConceptCreateOperation {
             return conceptResource;
         } catch (Exception e) {
             log.error("Failed to transform concept to Jena Resource", e);
-            throw new OntologyException("Nepodařilo se transformovat pojem: " + e.getMessage());
+            throw OntologyExceptions.withCause("Nepodařilo se transformovat pojem.", e);
         }
     }
 

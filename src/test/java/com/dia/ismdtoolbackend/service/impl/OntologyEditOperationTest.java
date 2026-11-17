@@ -150,7 +150,8 @@ class OntologyEditOperationTest {
 
             assertThatThrownBy(() -> operation.editOntology(ONTOLOGY_ID, editModel))
                     .isInstanceOf(OntologyException.class)
-                    .hasMessageContaining("Nepodařilo se uložit změny");
+                    .hasMessage("Nepodařilo se uložit nový graf do Fuseki.")
+                    .hasRootCauseMessage("Save error");
             verify(ontologyMetadataRepository, never()).save(any());
         }
     }

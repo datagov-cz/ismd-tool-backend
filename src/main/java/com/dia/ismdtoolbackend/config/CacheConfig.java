@@ -50,7 +50,6 @@ public class CacheConfig {
     // (esbirka.cache-budget-mb), with a long TTL — a published version's text is immutable.
     static final long ESBIRKA_CONTENT_TTL_HOURS = 24;
     static final long ESBIRKA_REST_VERSIONS_TTL_MINUTES = 5;
-    static final long ESBIRKA_SUBTREE_MAX_ENTRIES = 200;
 
     static final long CONCEPT_METADATA_TTL_HOURS = 24;
     static final long CONCEPT_METADATA_MAX_ENTRIES = 10_000;
@@ -99,10 +98,10 @@ public class CacheConfig {
         // obsah of their own. Keyed by version IRI, so one fetch serves every container of
         // that znění. Built from fetchVersionContent, which the REST client serves from
         // esbirkaVersionContent, so a version is not fetched twice.
-        mgr.registerCustomCache("esbirkaVersionSubtreeBodies", Caffeine.newBuilder()
-                .expireAfterWrite(ESBIRKA_CONTENT_TTL_HOURS, TimeUnit.HOURS)
-                .maximumSize(ESBIRKA_SUBTREE_MAX_ENTRIES)
-                .build());
+        // Bounded by weight: every container's entry repeats its descendants' text, so one version can
+        // weigh several times the law's own text.
+        mgr.registerCustomCache("esbirkaVersionSubtreeBodies",
+                contentCache(esbirka.getSubtreeCacheBudgetMb() * 1024L * 1024L));
 
         // Backs the referenced-concept resolution engine (ReferencedConceptResolutionEngine),
         // driven inline from the concept-detail flow via ReferencedConceptsEnricher.

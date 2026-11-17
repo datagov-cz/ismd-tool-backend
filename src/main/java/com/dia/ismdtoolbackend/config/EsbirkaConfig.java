@@ -14,6 +14,7 @@ public class EsbirkaConfig {
     private String provider = "sparql";
     /** Heap budget shared by the whole-version content caches. */
     private int cacheBudgetMb = 64;
+    private int subtreeCacheBudgetMb = 32;
     private Sparql sparql = new Sparql();
     private Rest rest = new Rest();
     private Search search = new Search();

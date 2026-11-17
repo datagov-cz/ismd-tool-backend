@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service;
 
+import com.dia.ismdtoolbackend.controller.dto.ConceptSummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
@@ -27,6 +28,6 @@ public interface ConceptService {
      *         so the post-sync detail is read by the caller via {@link #getConceptDetail}
      */
     String syncWorkingCopy(Long conceptId, List<String> fieldsToAccept);
-    List<ConceptMetadataModel> getAll(String userId, Boolean isPublished);
+    List<ConceptSummaryDto> getAll(String userId, Boolean isPublished);
     GetConceptDto getConceptDetail(String conceptSlug) throws OntologyException;
 }

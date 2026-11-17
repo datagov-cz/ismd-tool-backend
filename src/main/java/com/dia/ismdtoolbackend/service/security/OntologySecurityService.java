@@ -63,13 +63,20 @@ public class OntologySecurityService {
                         "Slovník se slugem " + slug + " nebyl nalezen."));
     }
 
-    public boolean canViewResource() {
+    /**
+     * Whether the current user sees a diagram's staged edits: an admin or the ontology's owner. Every
+     * authenticated user may read a diagram, but its pending edits are the owner's draft. A missing
+     * ontology answers {@code false}.
+     */
+    public boolean canSeePendingEdits(String ontologySlug) {
         SecurityUser currentUser = SecurityUtils.getCurrentUser();
-        if (currentUser.isCredentialsNonExpired()) {
+        if (currentUser.isAdmin()) {
             return true;
         }
-        log.warn("User {} credentials expired", currentUser.getUserId());
-        return false;
+        return ontologyMetadataRepository.findBySlug(ontologySlug)
+                .map(OntologyMetadataEntity::getUserId)
+                .map(ownerId -> ownerId.equals(currentUser.getUserId()))
+                .orElse(false);
     }
 
     private boolean isAdminOrOwner(String kind, Object resource, Supplier<String> ownerLookup) {

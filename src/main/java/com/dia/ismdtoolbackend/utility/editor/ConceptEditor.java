@@ -1,12 +1,12 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
+import com.dia.ismdtoolbackend.exception.OntologyExceptions;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.models.concept.*;
 import com.dia.ismdtoolbackend.utility.validation.ConceptInputValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.*;
 import org.apache.jena.vocabulary.SKOS;
 import org.springframework.stereotype.Component;
@@ -120,9 +120,7 @@ public class ConceptEditor {
 
         } catch (Exception e) {
             log.error("Failed to edit concept: {}", conceptIri, e);
-            OntologyException ex = new OntologyException("Failed to edit concept: " + conceptIri + " - " + e.getMessage());
-            ex.initCause(e);
-            throw ex;
+            throw OntologyExceptions.withCause("Failed to edit concept: " + conceptIri, e);
         } finally {
             if (supportsTransactions && !committed) {
                 try {

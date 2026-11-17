@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.config;
 
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.enums.ErrorCode;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -15,9 +16,11 @@ import org.springframework.web.client.RestClientResponseException;
 import java.lang.reflect.Array;
 import java.lang.reflect.Method;
 import java.util.Arrays;
+import java.util.UUID;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.mock;
 
@@ -66,6 +69,54 @@ class GlobalExceptionHandlerErrorCodeTest {
         if (exceptionType != RestClientResponseException.class) {
             assertThat(response.getStatusCode()).isEqualTo(body.getErrorCode().getStatus());
         }
+    }
+
+    private static final String INTERNAL_DETAIL = "ERROR: duplicate key value violates unique constraint uk_x";
+
+    /** An exception whose message stands for internal detail: SQL, a store response, a wrapped cause. */
+    private static final Answer<Object> LEAKY = invocation -> {
+        String name = invocation.getMethod().getName();
+        if (name.equals("getMessage") || name.equals("getLocalizedMessage")) {
+            return INTERNAL_DETAIL;
+        }
+        return MESSAGELESS.answer(invocation);
+    };
+
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("handlers")
+    void noServerErrorRelaysTheExceptionMessage(Method method) throws Exception {
+        Object exception = mock(method.getParameterTypes()[0], LEAKY);
+
+        ResponseEntity<?> response = (ResponseEntity<?>) method.invoke(handler, exception);
+        ApiResponseDto<?> body = (ApiResponseDto<?>) response.getBody();
+
+        if (response.getStatusCode().is5xxServerError()) {
+            assertThat(body.getMessage()).doesNotContain(INTERNAL_DETAIL);
+        }
+    }
+
+    @Test
+    void ownMessage_keepsTheTextOfAnExceptionThisApplicationThrew() {
+        IllegalArgumentException ours = new IllegalArgumentException("Neplatný identifikátor právního aktu.");
+
+        assertThat(ErrorResponses.ownMessage(ours)).isEqualTo("Neplatný identifikátor právního aktu.");
+    }
+
+    @Test
+    void ownMessage_dropsTheTextOfAnExceptionALibraryThrew() {
+        IllegalArgumentException library = catchThrowableOfType(IllegalArgumentException.class,
+                () -> UUID.fromString("not-a-uuid"));
+
+        assertThat(ErrorResponses.ownMessage(library)).isNull();
+    }
+
+    @Test
+    void ownMessage_dropsTheTextWhenTheStackTraceIsMissing() {
+        IllegalArgumentException traceless = new IllegalArgumentException("x");
+        traceless.setStackTrace(new StackTraceElement[0]);
+
+        assertThat(ErrorResponses.ownMessage(traceless)).isNull();
     }
 
     @ParameterizedTest
