@@ -20,7 +20,6 @@ import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 @Slf4j
 public class TurtleFormatterUtil {
 
-    private static final String NADRAZENA_TRIDA = "https://slovník.gov.cz/nadřazená-třída";
     private static final String AGENDOVY_POJEM = "https://slovník.gov.cz/agendový/104/pojem/";
     private static final String SCHEMA = "http://schema.org/";
     private static final String TYP_OBSAHU_UDAJU = "https://slovník.gov.cz/legislativní/sbírka/360/2023/pojem/má-typ-obsahu-údaje";
@@ -71,7 +70,6 @@ public class TurtleFormatterUtil {
             transformDescriptionProperties(ofnModel);
             transformConformsToProperties(ofnModel);
             transformPrivacyProvisionProperties(ofnModel);
-            transformSubClassRelationships(ofnModel);
             ensureConceptSchemeFormat(ofnModel);
 
             log.debug("OFN format transformation completed successfully");
@@ -147,26 +145,6 @@ public class TurtleFormatterUtil {
         }
 
         log.debug("Rewrote {} privacy-provision statements to canonical OFN property", toReplace.size());
-    }
-
-    private static void transformSubClassRelationships(OntModel model) {
-        Property nadrazenaTrida = model.createProperty(NADRAZENA_TRIDA);
-
-        List<Statement> subClassStatements = new ArrayList<>();
-        StmtIterator iter = model.listStatements(null, RDFS.subClassOf, (RDFNode) null);
-        while (iter.hasNext()) {
-            Statement stmt = iter.next();
-            if (stmt.getObject().isURIResource() && !stmt.getObject().equals(RDFS.Resource)) {
-                subClassStatements.add(stmt);
-            }
-        }
-
-        for (Statement stmt : subClassStatements) {
-            Resource subject = stmt.getSubject();
-            Resource object = stmt.getObject().asResource();
-
-            subject.addProperty(nadrazenaTrida, object);
-        }
     }
 
     private static void ensureConceptSchemeFormat(OntModel model) {

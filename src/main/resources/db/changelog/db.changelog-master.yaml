@@ -68,3 +68,5 @@ databaseChangeLog:
       file: db/changelog/v1/022-diagram-concept-usage-indexes.yaml
   - include:
       file: db/changelog/v1/023-diagram-edge-last-known-endpoints.yaml
+  - include:
+      file: db/changelog/v1/024-rdf-migration-log.yaml

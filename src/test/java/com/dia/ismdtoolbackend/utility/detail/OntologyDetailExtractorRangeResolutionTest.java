@@ -9,6 +9,7 @@ import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.ResourceFactory;
+import org.apache.jena.vocabulary.OWL;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
 import org.apache.jena.vocabulary.SKOS;
@@ -19,11 +20,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import org.apache.jena.vocabulary.OWL2;
 
 import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OFN_NAMESPACE;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TRIDA;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VLASTNOST;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VZTAH;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -37,7 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * </ul>
  *
  * Fallback: {@code rangeResolved} returns the {@code Literal} DTO for null/empty/unknown
- * input — mirrors the write-path default in {@code ConceptCreator.addRangeProperty}.
+ * input — mirrors the write-path default in {@code PropertyDataType.rangeIri}.
  */
 @ExtendWith(MockitoExtension.class)
 class OntologyDetailExtractorRangeResolutionTest {
@@ -280,9 +279,9 @@ class OntologyDetailExtractorRangeResolutionTest {
         Model model = ModelFactory.createDefaultModel();
 
         Resource owlOntology = model.createResource("http://www.w3.org/2002/07/owl#Ontology");
-        Resource tridaType = model.createResource(OFN_NAMESPACE + TRIDA);
-        Resource vlastnostType = model.createResource(OFN_NAMESPACE + VLASTNOST);
-        Resource vztahType = model.createResource(OFN_NAMESPACE + VZTAH);
+        Resource tridaType = OWL2.Class;
+        Resource vlastnostType = OWL2.DatatypeProperty;
+        Resource vztahType = OWL2.ObjectProperty;
         Property inScheme = model.createProperty("http://www.w3.org/2004/02/skos/core#inScheme");
 
         Resource ontology = model.createResource(ONTOLOGY_IRI);
@@ -290,17 +289,17 @@ class OntologyDetailExtractorRangeResolutionTest {
         ontology.addProperty(SKOS.prefLabel, "Testovací slovník", "cs");
 
         Resource classConcept = model.createResource(CLASS_IRI);
-        classConcept.addProperty(RDF.type, tridaType);
+        classConcept.addProperty(RDF.type, tridaType).addProperty(RDF.type, OWL.Class);
         classConcept.addProperty(inScheme, ontology);
         classConcept.addProperty(SKOS.prefLabel, "Osoba", "cs");
 
         Resource otherClass = model.createResource(OTHER_CLASS_IRI);
-        otherClass.addProperty(RDF.type, tridaType);
+        otherClass.addProperty(RDF.type, tridaType).addProperty(RDF.type, OWL.Class);
         otherClass.addProperty(inScheme, ontology);
         otherClass.addProperty(SKOS.prefLabel, "Adresa", "cs");
 
         Resource relationship = model.createResource(REL_IRI);
-        relationship.addProperty(RDF.type, vztahType);
+        relationship.addProperty(RDF.type, vztahType).addProperty(RDF.type, OWL.ObjectProperty);
         relationship.addProperty(inScheme, ontology);
         relationship.addProperty(SKOS.prefLabel, "bydlí na", "cs");
         relationship.addProperty(RDFS.domain, classConcept);
@@ -329,7 +328,7 @@ class OntologyDetailExtractorRangeResolutionTest {
                              Resource ontology, Resource domain,
                              String iri, String label, Resource range) {
         Resource property = model.createResource(iri);
-        property.addProperty(RDF.type, vlastnostType);
+        property.addProperty(RDF.type, vlastnostType).addProperty(RDF.type, OWL.DatatypeProperty);
         property.addProperty(inScheme, ontology);
         property.addProperty(SKOS.prefLabel, label, "cs");
         property.addProperty(RDFS.domain, domain);

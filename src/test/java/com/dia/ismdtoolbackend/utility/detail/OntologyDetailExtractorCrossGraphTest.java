@@ -6,6 +6,8 @@ import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.vocabulary.OWL2;
+import org.apache.jena.vocabulary.OWL;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
 import org.apache.jena.vocabulary.SKOS;
@@ -16,9 +18,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OFN_NAMESPACE;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TRIDA;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VLASTNOST;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VZTAH;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -70,6 +69,25 @@ class OntologyDetailExtractorCrossGraphTest {
                 .anySatisfy(r -> assertThat(r.getIri()).isEqualTo(EXTERNAL_RELATIONSHIP_IRI));
     }
 
+    /** Members are matched by their OWL kind. */
+    @Test
+    void classDetail_matchesMembersByOwlKindWithoutAMarker() {
+        Model model = buildPostMergeModel();
+        Resource klass = model.getResource(CLASS_IRI);
+        model.createResource("https://example.org/vocab-b/pojem/výška").addProperty(RDF.type, OWL.DatatypeProperty)
+                .addProperty(SKOS.prefLabel, "výška", "cs").addProperty(RDFS.domain, klass);
+        model.createResource("https://example.org/vocab-b/pojem/vlastní").addProperty(RDF.type, OWL.ObjectProperty)
+                .addProperty(SKOS.prefLabel, "vlastní", "cs").addProperty(RDFS.domain, klass);
+
+        OntologyDetailModel.ConceptDetailModel classDetail =
+                extractor.extractConceptDetail(model, CLASS_IRI, iri -> null);
+
+        assertThat(classDetail.getConceptProperties()).extracting("iri")
+                .contains("https://example.org/vocab-b/pojem/výška");
+        assertThat(classDetail.getConceptRelationships()).extracting("iri")
+                .contains("https://example.org/vocab-b/pojem/vlastní");
+    }
+
     /**
      * A class is the {@code rdfs:range} (not the domain) of a relationship — that relationship
      * surfaces on the class detail, as does one where the class is the domain.
@@ -79,10 +97,10 @@ class OntologyDetailExtractorCrossGraphTest {
         Model model = buildPostMergeModel();
 
         // A relationship whose RANGE is the class (domain points elsewhere).
-        Resource vztahType = model.createResource(OFN_NAMESPACE + VZTAH);
+        Resource vztahType = OWL2.ObjectProperty;
         Resource otherClass = model.createResource("https://example.org/vocab-b/pojem/adresa");
         Resource rangeRel = model.createResource(RANGE_RELATIONSHIP_IRI);
-        rangeRel.addProperty(RDF.type, vztahType);
+        rangeRel.addProperty(RDF.type, vztahType).addProperty(RDF.type, OWL.ObjectProperty);
         rangeRel.addProperty(SKOS.prefLabel, "má bydliště", "cs");
         rangeRel.addProperty(RDFS.domain, otherClass);
         rangeRel.addProperty(RDFS.range, model.createResource(CLASS_IRI));
@@ -104,9 +122,9 @@ class OntologyDetailExtractorCrossGraphTest {
     void classDetail_dedupesRelationshipWithClassAsBothDomainAndRange() {
         Model model = buildPostMergeModel();
 
-        Resource vztahType = model.createResource(OFN_NAMESPACE + VZTAH);
+        Resource vztahType = OWL2.ObjectProperty;
         Resource reflexive = model.createResource("https://example.org/vocab-b/pojem/zná");
-        reflexive.addProperty(RDF.type, vztahType);
+        reflexive.addProperty(RDF.type, vztahType).addProperty(RDF.type, OWL.ObjectProperty);
         reflexive.addProperty(SKOS.prefLabel, "zná", "cs");
         reflexive.addProperty(RDFS.domain, model.createResource(CLASS_IRI));
         reflexive.addProperty(RDFS.range, model.createResource(CLASS_IRI));
@@ -129,22 +147,22 @@ class OntologyDetailExtractorCrossGraphTest {
     private Model buildPostMergeModel() {
         Model model = ModelFactory.createDefaultModel();
 
-        Resource tridaType = model.createResource(OFN_NAMESPACE + TRIDA);
-        Resource vlastnostType = model.createResource(OFN_NAMESPACE + VLASTNOST);
-        Resource vztahType = model.createResource(OFN_NAMESPACE + VZTAH);
+        Resource tridaType = OWL2.Class;
+        Resource vlastnostType = OWL2.DatatypeProperty;
+        Resource vztahType = OWL2.ObjectProperty;
 
         Resource classConcept = model.createResource(CLASS_IRI);
-        classConcept.addProperty(RDF.type, tridaType);
+        classConcept.addProperty(RDF.type, tridaType).addProperty(RDF.type, OWL.Class);
         classConcept.addProperty(SKOS.prefLabel, "Osoba", "cs");
 
         Resource property = model.createResource(EXTERNAL_PROPERTY_IRI);
-        property.addProperty(RDF.type, vlastnostType);
+        property.addProperty(RDF.type, vlastnostType).addProperty(RDF.type, OWL.DatatypeProperty);
         property.addProperty(SKOS.prefLabel, "věk", "cs");
         property.addProperty(RDFS.domain, classConcept);
         property.addProperty(RDFS.range, model.createResource("http://www.w3.org/2001/XMLSchema#integer"));
 
         Resource relationship = model.createResource(EXTERNAL_RELATIONSHIP_IRI);
-        relationship.addProperty(RDF.type, vztahType);
+        relationship.addProperty(RDF.type, vztahType).addProperty(RDF.type, OWL.ObjectProperty);
         relationship.addProperty(SKOS.prefLabel, "bydlí v", "cs");
         relationship.addProperty(RDFS.domain, classConcept);
 

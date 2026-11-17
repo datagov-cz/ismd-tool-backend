@@ -6,6 +6,7 @@ import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.system.Txn;
+import org.apache.jena.vocabulary.OWL;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
 import org.apache.jena.vocabulary.SKOS;
@@ -15,10 +16,6 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
 
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OFN_NAMESPACE;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TRIDA;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VLASTNOST;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VZTAH;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -46,13 +43,33 @@ class ForeignMemberCountTest {
     }
 
     @Test
+    void onlyTheOwlKindCounts() {
+        Model graphA = ModelFactory.createDefaultModel();
+        klass(graphA, CLASS_IRI);
+        Model graphB = ModelFactory.createDefaultModel();
+        graphB.createResource(GRAPH_B + "/pojem/věk").addProperty(RDF.type, OWL.DatatypeProperty)
+                .addProperty(RDFS.domain, graphB.createResource(CLASS_IRI));
+        graphB.createResource(GRAPH_B + "/pojem/bydlí-v").addProperty(RDF.type, OWL.ObjectProperty)
+                .addProperty(RDFS.domain, graphB.createResource(CLASS_IRI));
+        graphB.createResource(GRAPH_B + "/pojem/bez-druhu").addProperty(RDF.type, SKOS.Concept)
+                .addProperty(RDFS.domain, graphB.createResource(CLASS_IRI));
+        store(GRAPH_A, graphA);
+        store(GRAPH_B, graphB);
+
+        ForeignMemberCount count = counts().get(CLASS_IRI);
+
+        assertThat(count.properties()).as("a member without an OWL kind does not count").isEqualTo(1);
+        assertThat(count.relationships()).isEqualTo(1);
+    }
+
+    @Test
     void countsForeignPropertyAndRelationship() {
         Model graphA = ModelFactory.createDefaultModel();
         klass(graphA, CLASS_IRI);
 
         Model graphB = ModelFactory.createDefaultModel();
-        member(graphB, GRAPH_B + "/pojem/věk", VLASTNOST).addProperty(RDFS.domain, graphB.createResource(CLASS_IRI));
-        member(graphB, GRAPH_B + "/pojem/bydlí-v", VZTAH).addProperty(RDFS.domain, graphB.createResource(CLASS_IRI));
+        member(graphB, GRAPH_B + "/pojem/věk", OWL.DatatypeProperty).addProperty(RDFS.domain, graphB.createResource(CLASS_IRI));
+        member(graphB, GRAPH_B + "/pojem/bydlí-v", OWL.ObjectProperty).addProperty(RDFS.domain, graphB.createResource(CLASS_IRI));
 
         store(GRAPH_A, graphA);
         store(GRAPH_B, graphB);
@@ -69,8 +86,8 @@ class ForeignMemberCountTest {
     void ownGraphMembersAreNotCounted() {
         Model graphA = ModelFactory.createDefaultModel();
         klass(graphA, CLASS_IRI);
-        member(graphA, GRAPH_A + "/pojem/jméno", VLASTNOST).addProperty(RDFS.domain, graphA.createResource(CLASS_IRI));
-        member(graphA, GRAPH_A + "/pojem/zná", VZTAH).addProperty(RDFS.domain, graphA.createResource(CLASS_IRI));
+        member(graphA, GRAPH_A + "/pojem/jméno", OWL.DatatypeProperty).addProperty(RDFS.domain, graphA.createResource(CLASS_IRI));
+        member(graphA, GRAPH_A + "/pojem/zná", OWL.ObjectProperty).addProperty(RDFS.domain, graphA.createResource(CLASS_IRI));
 
         store(GRAPH_A, graphA);
 
@@ -88,10 +105,10 @@ class ForeignMemberCountTest {
         klass(graphA, CLASS_IRI);
 
         Model graphB = ModelFactory.createDefaultModel();
-        member(graphB, GRAPH_B + "/pojem/má-bydliště", VZTAH)
+        member(graphB, GRAPH_B + "/pojem/má-bydliště", OWL.ObjectProperty)
                 .addProperty(RDFS.domain, graphB.createResource(OTHER_CLASS_IRI))
                 .addProperty(RDFS.range, graphB.createResource(CLASS_IRI));
-        member(graphB, GRAPH_B + "/pojem/rozsah", VLASTNOST)
+        member(graphB, GRAPH_B + "/pojem/rozsah", OWL.DatatypeProperty)
                 .addProperty(RDFS.domain, graphB.createResource(OTHER_CLASS_IRI))
                 .addProperty(RDFS.range, graphB.createResource(CLASS_IRI));
 
@@ -116,7 +133,7 @@ class ForeignMemberCountTest {
         klass(graphA, CLASS_IRI);
 
         Model graphB = ModelFactory.createDefaultModel();
-        member(graphB, GRAPH_B + "/pojem/zná", VZTAH)
+        member(graphB, GRAPH_B + "/pojem/zná", OWL.ObjectProperty)
                 .addProperty(RDFS.domain, graphB.createResource(CLASS_IRI))
                 .addProperty(RDFS.range, graphB.createResource(CLASS_IRI));
 
@@ -133,11 +150,11 @@ class ForeignMemberCountTest {
         klass(graphA, CLASS_IRI);
 
         Model graphB = ModelFactory.createDefaultModel();
-        member(graphB, GRAPH_B + "/pojem/věk", VLASTNOST).addProperty(RDFS.domain, graphB.createResource(CLASS_IRI));
+        member(graphB, GRAPH_B + "/pojem/věk", OWL.DatatypeProperty).addProperty(RDFS.domain, graphB.createResource(CLASS_IRI));
 
         String graphC = "https://example.org/vocab-c";
         Model modelC = ModelFactory.createDefaultModel();
-        member(modelC, graphC + "/pojem/barva", VLASTNOST).addProperty(RDFS.domain, modelC.createResource(CLASS_IRI));
+        member(modelC, graphC + "/pojem/barva", OWL.DatatypeProperty).addProperty(RDFS.domain, modelC.createResource(CLASS_IRI));
 
         store(GRAPH_A, graphA);
         store(GRAPH_B, graphB);
@@ -153,7 +170,7 @@ class ForeignMemberCountTest {
         klass(graphA, CLASS_IRI);
 
         Model graphB = ModelFactory.createDefaultModel();
-        member(graphB, GRAPH_B + "/pojem/podtřída", TRIDA).addProperty(RDFS.domain, graphB.createResource(CLASS_IRI));
+        member(graphB, GRAPH_B + "/pojem/podtřída", OWL.Class).addProperty(RDFS.domain, graphB.createResource(CLASS_IRI));
 
         store(GRAPH_A, graphA);
         store(GRAPH_B, graphB);
@@ -177,15 +194,13 @@ class ForeignMemberCountTest {
 
     private static Resource klass(Model model, String iri) {
         Resource r = model.createResource(iri);
-        r.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + TRIDA));
+        r.addProperty(RDF.type, OWL.Class);
         r.addProperty(SKOS.prefLabel, "Osoba", "cs");
         return r;
     }
 
-    private static Resource member(Model model, String iri, String ofnType) {
-        Resource r = model.createResource(iri);
-        r.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + ofnType));
-        return r;
+    private static Resource member(Model model, String iri, Resource owlKind) {
+        return model.createResource(iri).addProperty(RDF.type, owlKind);
     }
 
     private void store(String graphName, Model model) {

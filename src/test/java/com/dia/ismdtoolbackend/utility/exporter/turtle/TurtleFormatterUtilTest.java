@@ -17,8 +17,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * {@link TurtleFormatterUtil#transformToOFNFormat} copies the model and applies the OFN rewrites:
  * {@code dct:conformsTo} becomes {@code slovníky:definující-ustanovení}, the internal privacy
- * provision property becomes the canonical one, each named superclass is mirrored as
- * {@code nadřazená-třída}, and the vocabulary is typed as a concept scheme and {@code slovník}.
+ * provision property becomes the canonical one, {@code rdfs:subClassOf} passes through unchanged, and
+ * the vocabulary is typed as a concept scheme and {@code slovník}.
  * Each test compares the whole output with the expected triples.
  */
 @DisplayName("TurtleFormatterUtil.transformToOFNFormat")
@@ -44,12 +44,12 @@ class TurtleFormatterUtilTest {
         @DisplayName("concepts, labels, descriptions and types unchanged")
         void conceptsUnchanged() {
             String input = VOCABULARY + """
-                    pojem:osoba a owl:Class, skos:Concept, slovníky:pojem, slovníky:třída ;
+                    pojem:osoba a owl:Class, skos:Concept, slovníky:pojem ;
                         skos:prefLabel "Osoba"@cs, "Person"@en ;
                         dct:description "Popis osoby"@cs ;
                         skos:inScheme ex: .
-                    pojem:má-adresu a owl:ObjectProperty, slovníky:vztah .
-                    pojem:jméno a owl:DatatypeProperty, slovníky:vlastnost .
+                    pojem:má-adresu a owl:ObjectProperty .
+                    pojem:jméno a owl:DatatypeProperty .
                     pojem:dual a owl:ObjectProperty, owl:DatatypeProperty .
                     <https://example.org/model/SomeClass> a owl:Class ;
                         rdfs:label "Some Class"@en .
@@ -136,29 +136,15 @@ class TurtleFormatterUtilTest {
     }
 
     @Nested
-    @DisplayName("mirrors rdfs:subClassOf as nadřazená-třída")
+    @DisplayName("leaves rdfs:subClassOf alone")
     class SuperClass {
 
         @Test
-        @DisplayName("for each named superclass, keeping the original triple")
-        void namedSuperclassMirrored() {
-            Model result = transform(VOCABULARY + """
+        @DisplayName("no nadřazená-třída copy is added")
+        void subClassOfPassesThrough() {
+            String input = VOCABULARY + """
                     pojem:osoba a owl:Class ;
                         rdfs:subClassOf pojem:subjekt, pojem:entita .
-                    """);
-
-            assertIsomorphic(VOCABULARY + """
-                    pojem:osoba a owl:Class ;
-                        rdfs:subClassOf pojem:subjekt, pojem:entita ;
-                        <https://slovník.gov.cz/nadřazená-třída> pojem:subjekt, pojem:entita .
-                    """, result);
-        }
-
-        @Test
-        @DisplayName("but not for rdfs:Resource")
-        void rdfsResourceNotMirrored() {
-            String input = VOCABULARY + """
-                    pojem:osoba a owl:Class ; rdfs:subClassOf rdfs:Resource .
                     """;
 
             assertIsomorphic(input, transform(input));
@@ -207,7 +193,7 @@ class TurtleFormatterUtilTest {
         @DisplayName("with its type and NKOD dataset after a Turtle round trip")
         void codeListSurvivesRoundTrip() {
             String input = VOCABULARY + """
-                    pojem:typ-cíle a owl:Class, skos:Concept, slovníky:pojem, slovníky:třída ;
+                    pojem:typ-cíle a owl:Class, skos:Concept, slovníky:pojem ;
                         slovníky:má-instance-definované-číselníkem <https://data.mvcr.gov.cz/zdroj/číselníky/typy-cílů> .
                     <https://data.mvcr.gov.cz/zdroj/číselníky/typy-cílů> a l111:číselník ;
                         l111:má-v-nkod-zastřešující-datovou-sadu <https://data.gov.cz/zdroj/datové-sady/1> .

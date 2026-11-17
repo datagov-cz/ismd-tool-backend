@@ -173,7 +173,7 @@ public class NkdSearchProvider implements SearchProvider {
     }
 
     /**
-     * Derives a concept's role from the role markers the concept search query projects.
+     * Derives a concept's role from the OWL kinds the concept search query projects.
      */
     private static ConceptType conceptTypeFromRow(Map<String, String> row) {
         if (row.get("roleTrida") != null) return ConceptType.TRIDA;

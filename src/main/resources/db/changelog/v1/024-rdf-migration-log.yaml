@@ -1,0 +1,53 @@
+databaseChangeLog:
+  # Applied RDF (TDB2) changesets, written by RdfMigrationRunner at startup. See
+  # src/main/resources/db/rdf-changelog/README.md.
+  - changeSet:
+      id: 024-create-rdf-migration-log
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: rdf_migration_log
+                schemaName: ismd_schema
+      changes:
+        - createTable:
+            schemaName: ismd_schema
+            tableName: rdf_migration_log
+            remarks: RDF changesets applied to every ISMD vocabulary graph in TDB2.
+            columns:
+              - column:
+                  name: id
+                  type: VARCHAR(255)
+                  remarks: Changeset file name without .ru, e.g. 001-trida-owl-class.
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: checksum
+                  type: VARCHAR(64)
+                  remarks: SHA-256 of the changeset text; a changed applied file fails startup.
+                  constraints:
+                    nullable: false
+              - column:
+                  name: description
+                  type: VARCHAR(1024)
+              - column:
+                  name: applied_at
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: graphs_processed
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: execution_ms
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropTable:
+            schemaName: ismd_schema
+            tableName: rdf_migration_log

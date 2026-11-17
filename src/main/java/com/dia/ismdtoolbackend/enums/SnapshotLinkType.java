@@ -15,7 +15,7 @@ import java.util.Optional;
  */
 public enum SnapshotLinkType {
 
-    /** Class concept's broader class — writes {@code rdfs:subClassOf} + the {@code nadřazená-třída} hierarchy prop. */
+    /** Class concept's broader class — writes {@code rdfs:subClassOf}. */
     BROADER_CLASS("broaderClass"),
 
     /** Property concept's super-property — writes {@code rdfs:subPropertyOf}. */

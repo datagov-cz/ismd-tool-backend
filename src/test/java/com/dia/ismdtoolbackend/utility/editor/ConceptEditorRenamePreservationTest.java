@@ -3,14 +3,13 @@ package com.dia.ismdtoolbackend.utility.editor;
 import com.dia.ismdtoolbackend.models.NameModel;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.vocabulary.OWL2;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
 import org.apache.jena.vocabulary.SKOS;
 import org.junit.jupiter.api.Test;
 
 import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OFN_NAMESPACE;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VLASTNOST;
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VZTAH;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -32,7 +31,7 @@ class ConceptEditorRenamePreservationTest extends ConceptEditorTestBase {
         Property inScheme = model.createProperty("http://www.w3.org/2004/02/skos/core#inScheme");
 
         Resource existing = model.createResource(oldIri);
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + VLASTNOST));
+        existing.addProperty(RDF.type, OWL2.DatatypeProperty);
         existing.addProperty(SKOS.prefLabel, model.createLiteral("Old property", "cs"));
         existing.addProperty(inScheme, scheme);
 
@@ -78,7 +77,7 @@ class ConceptEditorRenamePreservationTest extends ConceptEditorTestBase {
         Property inScheme = model.createProperty("http://www.w3.org/2004/02/skos/core#inScheme");
 
         Resource existing = model.createResource(oldIri);
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + VZTAH));
+        existing.addProperty(RDF.type, OWL2.ObjectProperty);
         existing.addProperty(SKOS.prefLabel, model.createLiteral("Old rel", "cs"));
         existing.addProperty(inScheme, scheme);
 

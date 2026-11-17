@@ -56,31 +56,23 @@ public enum ConceptType {
     }
 
     /**
-     * Resolves the concept role from a concept's type set. Accepts three shapes,
-     * because callers feed different vocabularies:
-     *   - the OFN role IRI (slovníky:třída/vlastnost/vztah — what ISMD writes),
-     *   - the matching OWL type (owl:Class/DatatypeProperty/ObjectProperty — what
-     *     externally imported or NKD data may carry),
-     *   - the short OFN JSON-LD label (Třída/Vlastnost/Vztah — what the detail
-     *     extractor's ConceptDetailModel.types carries).
-     * Falls back to KONCEPT when no specific role marker is present, so the field
-     * is never null. Throws {@link ConflictingConceptTypeException} when the types
-     * name more than one role.
+     * Resolves the concept role from a concept's type set: the OWL kind
+     * (owl:Class/DatatypeProperty/ObjectProperty, the source of truth in ISMD and NKD data alike) or the
+     * short OFN JSON-LD label (Třída/Vlastnost/Vztah, what ConceptDetailModel.types carries). Falls back
+     * to KONCEPT when neither names a role, so the field is never null. Throws {@link ConflictingConceptTypeException} when the types name more
+     * than one role.
      */
     public static ConceptType fromRdfTypes(List<String> types) {
         if (types == null) {
             return KONCEPT;
         }
-        String tridaIri = VocabularyConstants.OFN_NAMESPACE + VocabularyConstants.TRIDA;
-        String vlastnostIri = VocabularyConstants.OFN_NAMESPACE + VocabularyConstants.VLASTNOST;
-        String vztahIri = VocabularyConstants.OFN_NAMESPACE + VocabularyConstants.VZTAH;
         Set<ConceptType> roles = EnumSet.noneOf(ConceptType.class);
         for (String t : types) {
-            if (tridaIri.equals(t) || OWL_CLASS.equals(t)
+            if (OWL_CLASS.equals(t)
                     || VocabularyConstants.TRIDA_JSON_LD.equals(t)) roles.add(TRIDA);
-            if (vlastnostIri.equals(t) || OWL_DATATYPE_PROPERTY.equals(t)
+            if (OWL_DATATYPE_PROPERTY.equals(t)
                     || VocabularyConstants.VLASTNOST_JSON_LD.equals(t)) roles.add(VLASTNOST);
-            if (vztahIri.equals(t) || OWL_OBJECT_PROPERTY.equals(t)
+            if (OWL_OBJECT_PROPERTY.equals(t)
                     || VocabularyConstants.VZTAH_JSON_LD.equals(t)) roles.add(VZTAH);
         }
         if (roles.size() > 1) {

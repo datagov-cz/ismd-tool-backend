@@ -3,9 +3,13 @@ package com.dia.ismdtoolbackend.service.impl;
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
+import com.dia.ismdtoolbackend.exception.OfnConformanceException;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
+import com.dia.ismdtoolbackend.ofn.ConformanceIssue;
+import com.dia.ismdtoolbackend.ofn.OfnIris;
+import com.dia.ismdtoolbackend.ofn.OfnWriteGate;
 import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
@@ -20,6 +24,8 @@ import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.Statement;
+import org.apache.jena.vocabulary.OWL2;
+import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
 import org.apache.jena.vocabulary.SKOS;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,6 +43,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Predicate;
 
 import static com.dia.ismdtoolbackend.service.impl.ConceptServiceTestData.CONCEPT_ID;
@@ -45,11 +52,14 @@ import static com.dia.ismdtoolbackend.service.impl.ConceptServiceTestData.GRAPH_
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -68,6 +78,7 @@ class ConceptEditOperationTest {
     private NkdSnapshotService nkdSnapshotService;
     private OutboxWriter outboxWriter;
     private OutboxRelayTrigger outboxRelayTrigger;
+    private OfnWriteGate ofnWriteGate;
     private ConceptEditOperation operation;
 
     @Captor private ArgumentCaptor<Predicate<String>> iriTakenCaptor;
@@ -81,7 +92,9 @@ class ConceptEditOperationTest {
 
     @BeforeEach
     void setUp() {
-        ConceptServiceFixture fixture = new ConceptServiceFixture();
+        // The editor is a mock, so the gate is too; OfnSafetyNet.RealGate runs the real one.
+        ofnWriteGate = mock(OfnWriteGate.class);
+        ConceptServiceFixture fixture = new ConceptServiceFixture().ofnWriteGate(ofnWriteGate);
         conceptMetadataRepository = fixture.conceptMetadataRepository();
         jenaTDB2Repository = fixture.jenaTDB2Repository();
         metadataTouchService = fixture.metadataTouchService();
@@ -144,7 +157,7 @@ class ConceptEditOperationTest {
         /** The pre-edit IRI keys the row, so a rename shares an aggregate with the concept's create. */
         @Test
         void keysARenameOnThePreEditIri() {
-            String newIri = "http://example.org/pojem/renamed-concept";
+            String newIri = GRAPH_NAME + "/pojem/renamed-concept";
 
             editCommitting(new EditResult(newIri, true, Set.of(), Set.of()));
 
@@ -237,7 +250,7 @@ class ConceptEditOperationTest {
 
         @Test
         void savesTheNewIriOfARename() {
-            String newIri = "http://example.org/pojem/new-concept";
+            String newIri = GRAPH_NAME + "/pojem/new-concept";
 
             ConceptMetadataModel result = editCommitting(new EditResult(newIri, true, Set.of(), Set.of()));
 
@@ -305,6 +318,33 @@ class ConceptEditOperationTest {
             assertThat(iriTaken.test("http://example.org/pojem/y")).isTrue();
             assertThat(iriTaken.test("http://example.org/pojem/z")).isFalse();
         }
+
+        /** Stored triples without a concept row (an upload-rejected concept kept as a reference) take the IRI. */
+        @Test
+        void anIriWithStoredTriplesIsTaken() {
+            String leftover = GRAPH_NAME + "/pojem/odmítnutý";
+            String referencedOnly = GRAPH_NAME + "/pojem/jen-odkaz";
+            graph.add(graph.createResource(leftover), RDF.type, OWL2.Class);
+            graph.add(conceptResource, RDFS.seeAlso, graph.createResource(referencedOnly));
+            editCommitting(unchanged());
+            verify(conceptEditor).editConcept(anyString(), any(), any(Model.class), anyString(), iriTakenCaptor.capture());
+            Predicate<String> iriTaken = iriTakenCaptor.getValue();
+
+            assertThat(iriTaken.test(leftover)).isTrue();
+            assertThat(iriTaken.test(referencedOnly)).isFalse();
+        }
+
+        @Test
+        void refusesARenameOutsideTheVocabularyNamespace() {
+            String foreignIri = "https://slovník.gov.cz/jiný/pojem/x";
+            givenEditorReturns(new EditResult(foreignIri, true, Set.of(), Set.of()));
+
+            assertThatThrownBy(() -> operation.editConcept(CONCEPT_ID, editModel))
+                    .isInstanceOf(ConceptValidationException.class)
+                    .hasMessageContaining("neleží ve jmenném prostoru");
+            verifyNoInteractions(outboxWriter);
+            verify(conceptMetadataRepository, never()).save(any());
+        }
     }
 
     @Nested
@@ -351,6 +391,125 @@ class ConceptEditOperationTest {
                     .isInstanceOf(OntologyException.class)
                     .hasMessageContaining("nebyl nalezen");
             verify(conceptEditor, never()).editConcept(anyString(), any(), any(), anyString(), any());
+        }
+    }
+
+    @Nested
+    class OfnSafetyNet {
+
+        /** The editor has applied its own delta to the fetched model; the gate sees the NKD delta too. */
+        @Test
+        void checksTheConceptAsItWillBeStoredBeforeQueueing() {
+            graph.add(conceptResource, RDFS.subClassOf, graph.createResource(NKD_SUPERCLASS));
+            Statement copyTriple = graph.createStatement(
+                    graph.createResource(NKD_SUPERCLASS), RDFS.label, graph.createLiteral("NKD copy"));
+            doAnswer(inv -> {
+                OwnerChangeSet changeSet = inv.getArgument(3);
+                changeSet.toAdd.add(copyTriple);
+                return null;
+            }).when(nkdSnapshotService).createOrRefreshSnapshot(any(), eq(NKD_SUPERCLASS), anyString(), any());
+            AtomicBoolean gateSawTheNkdDelta = new AtomicBoolean();
+            doAnswer(inv -> {
+                Model checked = inv.getArgument(0);
+                gateSawTheNkdDelta.set(checked.contains(copyTriple));
+                verifyNoInteractions(outboxWriter);
+                return null;
+            }).when(ofnWriteGate).requireWritableConcepts(any(Model.class), eq(GRAPH_NAME), eq(List.of(CONCEPT_IRI)));
+
+            editCommitting(unchanged());
+
+            assertThat(gateSawTheNkdDelta).isTrue();
+            assertThat(graph.contains(copyTriple)).as("the fetched model is left as the editor made it").isFalse();
+            verify(outboxWriter).enqueueUpsert(eq(GRAPH_NAME), eq(CONCEPT_IRI), anySet(), anySet());
+        }
+
+        @Test
+        void checksTheRenamedIri() {
+            String newIri = GRAPH_NAME + "/pojem/renamed-concept";
+
+            editCommitting(new EditResult(newIri, true, Set.of(), Set.of()));
+
+            verify(ofnWriteGate).requireWritableConcepts(any(Model.class), eq(GRAPH_NAME), eq(List.of(newIri)));
+        }
+
+        @Test
+        void aRefusedEditIsNeitherQueuedNorSaved() {
+            givenEditorReturns(unchanged());
+            OfnConformanceException refusal = new OfnConformanceException(OfnConformanceException.Context.WRITE,
+                    GRAPH_NAME, List.of(new ConformanceIssue(ConformanceIssue.Kind.CONCEPT_EXCLUDED, CONCEPT_IRI,
+                    "pojmy[0]", "no OWL kind")));
+            doThrow(refusal).when(ofnWriteGate).requireWritableConcepts(any(Model.class), anyString(), anyCollection());
+
+            assertThatThrownBy(() -> operation.editConcept(CONCEPT_ID, editModel)).isSameAs(refusal);
+            verifyNoInteractions(outboxWriter, outboxRelayTrigger);
+            verify(conceptMetadataRepository, never()).save(any());
+        }
+
+        /** The real gate on an OFN-shaped concept: the delta decides. */
+        @Nested
+        class RealGate {
+
+            private static final String OWNED_GRAPH = "https://slovník.gov.cz/test-brana-uprav";
+            private static final String OWNED_IRI = OWNED_GRAPH + "/pojem/osoba";
+
+            private Resource owned;
+
+            @BeforeEach
+            void useTheRealGateOnAnOfnConcept() {
+                ConceptServiceFixture fixture = new ConceptServiceFixture()
+                        .conceptMetadataRepository(conceptMetadataRepository)
+                        .jenaTDB2Repository(jenaTDB2Repository)
+                        .conceptEditor(conceptEditor)
+                        .outboxWriter(outboxWriter)
+                        .outboxRelayTrigger(outboxRelayTrigger);
+                operation = fixture.buildEditOperation();
+                concept.setConceptIri(OWNED_IRI);
+                concept.setGraphName(OWNED_GRAPH);
+                graph = ModelFactory.createDefaultModel();
+                owned = graph.createResource(OWNED_IRI)
+                        .addProperty(RDF.type, SKOS.Concept)
+                        .addProperty(RDF.type, graph.createResource(OfnIris.POJEM))
+                        .addProperty(RDF.type, OWL2.Class)
+                        .addProperty(RDF.type, OWL2.Class)
+                        .addProperty(SKOS.inScheme, graph.createResource(OWNED_GRAPH))
+                        .addProperty(SKOS.prefLabel, "Osoba", "cs");
+                when(conceptMetadataRepository.findWithLockById(CONCEPT_ID)).thenReturn(Optional.of(concept));
+                when(jenaTDB2Repository.fetchGraph(OWNED_GRAPH)).thenReturn(graph);
+            }
+
+            private void givenTheEditorAdds(Statement added) {
+                when(conceptEditor.editConcept(eq(OWNED_IRI), eq(editModel), any(Model.class), eq(OWNED_GRAPH), any()))
+                        .thenReturn(new EditResult(OWNED_IRI, false, Set.of(), Set.of(added)));
+            }
+
+            @Test
+            void passesAnOfnDelta() {
+                givenTheEditorAdds(graph.createStatement(owned, SKOS.definition, graph.createLiteral("Definice", "cs")));
+                when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(concept);
+
+                operation.editConcept(CONCEPT_ID, editModel);
+
+                verify(outboxWriter).enqueueUpsert(eq(OWNED_GRAPH), eq(OWNED_IRI), anySet(), anySet());
+            }
+
+            @Test
+            void refusesADeltaThatWouldStoreATextWithoutALanguage() {
+                givenTheEditorAdds(graph.createStatement(owned, SKOS.definition, "bez jazyka"));
+
+                assertThatThrownBy(() -> operation.editConcept(CONCEPT_ID, editModel))
+                        .isInstanceOf(OfnConformanceException.class);
+                verifyNoInteractions(outboxWriter);
+                verify(conceptMetadataRepository, never()).save(any());
+            }
+
+            @Test
+            void refusesADeltaThatWouldGiveTheConceptASecondOwlKind() {
+                givenTheEditorAdds(graph.createStatement(owned, RDF.type, OWL2.ObjectProperty));
+
+                assertThatThrownBy(() -> operation.editConcept(CONCEPT_ID, editModel))
+                        .isInstanceOf(OfnConformanceException.class);
+                verifyNoInteractions(outboxWriter);
+            }
         }
     }
 

@@ -4,7 +4,7 @@ import org.apache.jena.rdf.model.*;
 import org.apache.jena.vocabulary.RDF;
 
 import java.util.HashSet;
-import java.util.Objects;
+import java.util.List;
 import java.util.Set;
 
 import static com.dia.ismdtoolbackend.utility.editor.RdfLangValues.removeAllByPredicate;
@@ -52,18 +52,22 @@ final class ConceptEditStatements {
                         stmt.getObject().equals(typeValue));
     }
 
-    /** Rewrites a boolean literal property when the value differs; {@code null} leaves it untouched. */
+    /**
+     * Writes the property as one {@code xsd:boolean} literal; {@code null} leaves it untouched. A stored
+     * value that is already exactly that literal stages nothing; any other shape (an {@code xsd:string}
+     * "true", several values) is rewritten.
+     */
     static void updateBooleanLiteral(Resource newConcept, Property property, Boolean newValue,
                                      Resource oldConcept, Model model, Set<Statement> toRemove,
                                      Set<Statement> toAdd) {
         if (newValue == null) return;
 
-        String oldValue = getPropertyValue(oldConcept, property);
-        String newValueStr = newValue.toString();
-
-        if (!Objects.equals(oldValue, newValueStr)) {
-            removeAllByPredicate(newConcept, property, toRemove, toAdd);
-            toAdd.add(model.createStatement(newConcept, property, model.createLiteral(newValueStr)));
+        Literal wanted = model.createTypedLiteral(newValue);
+        List<RDFNode> current = oldConcept.listProperties(property).mapWith(Statement::getObject).toList();
+        if (current.size() == 1 && current.get(0).equals(wanted)) {
+            return;
         }
+        removeAllByPredicate(newConcept, property, toRemove, toAdd);
+        toAdd.add(model.createStatement(newConcept, property, wanted));
     }
 }

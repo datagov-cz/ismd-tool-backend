@@ -10,6 +10,7 @@ import org.apache.jena.query.ReadWrite;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.vocabulary.OWL2;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.SKOS;
 import org.junit.jupiter.api.Test;
@@ -38,7 +39,7 @@ class ConceptEditorTransactionTest extends ConceptEditorTestBase {
     private static void seedClass(Model target, String label) {
         Resource concept = target.createResource(CONCEPT_IRI);
         concept.addProperty(SKOS.prefLabel, target.createLiteral(label, "cs"));
-        concept.addProperty(RDF.type, target.getResource(OFN_NAMESPACE + TRIDA));
+        concept.addProperty(RDF.type, OWL2.Class);
     }
 
     private static Model copyOf(Model source) {

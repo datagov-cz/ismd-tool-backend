@@ -1,7 +1,7 @@
 package com.dia.ismdtoolbackend.utility.creator;
 
+import com.dia.ismdtoolbackend.enums.PropertyDataType;
 import com.dia.ismdtoolbackend.models.concept.*;
-import com.dia.ismdtoolbackend.utility.DataTypeConverter;
 import com.dia.ismdtoolbackend.utility.URIGenerator;
 import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import lombok.extern.slf4j.Slf4j;
@@ -66,10 +66,6 @@ final class ConceptRelationWriter {
     }
 
     void addBroaderConcept(Resource resource, String broaderConcept) {
-        Property hierarchyProperty = ontModel.createProperty(
-                uriGenerator.getEffectiveNamespace() + "nadřazená-třída");
-
-
         String trimmedConcept = broaderConcept.trim();
         if (!trimmedConcept.isEmpty()) {
             String broaderURI;
@@ -79,7 +75,6 @@ final class ConceptRelationWriter {
                 broaderURI = uriGenerator.generateConceptURI(trimmedConcept, null);
             }
             resource.addProperty(RDFS.subClassOf, ontModel.createResource(broaderURI));
-            resource.addProperty(hierarchyProperty, ontModel.createResource(broaderURI));
         }
     }
 
@@ -124,26 +119,8 @@ final class ConceptRelationWriter {
         }
     }
 
+    /** Writes the Vlastnost's datatype range; see {@link PropertyDataType#rangeIri}. */
     void addRangeInformation(Resource propertyResource, String dataType) {
-        if (dataType == null || dataType.trim().isEmpty()) {
-            propertyResource.addProperty(RDFS.range, ontModel.createResource(RDFS.Literal.getURI()));
-            return;
-        }
-
-        String trimmedDataType = dataType.trim();
-
-        if (trimmedDataType.startsWith("xsd:")) {
-            String localName = trimmedDataType.substring(4);
-            if (DataTypeConverter.isValidXSDType(localName)) {
-                propertyResource.addProperty(RDFS.range,
-                        ontModel.createResource("http://www.w3.org/2001/XMLSchema#" + localName));
-                return;
-            }
-        } else if (DataTypeConverter.isUri(trimmedDataType)) {
-            propertyResource.addProperty(RDFS.range, ontModel.createResource(trimmedDataType));
-            return;
-        }
-
-        propertyResource.addProperty(RDFS.range, ontModel.createResource(RDFS.Literal.getURI()));
+        propertyResource.addProperty(RDFS.range, ontModel.createResource(PropertyDataType.rangeIri(dataType)));
     }
 }
