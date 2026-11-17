@@ -6,6 +6,7 @@ import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.service.ConceptService;
+import com.dia.ismdtoolbackend.service.snapshot.NkdLookup;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
@@ -26,6 +27,7 @@ public class ConceptServiceImpl implements ConceptService {
     private final ConceptDeleteOperation deleteOperation;
     private final WorkingCopySyncOperation syncOperation;
     private final ConceptDetailReader detailReader;
+    private final ConceptEditTransaction editTransaction;
 
     @Override
     @Transactional
@@ -50,11 +52,15 @@ public class ConceptServiceImpl implements ConceptService {
         deleteOperation.deleteConcept(conceptId);
     }
 
+    /**
+     * NKD first, outside any transaction, then the edit in a bounded one ({@link ConceptEditTransaction}), so
+     * NKD latency never holds the row lock or a connection.
+     */
     @Override
-    @Transactional
     @CacheEvict(cacheNames = WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, allEntries = true)
     public ConceptMetadataModel editConcept(Long conceptId, ConceptEditModel conceptEditModel) {
-        return editOperation.editConcept(conceptId, conceptEditModel);
+        NkdLookup nkd = editOperation.prefetchNkd(conceptId, conceptEditModel);
+        return editTransaction.run(() -> editOperation.editConcept(conceptId, conceptEditModel, nkd));
     }
 
     @Override

@@ -244,7 +244,8 @@ class WorkingCopySyncReadAfterCommitIntegrationTest extends PostgresIntegrationT
                 ConceptMetadataMapper mapper, InMemoryTdb2 tdb2, OntologyDetailExtractor detailExtractor,
                 NkdSparqlClient nkdSparqlClient, OutboxWriter writer, OutboxEntryRepository outboxRepository,
                 OutboxRelayTrigger trigger, MetadataTouchService touchService,
-                WorkingCopyDeviationServiceImpl deviationService) {
+                WorkingCopyDeviationServiceImpl deviationService,
+                org.springframework.transaction.PlatformTransactionManager txManager) {
             return new ConceptServiceFixture()
                     .conceptMetadataRepository(conceptRepo)
                     .ontologyMetadataRepository(ontologyRepo)
@@ -259,6 +260,7 @@ class WorkingCopySyncReadAfterCommitIntegrationTest extends PostgresIntegrationT
                     .outboxRepository(outboxRepository)
                     .outboxRelayTrigger(trigger)
                     .workingCopyDeviationService(deviationService)
+                    .editTransaction(new com.dia.ismdtoolbackend.service.impl.ConceptEditTransaction(txManager))
                     .build();
         }
     }

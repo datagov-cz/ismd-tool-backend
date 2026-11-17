@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.service;
 
+import org.junit.jupiter.api.extension.ExtendWith;
+import com.dia.ismdtoolbackend.testsupport.security.SignedInAdmin;
 import com.dia.ismdtoolbackend.config.NkdConfig;
 import com.dia.ismdtoolbackend.entity.*;
 import com.dia.ismdtoolbackend.exception.JenaTDB2Exception;
@@ -49,6 +51,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
 @OutboxFlowIT
+@ExtendWith(SignedInAdmin.class)
 class OntologyCreateWithConceptsIntegrationTest extends OutboxFlowTestBase {
     @Autowired OntologyService service;
     @Autowired ConceptService conceptService;

@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.config;
 
+import com.dia.ismdtoolbackend.service.search.OntologyGraphNames;
+import org.springframework.cache.transaction.TransactionAwareCacheManagerProxy;
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.service.impl.WorkingCopyDeviationServiceImpl;
 import com.github.benmanes.caffeine.cache.Caffeine;
@@ -50,6 +52,8 @@ public class CacheConfig {
     // (esbirka.cache-budget-mb), with a long TTL — a published version's text is immutable.
     static final long ESBIRKA_CONTENT_TTL_HOURS = 24;
     static final long ESBIRKA_REST_VERSIONS_TTL_MINUTES = 5;
+
+    static final long ONTOLOGY_GRAPH_NAMES_TTL_MINUTES = 10;
 
     static final long CONCEPT_METADATA_TTL_HOURS = 24;
     static final long CONCEPT_METADATA_MAX_ENTRIES = 10_000;
@@ -137,7 +141,16 @@ public class CacheConfig {
                 .maximumSize(NKD_PUBLISHED_MAX_ENTRIES)
                 .build());
 
-        return mgr;
+        // Every ontology's graph name, the search scope; evicted by every ontology write.
+        mgr.registerCustomCache(OntologyGraphNames.CACHE_NAME, Caffeine.newBuilder()
+                .expireAfterWrite(ONTOLOGY_GRAPH_NAMES_TTL_MINUTES, TimeUnit.MINUTES)
+                .maximumSize(1)
+                .build());
+
+        // Puts and evictions issued inside a transaction apply after it commits, so a reader cannot
+        // re-cache pre-commit data between an eviction and the commit, whichever of the cache and
+        // transaction interceptors runs first.
+        return new TransactionAwareCacheManagerProxy(mgr);
     }
 
     private static com.github.benmanes.caffeine.cache.Cache<Object, Object> contentCache(long maxBytes) {

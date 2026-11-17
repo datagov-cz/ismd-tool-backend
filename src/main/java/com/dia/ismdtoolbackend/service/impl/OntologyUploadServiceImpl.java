@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.service.search.OntologyGraphNames;
 import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyUploadResultDto;
 import com.dia.ismdtoolbackend.controller.dto.RejectedConceptDto;
@@ -60,7 +61,8 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
 
     @Override
     @CacheEvict(cacheNames = {ReferencedConceptResolutionEngine.CACHE_NAME,
-            WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE}, allEntries = true)
+            WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, OntologyGraphNames.CACHE_NAME},
+            allEntries = true)
     public OntologyUploadResultDto uploadFromFile(MultipartFile file, String userId,
                                                   NormalizeMode normalizeMode,
                                                   List<String> conceptsToNormalize) throws IOException, OntologyUploadException {

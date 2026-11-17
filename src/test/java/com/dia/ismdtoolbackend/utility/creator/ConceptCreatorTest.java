@@ -213,7 +213,7 @@ class ConceptCreatorTest {
         void broaderConceptsAreWrittenAsSubClassOfOnly() {
             Resource created = conceptCreator.createSingleConcept(ConceptModels.trida("Dítě", m -> {
                 m.setType("objekt");
-                m.setBroaderConcept(List.of("Rodič jedna", "https://example.org/pojem/rodič-dva", " "));
+                m.setBroaderConcept(List.of(DEFAULT_NS + "pojem/rodič-jedna", "https://example.org/pojem/rodič-dva", " "));
             }));
 
             List<String> expected = List.of(DEFAULT_NS + "pojem/rodič-jedna", "https://example.org/pojem/rodič-dva");
@@ -504,7 +504,7 @@ class ConceptCreatorTest {
             PropertyConceptModel model = ConceptModels.vlastnost("Hmotnost", m -> {
                 m.setOntologyGraphName(GRAPH);
                 m.setDataType("xsd:double");
-                m.setDomain("Vozidlo");
+                m.setDomain(GRAPH + "/pojem/vozidlo");
                 m.setSuperProperty(List.of("https://example.org/pojem/velicina", " "));
                 m.setIsPublic(true);
             });
@@ -586,8 +586,8 @@ class ConceptCreatorTest {
             RelationshipConceptModel model = ConceptModels.vztah("Řídí", m -> {
                 m.setOntologyGraphName(GRAPH + "/");
                 m.setDomain("https://example.org/pojem/řidič");
-                m.setRange("Vozidlo");
-                m.setSuperRelation(List.of("Ovládá"));
+                m.setRange(GRAPH + "/pojem/vozidlo");
+                m.setSuperRelation(List.of(GRAPH + "/pojem/ovládá"));
                 m.setIsPublic(true);
             });
 

@@ -36,6 +36,8 @@ public class EsbirkaConfig {
         private long requestDeadlineMs = 60000;
         private long minRequestSpacingMs = 40;
         private int maxInFlight = 4;
+        /** Longest wait for a free call slot; the rest of the request deadline does not extend it. */
+        private long maxSlotWaitMs = 30000;
         private Retry retry = new Retry();
         private CircuitBreaker circuitBreaker = new CircuitBreaker();
     }

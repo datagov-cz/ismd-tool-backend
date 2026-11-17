@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service;
 
+import com.dia.ismdtoolbackend.service.snapshot.NkdLookup;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.NkdConceptSnapshotEntity;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
@@ -29,6 +30,10 @@ public interface NkdSnapshotService {
      */
     NkdConceptSnapshotEntity createOrRefreshSnapshot(ConceptMetadataEntity owner, String nkdIri,
                                                      String linkType, OwnerChangeSet ownerChangeSet);
+
+    /** As above, reading NKD through {@code nkd}; a concept edit passes what it fetched before its transaction. */
+    NkdConceptSnapshotEntity createOrRefreshSnapshot(ConceptMetadataEntity owner, String nkdIri,
+                                                     String linkType, OwnerChangeSet ownerChangeSet, NkdLookup nkd);
 
     /**
      * Compares the stored snapshot against live NKD and caches the result on the row

@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.testsupport.security.SignedInAdmin;
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
@@ -66,6 +67,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@ExtendWith(SignedInAdmin.class)
 class ConceptEditOperationTest {
 
     private static final String NKD_SUPERCLASS = "https://slovník.gov.cz/agendový/104/pojem/nadrazena";
@@ -174,7 +176,7 @@ class ConceptEditOperationTest {
                 OwnerChangeSet changeSet = inv.getArgument(3);
                 changeSet.toAdd.add(copyTriple);
                 return null;
-            }).when(nkdSnapshotService).createOrRefreshSnapshot(any(), eq(NKD_SUPERCLASS), anyString(), any());
+            }).when(nkdSnapshotService).createOrRefreshSnapshot(any(), eq(NKD_SUPERCLASS), anyString(), any(), any());
 
             editCommitting(unchanged());
 
@@ -407,7 +409,7 @@ class ConceptEditOperationTest {
                 OwnerChangeSet changeSet = inv.getArgument(3);
                 changeSet.toAdd.add(copyTriple);
                 return null;
-            }).when(nkdSnapshotService).createOrRefreshSnapshot(any(), eq(NKD_SUPERCLASS), anyString(), any());
+            }).when(nkdSnapshotService).createOrRefreshSnapshot(any(), eq(NKD_SUPERCLASS), anyString(), any(), any());
             AtomicBoolean gateSawTheNkdDelta = new AtomicBoolean();
             doAnswer(inv -> {
                 Model checked = inv.getArgument(0);

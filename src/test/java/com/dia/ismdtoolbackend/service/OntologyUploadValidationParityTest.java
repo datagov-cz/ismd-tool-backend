@@ -120,7 +120,7 @@ class OntologyUploadValidationParityTest {
     }
 
     private OntologyUploadResultDto upload(String turtle) throws Exception {
-        when(file.getBytes()).thenReturn((PREFIXES + turtle).getBytes(StandardCharsets.UTF_8));
+        when(file.getInputStream()).thenAnswer(inv -> new java.io.ByteArrayInputStream((PREFIXES + turtle).getBytes(StandardCharsets.UTF_8)));
         return service.uploadFromFile(file, "user", null, null);
     }
 
@@ -316,7 +316,7 @@ class OntologyUploadValidationParityTest {
                 .addProperty(RDF.type, graph.createResource(OfnIris.SLOVNIK));
         StringWriter turtle = new StringWriter();
         graph.write(turtle, "TTL");
-        when(file.getBytes()).thenReturn(turtle.toString().getBytes(StandardCharsets.UTF_8));
+        when(file.getInputStream()).thenAnswer(inv -> new java.io.ByteArrayInputStream(turtle.toString().getBytes(StandardCharsets.UTF_8)));
 
         OntologyUploadResultDto uploaded = service.uploadFromFile(file, "user", null, null);
 

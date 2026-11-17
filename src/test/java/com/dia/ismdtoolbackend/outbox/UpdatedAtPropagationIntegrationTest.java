@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.outbox;
 
+import org.junit.jupiter.api.extension.ExtendWith;
+import com.dia.ismdtoolbackend.testsupport.security.SignedInAdmin;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptModel;
 import com.dia.ismdtoolbackend.models.NameModel;
@@ -32,6 +34,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * commits and the next read sees a committed timestamp.
  */
 @OutboxFlowIT
+@ExtendWith(SignedInAdmin.class)
 class UpdatedAtPropagationIntegrationTest extends OutboxFlowTestBase {
 
     private static final String GRAPH = "https://slovnik.gov.cz/g";

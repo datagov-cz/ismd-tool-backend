@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import com.dia.ismdtoolbackend.exception.OntologyExceptions;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
@@ -112,6 +113,11 @@ class ConceptCreateOperation {
         ConceptMetadataEntity savedEntity;
         try {
             savedEntity = conceptMetadataRepository.save(entity);
+        } catch (DataIntegrityViolationException e) {
+            // A concurrent create took the IRI or slug between rejectIfConceptIriTaken and this insert.
+            log.info("Rejecting concept creation, IRI or slug taken concurrently: {}", conceptUri);
+            throw new ConceptValidationException(
+                    "Pojem se stejným názvem již v ontologii existuje: " + conceptUri);
         } catch (Exception e) {
             log.error("Failed to save concept metadata for {}", conceptUri, e);
             throw new OntologyException("Nepodařilo se uložit metadata pojmu.");

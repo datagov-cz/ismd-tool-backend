@@ -103,7 +103,7 @@ class NkdLinkReconcilerTest {
             reconciler.reconcileNkdLinks(owner, graph);
 
             verify(nkdSnapshotService).createOrRefreshSnapshot(
-                    eq(owner), eq(NKD_SUPERCLASS), eq(SnapshotLinkType.BROADER_CLASS.value()), any());
+                    eq(owner), eq(NKD_SUPERCLASS), eq(SnapshotLinkType.BROADER_CLASS.value()), any(), any());
         }
 
         @Test
@@ -112,7 +112,7 @@ class NkdLinkReconcilerTest {
 
             reconciler.reconcileNkdLinks(owner, graph);
 
-            verify(nkdSnapshotService, never()).createOrRefreshSnapshot(any(), anyString(), anyString(), any());
+            verify(nkdSnapshotService, never()).createOrRefreshSnapshot(any(), anyString(), anyString(), any(), any());
         }
 
         @Test
@@ -122,7 +122,7 @@ class NkdLinkReconcilerTest {
 
             reconciler.reconcileNkdLinks(owner, graph);
 
-            verify(nkdSnapshotService, never()).createOrRefreshSnapshot(any(), anyString(), anyString(), any());
+            verify(nkdSnapshotService, never()).createOrRefreshSnapshot(any(), anyString(), anyString(), any(), any());
         }
 
         @Test
@@ -135,7 +135,7 @@ class NkdLinkReconcilerTest {
             reconciler.reconcileNkdLinks(owner, graph);
 
             verify(nkdSnapshotService).removeSnapshotAndLink(eq(stale), anySet(), any());
-            verify(nkdSnapshotService, never()).createOrRefreshSnapshot(any(), anyString(), anyString(), any());
+            verify(nkdSnapshotService, never()).createOrRefreshSnapshot(any(), anyString(), anyString(), any(), any());
         }
 
         @Test
@@ -146,7 +146,7 @@ class NkdLinkReconcilerTest {
             reconciler.reconcileNkdLinks(owner, graph);
 
             verify(nkdSnapshotService).removeSnapshotAndLink(eq(stale), anySet(), any());
-            verify(nkdSnapshotService, never()).createOrRefreshSnapshot(any(), anyString(), anyString(), any());
+            verify(nkdSnapshotService, never()).createOrRefreshSnapshot(any(), anyString(), anyString(), any(), any());
         }
     }
 
@@ -162,7 +162,7 @@ class NkdLinkReconcilerTest {
             assertThatThrownBy(() -> reconciler.reconcileNkdLinks(owner, graph))
                     .isInstanceOf(OntologyValidationException.class)
                     .hasMessageContaining(NKD_SUPERCLASS);
-            verify(nkdSnapshotService, never()).createOrRefreshSnapshot(any(), anyString(), anyString(), any());
+            verify(nkdSnapshotService, never()).createOrRefreshSnapshot(any(), anyString(), anyString(), any(), any());
         }
 
         @Test
@@ -200,6 +200,51 @@ class NkdLinkReconcilerTest {
 
             verify(nkdSparqlClient).getPublishedResourcesList(askedCaptor.capture());
             assertThat(Set.copyOf(askedCaptor.getValue())).containsExactly(FOREIGN);
+        }
+    }
+
+    /** A concept edit asks NKD before its transaction; the reconcile inside it then asks NKD nothing. */
+    @Nested
+    class Prefetch {
+
+        @Test
+        void asksNkdOnlyAboutExternalIrisThatAreNotOwnedLocally() {
+            givenLocallyOwned(NKD_SUPERCLASS);
+            when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(List.of());
+
+            reconciler.prefetch(GRAPH_NAME, List.of(NKD_SUPERCLASS, FOREIGN, GRAPH_NAME + "/pojem/own", " "));
+
+            verify(nkdSparqlClient).getPublishedResourcesList(askedCaptor.capture());
+            assertThat(askedCaptor.getValue()).containsExactly(FOREIGN);
+            verify(nkdSparqlClient).fetchPublishedConceptWithScheme(FOREIGN);
+            verify(nkdSparqlClient, never()).fetchPublishedConceptWithScheme(NKD_SUPERCLASS);
+        }
+
+        @Test
+        void reconcileWithAPrefetchedLookupCallsNkdNever_andStillRejects() {
+            when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(List.of(FOREIGN));
+            com.dia.ismdtoolbackend.service.snapshot.NkdLookup nkd = reconciler.prefetch(GRAPH_NAME, List.of(FOREIGN));
+            org.mockito.Mockito.clearInvocations(nkdSparqlClient);
+            link(RDFS.domain, FOREIGN);
+
+            assertThatThrownBy(() -> reconciler.reconcileNkdLinks(owner, graph, nkd))
+                    .isInstanceOf(OntologyValidationException.class)
+                    .hasMessageContaining(FOREIGN);
+            org.mockito.Mockito.verifyNoInteractions(nkdSparqlClient);
+        }
+
+        /** NKD down at prefetch time: nothing is known, so the edit goes through (fail-open). */
+        @Test
+        void nkdDownAtPrefetchLetsTheEditThrough() {
+            when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenThrow(new RuntimeException("NKD down"));
+            when(nkdSparqlClient.fetchPublishedConceptWithScheme(FOREIGN)).thenThrow(new RuntimeException("NKD down"));
+            com.dia.ismdtoolbackend.service.snapshot.NkdLookup nkd = reconciler.prefetch(GRAPH_NAME, List.of(FOREIGN));
+            link(RDFS.domain, FOREIGN);
+
+            OwnerChangeSet delta = reconciler.reconcileNkdLinks(owner, graph, nkd);
+
+            assertThat(delta.toAdd).isEmpty();
+            assertThat(delta.toRemove).isEmpty();
         }
     }
 }

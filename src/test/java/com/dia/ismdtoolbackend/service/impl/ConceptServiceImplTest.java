@@ -37,7 +37,8 @@ class ConceptServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        service = new ConceptServiceImpl(createOperation, editOperation, deleteOperation, syncOperation, detailReader);
+        service = new ConceptServiceImpl(createOperation, editOperation, deleteOperation, syncOperation, detailReader,
+                new ConceptEditTransaction(org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class)));
     }
 
     private static ConceptMetadataModel metadata(String iri) {
@@ -72,13 +73,20 @@ class ConceptServiceImplTest {
         order.verify(createOperation).createConcept(second, USER_ID);
     }
 
+    /** NKD is asked first, then the edit runs with what was fetched. */
     @Test
-    void editConceptDelegates() {
+    void editConceptPrefetchesNkdThenEdits() {
         ClassConceptEditModel editModel = ConceptServiceTestData.editModel();
         ConceptMetadataModel edited = metadata("a");
-        when(editOperation.editConcept(CONCEPT_ID, editModel)).thenReturn(edited);
+        com.dia.ismdtoolbackend.service.snapshot.NkdLookup nkd =
+                new com.dia.ismdtoolbackend.service.snapshot.NkdLookup.Prefetched(java.util.Set.of(), java.util.Map.of());
+        when(editOperation.prefetchNkd(CONCEPT_ID, editModel)).thenReturn(nkd);
+        when(editOperation.editConcept(CONCEPT_ID, editModel, nkd)).thenReturn(edited);
 
         assertThat(service.editConcept(CONCEPT_ID, editModel)).isSameAs(edited);
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(editOperation);
+        order.verify(editOperation).prefetchNkd(CONCEPT_ID, editModel);
+        order.verify(editOperation).editConcept(CONCEPT_ID, editModel, nkd);
     }
 
     @Test

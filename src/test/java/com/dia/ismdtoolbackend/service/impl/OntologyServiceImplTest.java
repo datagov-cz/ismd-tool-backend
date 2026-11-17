@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.service.search.OntologyGraphNames;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsRequestDto;
@@ -143,7 +144,7 @@ class OntologyServiceImplTest {
             assertThat(evict).isNotNull();
             assertThat(evict.allEntries()).isTrue();
             assertThat(evict.cacheNames()).containsExactlyInAnyOrder(ReferencedConceptResolutionEngine.CACHE_NAME,
-                    WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE);
+                    WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, OntologyGraphNames.CACHE_NAME);
         }
 
         @ParameterizedTest

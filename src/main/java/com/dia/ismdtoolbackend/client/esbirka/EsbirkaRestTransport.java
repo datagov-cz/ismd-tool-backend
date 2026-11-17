@@ -83,7 +83,8 @@ class EsbirkaRestTransport {
         this.initialBackoffMs = rest.getRetry().getInitialBackoffMs();
         this.jsonMapper = jsonMapper;
         this.meterRegistry = meterRegistry;
-        this.gate = new EsbirkaRateGate(rest.getMinRequestSpacingMs(), rest.getMaxInFlight());
+        this.gate = new EsbirkaRateGate(rest.getMinRequestSpacingMs(), rest.getMaxInFlight(),
+                java.time.Duration.ofMillis(rest.getMaxSlotWaitMs()));
         this.breaker = new SparqlCircuitBreaker(LABEL,
                 rest.getCircuitBreaker().getFailureThreshold(), rest.getCircuitBreaker().getCooldownMs());
         // HTTP/1.1 keep-alive pool, as used for the rate-limit measurements; connections stay

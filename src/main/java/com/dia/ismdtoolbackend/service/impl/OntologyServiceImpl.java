@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.service.search.OntologyGraphNames;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsRequestDto;
@@ -38,7 +39,8 @@ public class OntologyServiceImpl implements OntologyService {
     @Override
     @Transactional
     @CacheEvict(cacheNames = {ReferencedConceptResolutionEngine.CACHE_NAME,
-            WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE}, allEntries = true)
+            WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, OntologyGraphNames.CACHE_NAME},
+            allEntries = true)
     public void deleteOntology(Long ontologyId) {
         deleteOperation.deleteOntology(ontologyId);
     }
@@ -46,7 +48,8 @@ public class OntologyServiceImpl implements OntologyService {
     @Override
     @Transactional
     @CacheEvict(cacheNames = {ReferencedConceptResolutionEngine.CACHE_NAME,
-            WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE}, allEntries = true)
+            WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, OntologyGraphNames.CACHE_NAME},
+            allEntries = true)
     public OntologySummaryDto createOntology(OntologyCreateModel ontologyCreateModel, String userId) {
         return createOperation.createOntology(ontologyCreateModel, userId);
     }
@@ -54,7 +57,8 @@ public class OntologyServiceImpl implements OntologyService {
     @Override
     @Transactional
     @CacheEvict(cacheNames = {ReferencedConceptResolutionEngine.CACHE_NAME,
-            WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE}, allEntries = true)
+            WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, OntologyGraphNames.CACHE_NAME},
+            allEntries = true)
     public OntologyCreateWithConceptsResponseDto createWithConcepts(OntologyCreateWithConceptsRequestDto request, String userId) {
         return createOperation.createWithConcepts(request, userId);
     }
@@ -86,7 +90,8 @@ public class OntologyServiceImpl implements OntologyService {
     @Override
     @Transactional
     @CacheEvict(cacheNames = {ReferencedConceptResolutionEngine.CACHE_NAME,
-            WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE}, allEntries = true)
+            WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, OntologyGraphNames.CACHE_NAME},
+            allEntries = true)
     public OntologySummaryDto editOntology(Long id, OntologyEditModel ontologyEditModel) {
         return editOperation.editOntology(id, ontologyEditModel);
     }

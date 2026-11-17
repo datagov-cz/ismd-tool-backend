@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.testsupport.security.SignedInAdmin;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
@@ -40,6 +41,7 @@ import static org.mockito.Mockito.when;
  * T1 or T2 fails here instead of in production. Each edit runs once in place and once with a rename.
  */
 @ExtendWith(MockitoExtension.class)
+@ExtendWith(SignedInAdmin.class)
 class ConceptEditOfnSafetyNetTest {
 
     private static final Long CONCEPT_ID = 7L;

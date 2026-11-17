@@ -161,6 +161,23 @@ class NkdSnapshotServiceImplTest {
         assertThat(cs.toAdd).isEmpty();
     }
 
+    /** A concept edit's prefetched lookup with no answer for the IRI: keep the copy, ask NKD nothing. */
+    @Test
+    void createOrRefresh_prefetchedWithoutAnswer_keepsTheExistingSnapshot_andCallsNoNkd() {
+        NkdConceptSnapshotEntity existing = new NkdConceptSnapshotEntity();
+        existing.setOwningConcept(owner);
+        existing.setNkdIri(NKD_IRI);
+        when(snapshotRepository.findByOwningConceptIdAndNkdIri(17L, NKD_IRI)).thenReturn(Optional.of(existing));
+
+        NkdConceptSnapshotEntity result = service.createOrRefreshSnapshot(owner, NKD_IRI,
+                SnapshotLinkType.BROADER_CLASS.value(), new OwnerChangeSet(),
+                new com.dia.ismdtoolbackend.service.snapshot.NkdLookup.Prefetched(java.util.Set.of(), java.util.Map.of()));
+
+        assertThat(result).isSameAs(existing);
+        org.mockito.Mockito.verifyNoInteractions(nkdSparqlClient);
+        verify(snapshotRepository, org.mockito.Mockito.never()).delete(any());
+    }
+
     @Test
     void createOrRefresh_nkdEmpty_existingSnapshot_deletesRow_noTdb2Delta() {
         NkdConceptSnapshotEntity existing = new NkdConceptSnapshotEntity();

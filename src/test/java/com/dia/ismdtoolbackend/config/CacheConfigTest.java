@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.config;
 
+import com.dia.ismdtoolbackend.service.search.OntologyGraphNames;
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.service.impl.ReferencedConceptResolutionEngine;
 import com.dia.ismdtoolbackend.service.impl.WorkingCopyDeviationServiceImpl;
@@ -43,7 +44,8 @@ class CacheConfigTest {
             "esbirkaVersionSubtreeBodies",
             ReferencedConceptResolutionEngine.CACHE_NAME,
             NkdSparqlClient.PUBLISHED_RESOURCE_CACHE,
-            WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE);
+            WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE,
+            OntologyGraphNames.CACHE_NAME);
 
     private static CacheManager freshManager() {
         return new CacheConfig().cacheManager(
@@ -59,6 +61,28 @@ class CacheConfigTest {
     @Test
     void everyConfiguredCacheHasTtlAndBound() {
         CacheTestSupport.assertBoundedWithTtl(freshManager(), CONFIGURED.toArray(String[]::new));
+    }
+
+    /**
+     * Inside a transaction an eviction waits for the commit, so a reader during the transaction cannot
+     * re-cache pre-commit data after it. A rolled-back transaction evicts nothing.
+     */
+    @Test
+    void evictionInsideATransactionAppliesAfterCommit() {
+        org.springframework.cache.Cache cache = freshManager().getCache(OntologyGraphNames.CACHE_NAME);
+        cache.put("all", "before");
+
+        org.springframework.transaction.support.TransactionSynchronizationManager.initSynchronization();
+        try {
+            cache.clear();
+            assertThat(cache.get("all")).as("still cached until commit").isNotNull();
+
+            org.springframework.transaction.support.TransactionSynchronizationManager.getSynchronizations()
+                    .forEach(org.springframework.transaction.support.TransactionSynchronization::afterCommit);
+            assertThat(cache.get("all")).as("evicted after commit").isNull();
+        } finally {
+            org.springframework.transaction.support.TransactionSynchronizationManager.clearSynchronization();
+        }
     }
 
     /** A name used in a caching annotation but never registered silently gets an unbounded cache. */

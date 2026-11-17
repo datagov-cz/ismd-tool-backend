@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.service.snapshot.NkdLookup;
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.controller.dto.NkdConceptRefDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
@@ -50,6 +51,14 @@ public class NkdSnapshotServiceImpl implements NkdSnapshotService {
     @Transactional
     public NkdConceptSnapshotEntity createOrRefreshSnapshot(ConceptMetadataEntity owner, String nkdIri,
                                                             String linkType, OwnerChangeSet ownerChangeSet) {
+        return createOrRefreshSnapshot(owner, nkdIri, linkType, ownerChangeSet, NkdLookup.live(nkdSparqlClient));
+    }
+
+    @Override
+    @Transactional
+    public NkdConceptSnapshotEntity createOrRefreshSnapshot(ConceptMetadataEntity owner, String nkdIri,
+                                                            String linkType, OwnerChangeSet ownerChangeSet,
+                                                            NkdLookup nkd) {
         if (!SnapshotLinkType.isAllowed(linkType)) {
             throw new OntologyValidationException("Link to a published NKD concept is allowed only for "
                     + java.util.Arrays.toString(SnapshotLinkType.values()) + ", not '" + linkType + "'.");
@@ -65,21 +74,19 @@ public class NkdSnapshotServiceImpl implements NkdSnapshotService {
         // Outage (unreachable) vs confirmed-absent (reachable, returns nothing) are different: an outage
         // must leave the existing snapshot intact and not roll back the edit, whereas a confirmed-absent
         // concept means the link target is gone upstream and the tracked copy should be removed.
-        Optional<NkdSparqlClient.PublishedConcept> publishedOpt;
-        try {
-            publishedOpt = nkdSparqlClient.fetchPublishedConceptWithScheme(nkdIri);
-        } catch (SparqlEndpointUnavailableException e) {
-            log.warn("NKD unavailable while snapshotting {} — skipping, existing snapshot kept: {}",
-                    nkdIri, e.getMessage());
+        Optional<NkdLookup.Fetched> fetched = nkd.concept(nkdIri);
+        if (fetched.isEmpty()) {
+            log.warn("NKD copy of {} not available — skipping, existing snapshot kept", nkdIri);
             return existingOpt.orElse(null);
         }
+        Optional<NkdSparqlClient.PublishedConcept> publishedOpt = fetched.get().published();
         if (publishedOpt.isEmpty()) {
             existingOpt.ifPresent(this::removeSnapshotRow);
             log.info("NKD has no concept {} — no snapshot created (existing removed if any)", nkdIri);
             return null;
         }
 
-        Optional<Model> rawOpt = nkdSparqlClient.fetchPublishedConceptRaw(nkdIri);
+        Optional<Model> rawOpt = fetched.get().raw();
         if (rawOpt.isEmpty()) {
             log.warn("NKD concept {} resolved but raw triples unavailable — skipping materialization", nkdIri);
             return existingOpt.orElse(null);

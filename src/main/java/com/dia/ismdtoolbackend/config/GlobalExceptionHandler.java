@@ -39,6 +39,7 @@ import org.springframework.web.multipart.support.MissingServletRequestPartExcept
 
 import java.util.List;
 import java.io.IOException;
+import java.util.concurrent.RejectedExecutionException;
 
 import static com.dia.ismdtoolbackend.config.ErrorResponses.craftedError;
 import static com.dia.ismdtoolbackend.config.ErrorResponses.error;
@@ -155,6 +156,13 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponseDto<Void>> handleExternalServiceError(RestClientException e) {
         log.error("External service call failed: {}", e.getMessage(), e);
         return error(ErrorCode.EXTERNAL_SERVICE_INVALID_RESPONSE);
+    }
+
+    /** A full executor (search, for one): the caller may retry, unlike after the 500 a generic failure gives. */
+    @ExceptionHandler(RejectedExecutionException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleRejected(RejectedExecutionException e) {
+        log.warn("Task rejected, executor full: {}", e.getMessage());
+        return error(ErrorCode.SERVER_BUSY);
     }
 
     @ExceptionHandler(JenaTDB2Exception.class)

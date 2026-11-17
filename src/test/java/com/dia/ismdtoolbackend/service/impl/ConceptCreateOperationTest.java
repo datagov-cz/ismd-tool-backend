@@ -352,5 +352,18 @@ class ConceptCreateOperationTest {
             verify(jenaTDB2Repository).conceptFoundInGraph(CONCEPT_IRI, GRAPH_NAME);
             verifyNoMoreInteractions(jenaTDB2Repository);
         }
+
+        /** The IRI is free at the check but a concurrent create inserts it first: the same 400 as the check. */
+        @Test
+        void aLostInsertRaceIsTheSameConflictAsTheCheck() {
+            givenCreatableConcept();
+            when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class)))
+                    .thenThrow(new org.springframework.dao.DataIntegrityViolationException("uk_concept_iri"));
+
+            assertThatThrownBy(() -> operation.createConcept(createModel, USER_ID))
+                    .isInstanceOf(com.dia.ismdtoolbackend.exception.ConceptValidationException.class)
+                    .hasMessage("Pojem se stejným názvem již v ontologii existuje: " + CONCEPT_IRI);
+            verify(outboxRelayTrigger, never()).nudgeAfterCommit();
+        }
     }
 }
