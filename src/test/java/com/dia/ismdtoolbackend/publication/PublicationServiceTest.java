@@ -1,5 +1,9 @@
 package com.dia.ismdtoolbackend.publication;
 
+import com.dia.ismdtoolbackend.exception.PublicationFailedException;
+import com.dia.ismdtoolbackend.exception.PublicationInProgressException;
+import com.dia.ismdtoolbackend.publication.archive.PublicationArchive;
+import com.dia.ismdtoolbackend.publication.archive.PublicationArchive.RunRecord;
 import com.dia.ismdtoolbackend.publication.file.DiagramFileWriter;
 import com.dia.ismdtoolbackend.publication.file.VocabularyFileWriter;
 import com.dia.ismdtoolbackend.publication.snapshot.PublicationSnapshot;
@@ -9,24 +13,25 @@ import com.dia.ismdtoolbackend.publication.snapshot.PublicationSnapshotReader;
 import com.dia.ismdtoolbackend.testsupport.time.MutableClock;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
-import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -37,29 +42,41 @@ class PublicationServiceTest {
     private static final LocalDateTime T = LocalDateTime.of(2026, 1, 1, 0, 0);
     private static final String PUBLISHED_IRI = "https://x/publikovany";
     private static final String DRAFT_IRI = "https://x/rozpracovany";
-
-    @TempDir Path dir;
+    private static final String BY = "ADMIN:test";
 
     private final MutableClock clock = MutableClock.of("2026-10-07T01:00:00Z");
     private final PublicationSnapshotReader reader = mock(PublicationSnapshotReader.class);
     private final PublicationConfig config = new PublicationConfig();
-    private PublicationStore store;
+    private final PublicationArchive archive = mock(PublicationArchive.class);
+
+    /** What the archive received: the run record, each file and its content, read while the file still exists. */
+    private RunRecord stored;
+    private final Map<String, BuiltFile> storedFiles = new HashMap<>();
+    private final Map<String, byte[]> storedContent = new HashMap<>();
+
     private PublicationService service;
 
     @BeforeEach
     void setUp() {
-        config.setDirectory(dir);
         config.setContextUrl("https://example.org/kontext.jsonld");
         when(reader.read()).thenReturn(snapshot());
-        store = new PublicationStore(config);
-        service = service(store);
+        when(archive.save(any(), any())).thenAnswer(invocation -> {
+            stored = invocation.getArgument(0);
+            Map<String, BuiltFile> files = invocation.getArgument(1);
+            storedFiles.putAll(files);
+            for (BuiltFile f : files.values()) {
+                storedContent.put(f.name(), Files.readAllBytes(f.path()));
+            }
+            return 7L;
+        });
+        service = service(new DiagramFileWriter());
     }
 
-    private PublicationService service(PublicationStore s) {
+    private PublicationService service(DiagramFileWriter diagrams) {
         VocabularyFileWriter vocabularies = new VocabularyFileWriter((id, format) -> {
             throw new com.dia.ismdtoolbackend.exception.EmptyDataException("prázdný");
         });
-        return new PublicationService(config, reader, vocabularies, new DiagramFileWriter(), s, clock);
+        return new PublicationService(config, reader, vocabularies, diagrams, archive, clock);
     }
 
     private static PublicationSnapshot snapshot() {
@@ -71,130 +88,83 @@ class PublicationServiceTest {
     }
 
     @Test
-    void publish_commitsBothFiles_withContentHashEtags() throws Exception {
-        assertThat(service.publish()).isTrue();
+    void publish_storesBothFiles_withContentHashEtags_andTheRun() throws Exception {
+        assertThat(service.publish(BY)).isEqualTo(new PublicationRun(7L, clock.instant(), 2, 0, true, true));
 
-        for (String name : List.of(VocabularyFileWriter.FILE, DiagramFileWriter.FILE)) {
-            PublishedFile file = store.file(name).orElseThrow();
-            byte[] content = Files.readAllBytes(file.path());
+        assertThat(storedFiles).containsOnlyKeys(VocabularyFileWriter.FILE, DiagramFileWriter.FILE);
+        for (BuiltFile file : storedFiles.values()) {
+            byte[] content = storedContent.get(file.name());
             assertThat(file.size()).isEqualTo(content.length);
             assertThat(file.etag()).isEqualTo("\"" + HexFormat.of().formatHex(
                     MessageDigest.getInstance("SHA-256").digest(content)) + "\"");
-            assertThat(file.publishedAt()).isEqualTo(clock.instant());
         }
-        assertThat(read(VocabularyFileWriter.FILE)).contains(PUBLISHED_IRI, DRAFT_IRI);
+        assertThat(new String(storedContent.get(VocabularyFileWriter.FILE), StandardCharsets.UTF_8))
+                .contains(PUBLISHED_IRI, DRAFT_IRI);
+        assertThat(stored).isEqualTo(new RunRecord(clock.instant(), BY, true, true, 2, 0,
+                "https://example.org/kontext.jsonld"));
     }
 
     @Test
-    void restart_reloadsTheCurrentPublicationAndItsAge() {
-        service.publish();
+    void publish_removesTheTemporaryBuild() {
+        service.publish(BY);
 
-        PublicationStore restarted = new PublicationStore(config);
-        restarted.load();
-
-        assertThat(restarted.publishedAt()).contains(clock.instant());
-        assertThat(restarted.file(DiagramFileWriter.FILE).orElseThrow().etag())
-                .isEqualTo(store.file(DiagramFileWriter.FILE).orElseThrow().etag());
-        assertThat(service(restarted).isDue()).isFalse();
+        Path build = storedFiles.get(DiagramFileWriter.FILE).path().getParent();
+        assertThat(build).doesNotExist();
     }
 
     @Test
-    void restart_discardsAPublicationWhoseFileIsTruncated() throws IOException {
-        service.publish();
-        Files.write(store.file(VocabularyFileWriter.FILE).orElseThrow().path(), new byte[] {'{'});
+    void includeDraftsOff_leavesDraftVocabulariesOut() {
+        config.setIncludeDrafts(false);
 
-        PublicationStore restarted = new PublicationStore(config);
-        restarted.load();
+        service.publish(BY);
 
-        assertThat(restarted.publishedAt()).isEmpty();
-        assertThat(service(restarted).isDue()).isTrue();
+        assertThat(new String(storedContent.get(VocabularyFileWriter.FILE), StandardCharsets.UTF_8))
+                .contains(PUBLISHED_IRI).doesNotContain(DRAFT_IRI)
+                .contains("\"obsahuje_rozpracované\":false");
+        assertThat(stored.includeDrafts()).isFalse();
     }
 
     @Test
-    void isDue_untilPublished_thenAgainOnceTheIntervalHasPassed() {
-        config.setInterval(Duration.ofDays(30));
-        assertThat(service.isDue()).as("nothing published").isTrue();
-
-        service.publish();
-        assertThat(service.isDue()).isFalse();
-
-        clock.advance(Duration.ofDays(30).minusSeconds(1));
-        assertThat(service.publishIfDue()).isFalse();
-        clock.advance(Duration.ofSeconds(1));
-        assertThat(service.isDue()).as("exactly the interval").isTrue();
-        assertThat(service.publishIfDue()).isTrue();
-        assertThat(store.publishedAt()).contains(clock.instant());
-    }
-
-    @Test
-    void newPublication_replacesTheOldBuildDirectory() throws IOException {
-        service.publish();
-        Path first = store.file(DiagramFileWriter.FILE).orElseThrow().path().getParent();
-        clock.advance(Duration.ofDays(31));
-
-        service.publish();
-
-        assertThat(first).doesNotExist();
-        try (Stream<Path> builds = Files.list(dir).filter(Files::isDirectory)) {
-            assertThat(builds).hasSize(1);
-        }
-    }
-
-    @Test
-    void failedRun_keepsThePreviousPublication_andRemovesItsBuild() throws IOException {
-        service.publish();
-        PublishedFile before = store.file(VocabularyFileWriter.FILE).orElseThrow();
-        clock.advance(Duration.ofDays(31));
+    void snapshotFailure_failsTheRun_andStoresNothing() {
         when(reader.read()).thenThrow(new IllegalStateException("PostgreSQL down"));
 
-        assertThat(service.publish()).isFalse();
+        assertThatThrownBy(() -> service.publish(BY)).isInstanceOf(PublicationFailedException.class)
+                .hasRootCauseMessage("PostgreSQL down");
 
-        assertThat(store.file(VocabularyFileWriter.FILE)).contains(before);
-        assertThat(before.path()).exists();
-        try (Stream<Path> builds = Files.list(dir).filter(Files::isDirectory)) {
-            assertThat(builds).hasSize(1);
-        }
+        verify(archive, never()).save(any(), any());
     }
 
     @Test
-    void failureWhileWriting_removesThePartialBuild() throws IOException {
+    void writerFailure_failsTheRun_andStoresNothing() {
         DiagramFileWriter failing = mock(DiagramFileWriter.class);
-        org.mockito.Mockito.doThrow(new IllegalStateException("disk full")).when(failing)
-                .write(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
-                        org.mockito.ArgumentMatchers.any());
-        PublicationService withFailingWriter = new PublicationService(config, reader,
-                new VocabularyFileWriter((id, format) -> "{}"), failing, store, clock);
+        doThrow(new IllegalStateException("disk full")).when(failing).write(any(), any(), any());
 
-        assertThat(withFailingWriter.publish()).isFalse();
+        assertThatThrownBy(() -> service(failing).publish(BY)).isInstanceOf(PublicationFailedException.class);
 
-        assertThat(store.publishedAt()).isEmpty();
-        try (Stream<Path> left = Files.list(dir)) {
-            assertThat(left).as("no partial build, no marker").isEmpty();
-        }
+        verify(archive, never()).save(any(), any());
+    }
+
+    @Test
+    void archiveFailure_failsTheRun() {
+        doThrow(new IllegalStateException("PostgreSQL down")).when(archive).save(any(), any());
+
+        assertThatThrownBy(() -> service.publish(BY)).isInstanceOf(PublicationFailedException.class)
+                .hasRootCauseMessage("PostgreSQL down");
     }
 
     @Test
     void missingContextUrl_publishesNothing() {
         config.setContextUrl(" ");
 
-        assertThat(service.publish()).isFalse();
+        assertThatThrownBy(() -> service.publish(BY)).isInstanceOf(PublicationFailedException.class)
+                .hasMessageContaining("context-url");
 
-        assertThat(store.publishedAt()).isEmpty();
         verify(reader, never()).read();
+        verify(archive, never()).save(any(), any());
     }
 
     @Test
-    void includeDraftsOff_leavesDraftVocabulariesOut() throws IOException {
-        config.setIncludeDrafts(false);
-
-        service.publish();
-
-        assertThat(read(VocabularyFileWriter.FILE)).contains(PUBLISHED_IRI).doesNotContain(DRAFT_IRI)
-                .contains("\"obsahuje_rozpracované\":false");
-    }
-
-    @Test
-    void secondRunWhileOneIsInProgress_isSkipped() throws Exception {
+    void secondRunWhileOneIsInProgress_isRejected() throws Exception {
         CountDownLatch inRead = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         when(reader.read()).thenAnswer(invocation -> {
@@ -202,16 +172,12 @@ class PublicationServiceTest {
             release.await(5, TimeUnit.SECONDS);
             return snapshot();
         });
-        CompletableFuture<Boolean> first = CompletableFuture.supplyAsync(service::publish);
+        CompletableFuture<PublicationRun> first = CompletableFuture.supplyAsync(() -> service.publish(BY));
         assertThat(inRead.await(5, TimeUnit.SECONDS)).isTrue();
 
-        assertThat(service.publish()).isFalse();
+        assertThatThrownBy(() -> service.publish(BY)).isInstanceOf(PublicationInProgressException.class);
 
         release.countDown();
-        assertThat(first.get(5, TimeUnit.SECONDS)).isTrue();
-    }
-
-    private String read(String name) throws IOException {
-        return Files.readString(store.file(name).orElseThrow().path(), StandardCharsets.UTF_8);
+        assertThat(first.get(5, TimeUnit.SECONDS).id()).isEqualTo(7L);
     }
 }

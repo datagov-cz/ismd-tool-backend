@@ -89,16 +89,4 @@ public class CorsConfigUtil {
 
         return config;
     }
-
-    /** Anonymous read from any origin: no credentials, so the wildcard origin is allowed. */
-    public CorsConfiguration createPublicReadCorsConfiguration() {
-        CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of("*"));
-        config.setAllowedMethods(List.of("GET", "HEAD", "OPTIONS"));
-        config.setAllowedHeaders(List.of("*"));
-        config.setExposedHeaders(List.of("ETag", "Last-Modified", "Content-Length", "Content-Disposition"));
-        config.setAllowCredentials(false);
-        config.setMaxAge(600L);
-        return config;
-    }
 }

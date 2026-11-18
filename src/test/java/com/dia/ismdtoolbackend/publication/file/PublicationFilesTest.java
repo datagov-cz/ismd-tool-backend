@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.publication.file;
 
 import com.dia.ismdtoolbackend.enums.OntologyValidationStatus;
 import com.dia.ismdtoolbackend.exception.EmptyDataException;
+import com.dia.ismdtoolbackend.publication.PublicationConfig;
 import com.dia.ismdtoolbackend.publication.snapshot.DraftFilter;
 import com.dia.ismdtoolbackend.publication.snapshot.PublicationSnapshot;
 import com.dia.ismdtoolbackend.publication.snapshot.PublicationSnapshot.Concept;
@@ -35,6 +36,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.HashSet;
@@ -87,7 +90,7 @@ class PublicationFilesTest {
     static void loadContexts() {
         Ttl.initJena();
         ofnContext = resource("/com/dia/context/json_ld_context.jsonld").get("@context");
-        ismdContext = resource("/com/dia/publication/ismd-od-kontext.jsonld").get("@context");
+        ismdContext = file(ISMD_CONTEXT_FILE).get("@context");
     }
 
     private final OntologyDownloadService downloads = (id, format) -> switch (id.intValue()) {
@@ -327,6 +330,26 @@ class PublicationFilesTest {
                 }
                 collectKeys(entry.getValue(), defined, undefined);
             });
+        }
+    }
+
+    /** The published draft context, served by GitHub Pages from the repository's {@code pages/}. */
+    private static final Path ISMD_CONTEXT_FILE = Path.of("pages", "ismd-otevřená-data", "draft", "kontext.jsonld");
+
+    @Test
+    void defaultContextUrl_pointsAtThePublishedDraftContext() {
+        String pagesBase = "https://datagov-cz.github.io/ismd-tool-backend/";
+        assertThat(PublicationConfig.DRAFT_CONTEXT_URL).startsWith(pagesBase);
+        assertThat(Path.of("pages", PublicationConfig.DRAFT_CONTEXT_URL.substring(pagesBase.length()).split("/")))
+                .isEqualTo(ISMD_CONTEXT_FILE).isRegularFile();
+        assertThat(new PublicationConfig().getContextUrl()).isEqualTo(PublicationConfig.DRAFT_CONTEXT_URL);
+    }
+
+    private static JsonNode file(Path path) {
+        try (InputStream in = Files.newInputStream(path)) {
+            return JSON.readTree(in);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
     }
 

@@ -161,9 +161,6 @@ public class SecurityConfig {
                         "/api/eli/law/content",
                         "/api/eli/resolve",
                         "/api/codelist/**",
-                        // Published open data: exact paths, so a new /api/publikace endpoint is not public by accident
-                        "/api/publikace/slovniky.jsonld",
-                        "/api/publikace/diagramy.jsonld",
                         "/v3/api-docs/**",
                         "/swagger-ui/**",
                         "/swagger-ui.html"
@@ -242,6 +239,8 @@ public class SecurityConfig {
                         // is enforced by @PreAuthorize on the controller; this only lets the request
                         // reach it (otherwise denyAll() 403s first).
                         .requestMatchers("/api/admin/outbox/**").authenticated()
+                        // Admin-only on-demand publication of the open data. Same pattern.
+                        .requestMatchers("/api/admin/publikace/**").authenticated()
                         .anyRequest().denyAll()
                 )
                 // CSRF disabled: auth is stateless Bearer-JWT only (no cookie/session

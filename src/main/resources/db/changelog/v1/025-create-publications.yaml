@@ -1,0 +1,134 @@
+databaseChangeLog:
+  # Audit trail and backup of the open-data publications. A publication row and its file rows (name,
+  # size, ETag) are kept forever; file content only for the last ismd.publication.retain-files runs.
+
+  - changeSet:
+      id: 025-create-publication
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                schemaName: ismd_schema
+                tableName: publication
+      changes:
+        - createTable:
+            schemaName: ismd_schema
+            tableName: publication
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: published_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: triggered_by
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: include_drafts
+                  type: BOOLEAN
+                  constraints:
+                    nullable: false
+              - column:
+                  name: complete
+                  type: BOOLEAN
+                  constraints:
+                    nullable: false
+              - column:
+                  name: vocabularies
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: diagrams
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: context_url
+                  type: VARCHAR(1024)
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropTable:
+            schemaName: ismd_schema
+            tableName: publication
+
+  - changeSet:
+      id: 025-create-publication-file
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                schemaName: ismd_schema
+                tableName: publication_file
+      changes:
+        - createTable:
+            schemaName: ismd_schema
+            tableName: publication_file
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: publication_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_publication_file_publication
+                    referencedTableSchemaName: ismd_schema
+                    referencedTableName: publication
+                    referencedColumnNames: id
+                    deleteCascade: true
+              - column:
+                  name: name
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: size
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: etag
+                  type: VARCHAR(80)
+                  constraints:
+                    nullable: false
+              # gzip of the served file; null once the run is older than the retention.
+              - column:
+                  name: content_gzip
+                  type: BYTEA
+      rollback:
+        - dropTable:
+            schemaName: ismd_schema
+            tableName: publication_file
+
+  - changeSet:
+      id: 025-publication-file-unique-name
+      author: richard.koubek
+      changes:
+        - addUniqueConstraint:
+            schemaName: ismd_schema
+            tableName: publication_file
+            columnNames: publication_id, name
+            constraintName: uq_publication_file_publication_name
+      rollback:
+        - dropUniqueConstraint:
+            schemaName: ismd_schema
+            tableName: publication_file
+            constraintName: uq_publication_file_publication_name

@@ -4,12 +4,9 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
-import java.nio.file.Path;
-import java.time.Duration;
-
 /**
  * Configuration for the open-data publication of vocabularies and diagrams ({@code slovniky.jsonld},
- * {@code diagramy.jsonld}). See {@code .planning/Publikace_OD (1).md}.
+ * {@code diagramy.jsonld}): built on demand by an admin and stored in PostgreSQL. See {@code docs/DATA_EXPORT.md}.
  *
  * <p>Mirrors {@code OutboxConfig} style ({@code @Data @Configuration @ConfigurationProperties}).
  */
@@ -18,20 +15,11 @@ import java.time.Duration;
 @ConfigurationProperties(prefix = "ismd.publication")
 public class PublicationConfig {
 
-    /** Master switch for the scheduler and the public endpoints. Off until the ISMD OD context URL resolves. */
-    private boolean enabled = false;
-
     /** Whether draft vocabularies, draft concepts and their diagram content are published. */
     private boolean includeDrafts = true;
 
-    /** Maximum age of the current publication before the next check rebuilds it. */
-    private Duration interval = Duration.ofDays(30);
-
-    /** Cron (Spring 6-field) on which the scheduler compares the publication's age with {@link #interval}. */
-    private String checkCron = "0 0 4 * * *";
-
-    /** Directory holding the published files. */
-    private Path directory = Path.of(System.getProperty("java.io.tmpdir"), "ismd-publication");
+    /** How many of the newest publications keep their file content in PostgreSQL; metadata is kept forever. */
+    private int retainFiles = 30;
 
     /**
      * Base of the IRIs ISMD mints for publication: {@code <base>diagramy/<iri_id>} for diagrams and
@@ -39,6 +27,13 @@ public class PublicationConfig {
      */
     private String iriBase = "https://data.dia.gov.cz/zdroj/ismd/";
 
-    /** URL of the ISMD OD JSON-LD context, the second entry of both files' {@code @context}. */
-    private String contextUrl;
+    /**
+     * URL of the ISMD OD JSON-LD context, the second entry of both files' {@code @context}. Served by GitHub
+     * Pages from {@code pages/} in this repository; dated versions are immutable, {@code draft/} is not.
+     */
+    private String contextUrl = DRAFT_CONTEXT_URL;
+
+    /** The working version of {@code pages/ismd-otevřená-data/draft/kontext.jsonld}. */
+    public static final String DRAFT_CONTEXT_URL =
+            "https://datagov-cz.github.io/ismd-tool-backend/ismd-otevřená-data/draft/kontext.jsonld";
 }

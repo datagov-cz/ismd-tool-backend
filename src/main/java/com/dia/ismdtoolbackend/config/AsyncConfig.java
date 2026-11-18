@@ -34,21 +34,6 @@ public class AsyncConfig {
         return executor;
     }
 
-    public static final String PUBLICATION_EXECUTOR = "publicationExecutor";
-
-    /** Runs the publication checks off the boot and scheduler threads; one run at a time, extra triggers dropped. */
-    @Bean(name = PUBLICATION_EXECUTOR, destroyMethod = "shutdown")
-    public Executor publicationExecutor() {
-        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(1);
-        executor.setMaxPoolSize(1);
-        executor.setQueueCapacity(0);
-        executor.setRejectedExecutionHandler(new java.util.concurrent.ThreadPoolExecutor.DiscardPolicy());
-        executor.setThreadNamePrefix("publication-");
-        executor.initialize();
-        return executor;
-    }
-
     @Bean(name = "snapshotExecutor", destroyMethod = "shutdown")
     public Executor snapshotExecutor(
             @Value("${nkd.snapshot.executor.core-pool-size:2}") int corePoolSize,

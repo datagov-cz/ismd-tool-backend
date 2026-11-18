@@ -1,13 +1,14 @@
 # Open-data publication: vocabularies and diagrams
 
-> Status: **implemented, off by default** (`ismd.publication.enabled=false`); see
+> Status: **implemented**. Production use waits on GitHub Pages for the context; see
 > [Enabling](#enabling). Czech version: [`DATA_EXPORT_CS.md`](./DATA_EXPORT_CS.md).
 
 ## What problem this solves
 
-The application publishes draft and published vocabularies, with their metadata, and the diagram data
-as open data. The files are published at a regular interval, can be downloaded without signing in and
-are catalogued in NKOD through the DIA local catalogue.
+Draft and published vocabularies, with their metadata, and the diagram data are to be published as
+open data. ISMD builds the two open-data files on demand for an administrator, stores each run in
+PostgreSQL and lets the administrator download the files. The DIA LKOD pipeline uploads them to LKOD
+DIA, from where they are catalogued in NKOD. ISMD serves no public copy and never touches LKOD.
 
 | Client requirement | How the design meets it |
 |---|---|
@@ -17,16 +18,16 @@ are catalogued in NKOD through the DIA local catalogue.
 | `concepts.json` goes away, its content moves into the vocabulary file | PostgreSQL concept metadata is added to each concept in `pojmy` |
 | Attributes that point to files go away | No `file`, `concepts`, `rdf.file`; links are by IRI only |
 | Everything is `.jsonld` with an `@context` of a vocabulary describing this open data | Two contexts: OFN Slovníky and the ISMD OD context (see [Contexts](#contexts)) |
-| ISMD need not generate the dataset metadata; it is made once by hand | The catalogue record is stored once, by hand, in the LKOD DIA repository (see [Cataloguing](#cataloguing)) |
+| ISMD need not generate the dataset metadata; it is made once by hand | The catalogue record lives in LKOD DIA and is maintained by the DIA LKOD pipeline (see [Cataloguing](#cataloguing)) |
 
-## Why a new endpoint
+## Why ISMD builds the files
 
-The data is split across two stores and no existing interface covers it.
+The data is split across two stores and no existing interface yields it as two files.
 
 | Option | Why it falls short |
 |---|---|
-| **Fuseki / SPARQL directly** | Diagrams and vocabulary metadata (slug, publication state, timestamps) exist only in PostgreSQL. Fuseki also exposes `update`, `upload` and `gsp-rw` next to `query`, so it cannot be opened to consumers as it is. |
-| **Existing REST endpoints** | A consumer would need one call for the vocabulary list, one download per vocabulary, one call for the diagram list and one detail call per diagram. With the restriction on, a vocabulary download is refused for vocabularies with validation errors, the list model carries user and comment fields, and the diagram detail is a "fat" read that includes pending edits. |
+| **Fuseki / SPARQL directly** | Diagrams and vocabulary metadata (slug, publication state, timestamps) exist only in PostgreSQL. Fuseki also exposes `update`, `upload` and `gsp-rw` next to `query`, so it cannot be opened to the pipeline as it is. |
+| **Existing REST endpoints** | Assembling the files would need one call for the vocabulary list, one download per vocabulary, one call for the diagram list and one detail call per diagram. With the restriction on, a vocabulary download is refused for vocabularies with validation errors, the list model carries user and comment fields, and the diagram detail is a "fat" read that includes pending edits. |
 
 Publication reuses the existing building blocks (`OntologyDownloadService`, the diagram repositories)
 and applies the export rules in one place.
@@ -46,66 +47,58 @@ and applies the export rules in one place.
 
 | Property | Default | Meaning |
 |---|---|---|
-| `ismd.publication.include-drafts` | `true` | `false` leaves out draft vocabularies, draft concepts of published vocabularies and the diagrams of left-out vocabularies (see [Drafts](#drafts)) |
-| `ismd.publication.interval` | `P30D` | How old the current publication may be before a new one is built (ISO-8601 `Duration`) |
-| `ismd.publication.check-cron` | `0 0 4 * * *` | When the scheduler checks whether the publication is older than `interval` |
-| `ismd.publication.directory` | `${java.io.tmpdir}/ismd-publication` | Directory holding the published files (see [Storage](#storage)) |
+| `ismd.publication.include-drafts` | `true` | Drafts are published. `false` leaves out draft vocabularies, draft concepts of published vocabularies and the diagrams of left-out vocabularies (see [Drafts](#drafts)) |
+| `ismd.publication.retain-files` | `12` | How many of the newest stored publications keep their file content in PostgreSQL (at least 1); metadata is kept forever (see [Archive](#archive)) |
 | `ismd.publication.iri-base` | `https://data.dia.gov.cz/zdroj/ismd/` | Base of the IRIs ISMD mints: `<base>diagramy/<iri_id>` and `<base>publikace/<file>` (see [Diagram IRI](#diagram-iri)) |
-| `ismd.publication.context-url` | — (set once LKOD DIA answers) | Second context in both files' `@context`; must be `https://`. Without it a run publishes nothing and logs an error. |
-| `ismd.publication.enabled` | `false` | Scheduler and public endpoints; switch on once the context URL resolves |
+| `ismd.publication.context-url` | `https://datagov-cz.github.io/ismd-tool-backend/ismd-otevřená-data/draft/kontext.jsonld` | Second context in both files' `@context`, a public `https://` URL (see [Context hosting](#context-hosting)). A blank value fails the run. |
 
-### Why `interval` + `check-cron` rather than a cron alone
-
-Cron cannot express "every 30 days" (the closest is "the 1st of each month") and a `fixedRate`
-restarts with the application. So the scheduler runs daily on `check-cron` (the same pattern as
-`reconciler.cron` and `outbox.prune-cron`) and builds a new publication only once `interval` has
-passed since the current publication's `publikováno`. The anchor is the `publikováno` stored on disk
-(see [Storage](#storage)), so a restart does not shift the period.
-
-- **Application start:** when `directory` holds no publication (new container, empty disk), one is
-  built in the background straight away; until then the endpoints answer `503` with `Retry-After`.
-- **Own thread:** both checks (at startup and on `check-cron`) run on `publicationExecutor` (one
-  thread, no queue, extra triggers dropped), so a run never holds the shared scheduler thread.
-- **Stuck run:** at most one build runs at a time (a `ReentrantLock` suffices, the backend runs as a
-  single instance). A failed build keeps the previous publication and is retried at the next check.
-
-## Endpoints
+## Admin endpoints
 
 ```
-GET|HEAD /api/publikace/slovniky.jsonld
-GET|HEAD /api/publikace/diagramy.jsonld
+POST /api/admin/publikace/run
+GET  /api/admin/publikace/history?page&size
+GET  /api/admin/publikace/{id}/{file}
 ```
 
-Each file is a separate NKOD distribution. The endpoints only serve the latest published files from
-disk; they never build anything.
+All three are admin-only (`@PreAuthorize("hasRole('ADMIN')")` in `PublicationAdminController`);
+`SecurityConfig` lets `/api/admin/publikace/**` through to authenticated users, the same pattern as
+`/api/admin/reconciler/**`. There is no public endpoint.
 
-| Aspect | Value |
+### Running a publication
+
+`POST /run` builds and stores a publication; nothing runs on startup or on a schedule. The request
+waits for the build and answers with `ApiResponseDto`:
+
+| Status | Meaning |
 |---|---|
-| Authorization | Public. `SecurityConfig` opens **exactly these two paths** (no `/api/publikace/*`), so a new endpoint under `/api/publikace` is not public by accident; other paths are refused by `denyAll()`. |
-| `200` | `application/ld+json;charset=UTF-8`, `Content-Disposition: attachment; filename="slovniky.jsonld"` (or `diagramy.jsonld`), `Content-Length`, `ETag`, `Last-Modified`, `Cache-Control: no-cache, public` |
-| `304` | `If-None-Match` / `If-Modified-Since` matches the current publication |
-| `503` + `Retry-After: 600` | Publication is on but none has run yet |
-| `404` | Publication is off (`enabled=false`), or another file name (e.g. `current.json`) |
-| `HEAD` | Mapped explicitly; answers headers from the in-memory record and never opens the file. NKOD requires an answer within 3 s, met with ample margin. |
-| CORS | `Access-Control-Allow-Origin: *`, methods `GET`/`HEAD`/`OPTIONS`, no credentials, for these two paths only; other paths keep the profile's allowlist |
+| `200` | Stored; data `PublicationRun` `{id, publishedAt, vocabularies, diagrams, complete, includeDrafts}`, `id` = the stored publication |
+| `409` `PUBLICATION_IN_PROGRESS` | Another run holds the lock |
+| `500` `PUBLICATION_FAILED` | The run failed (including a blank `context-url`); nothing is stored |
 
-- **ETag** = quoted SHA-256 of the file content. **Last-Modified** = `publikováno`.
-- **Why CORS `*`:** NKOD harvests from LKOD DIA, not from ISMD, and server-side clients ignore CORS.
-  `*` serves NKOD's CORS quality check on distribution URLs and browser-based consumers. It adds no
-  new risk: the data is public, identical for everyone, credential-less and read-only; interception
-  is handled by HTTPS at the ingress.
+The controller only delegates to `PublicationService.publish(triggeredBy)`, which returns the
+`PublicationRun`. The service takes the lock and reports failure by throwing
+`PublicationInProgressException` or `PublicationFailedException` (package
+`com.dia.ismdtoolbackend.exception`); `GlobalExceptionHandler` maps them to the statuses above. At
+most one build runs at a time (a `ReentrantLock` suffices, the backend runs as a single instance).
 
-### Storage
+### History
 
-Each run writes into its own directory `<directory>/<epoch-millis>/`. The current one is the one named
-by `<directory>/current.json` (size and ETag of each file, `publikováno`), which is replaced atomically
-only after both files are written. A client therefore never gets a half-built file or a pair of files
-from different runs. Older directories are deleted after a successful run; a request still streaming an
-old file keeps its open handle. On startup `current.json` is read back and the file sizes are checked;
-an incomplete publication is discarded and rebuilt.
+`GET /history` lists the stored publications newest first (`page` default `0`, `size` default `50`,
+at most `200`), metadata only: `PublicationSummary` with the run's fields, `triggeredBy`,
+`contextUrl` and per file `name`, `size`, `etag` and `stored` (`false` once the content is past
+`retain-files`).
 
-Without a persistent volume, the publication is rebuilt after every deployment and the 30-day period
-starts again.
+### Downloading the files
+
+`GET /{id}/{file}` (`file` = `slovniky.jsonld` | `diagramy.jsonld`) returns a stored file from
+PostgreSQL. This is how an admin gets the files for LKOD DIA; the newest publication's `id` comes from
+the run response or the first `history` entry.
+
+| Status | Meaning |
+|---|---|
+| `200` | Stored content, `application/ld+json;charset=UTF-8`, `ETag` (quoted SHA-256 of the content), `Content-Disposition: attachment; filename="publikace-<id>-<file>"` |
+| `404` `RESOURCE_NOT_FOUND` | Unknown publication or file |
+| `410` `PUBLICATION_FILE_PRUNED` | The publication exists but its content is past `retain-files` |
 
 ## File format
 
@@ -124,35 +117,34 @@ Both files have an `@context` of two contexts:
   `typ`, `název`, `popis`, `vytvořeno`, `aktualizováno`, `Časový okamžik`, `pojmy` and every concept
   field. The existing JSON-LD download already uses this context.
 - **The ISMD OD context** defines everything OFN does not cover: PostgreSQL metadata, the publication
-  record and diagrams. It comes second, so it does not override OFN terms. It is hosted in a dedicated
-  LKOD DIA repository (see [Context hosting](#context-hosting)).
+  record and diagrams. It comes second, so it does not override OFN terms. It is hosted in this
+  repository on GitHub Pages (see [Context hosting](#context-hosting)).
 
 ### Naming conventions
 
 Taken from the standards in [`datagov-cz/otevrene-formalni-normy`](https://github.com/datagov-cz/otevrene-formalni-normy)
 (DCAT-AP-CZ, OFN Slovníky) and from [`datagov-cz/lkod-dia`](https://github.com/datagov-cz/lkod-dia):
 
-| Element | Convention | Example in the standards | ISMD proposal |
+| Element | Convention | Example in the standards | ISMD |
 |---|---|---|---|
 | Property (JSON key) | Czech, lower case, words joined by `_` | `periodicita_aktualizace`, `klíčové_slovo`, `je_součástí`, `datum_a_čas` | `je_publikován`, `stav_poslední_validace`, `počet_pojmů` |
 | Type (`typ` value) | Czech, capitalised, spaces | `Datová sada`, `Časový okamžik`, `Typ objektu práva` | `Diagram`, `Uzel diagramu`, `Publikace ISMD` |
 | `iri` / `typ` | aliases of `@id` / `@type` | every context | unchanged |
 | Multilingual text | `@container: @language` | `název`, `popis` | only for human-readable text |
 | Resource reference | `@type: @id` | `poskytovatel`, `téma` | `slovník`, `pojem`, `seskupen_pod` |
-| Context location | `<standard>/<YYYY-MM-DD>/<profile>/kontext.jsonld`, working version in `draft/` | `dcat-ap-cz-hvd/2026-09-23/datová-sada/kontext.jsonld` | `ismd-otevřená-data/<date>/slovníky/kontext.jsonld`, `…/diagramy/kontext.jsonld`, or one `…/kontext.jsonld` |
+| Context location | `<standard>/<YYYY-MM-DD>/<profile>/kontext.jsonld`, working version in `draft/` | `dcat-ap-cz-hvd/2026-09-23/datová-sada/kontext.jsonld` | `ismd-otevřená-data/<date>/kontext.jsonld` (one context for both files), working version in `ismd-otevřená-data/draft/` |
 | DIA resource IRIs | `https://data.dia.gov.cz/zdroj/<area>/…` | `https://data.dia.gov.cz/zdroj/datové-sady/nkod/nkod-kompletní` | `https://data.dia.gov.cz/zdroj/ismd/diagramy/<uuid>` |
 | Vocabulary term IRIs | slovník.gov.cz `…/<vocabulary>/pojem/<term>` (OFN), data.gov.cz `slovník/<name>/<term>` (DCAT-AP-CZ) | `https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/okamžik-vytvoření` | `https://slovník.gov.cz/generický/ismd-otevřená-data/pojem/<term>` |
 
-Term IRIs use hyphens (`okamžik-vytvoření`), context keys underscores (`datum_a_čas`). **Note the
-mismatch:** OFN Slovníky uses hyphens in concept fields (`alternativní-název`, `nadřazený-pojem`),
-DCAT-AP-CZ underscores. A concept in `slovniky.jsonld` therefore carries both forms side by side
-(`alternativní-název` from OFN, `je_publikován` from ISMD). The design follows DCAT-AP-CZ as
-requested; if consistency within a concept should win, only the keys in the ISMD OD context change,
-not the term IRIs. All keys live in one class (`PublicationJson`).
+Term IRIs use hyphens (`okamžik-vytvoření`), context keys underscores (`datum_a_čas`). OFN Slovníky
+uses hyphens in concept fields (`alternativní-název`, `nadřazený-pojem`), DCAT-AP-CZ underscores. ISMD
+keys follow DCAT-AP-CZ, so a concept in `slovniky.jsonld` carries both forms side by side
+(`alternativní-název` from OFN, `je_publikován` from ISMD). All keys live in one class
+(`PublicationJson`).
 
 The vocabulary describing this open data is itself an OFN vocabulary (classes `Diagram`,
 `Uzel diagramu`, properties `je_publikován`, …), so it can be authored in ISMD and the context
-generated from it. Term names below are provisional; that vocabulary settles them.
+generated from it.
 
 Timestamps take the OFN shape `{"typ": "Časový okamžik", "datum_a_čas": "…"}` with an explicit
 offset, to whole seconds. PostgreSQL stores `createdAt` / `updatedAt` without a zone; publication
@@ -327,94 +319,103 @@ With `true` (the default) everything is published and `je_publikován` tells dra
 
 ## How a publication is built
 
-The scheduler starts it (see [Configuration](#configuration)); one run builds both files.
+An admin starts it with `POST /api/admin/publikace/run` (see [Running a publication](#running-a-publication));
+one run builds both files.
 
-1. **One PostgreSQL read.** `publikováno` is recorded and `PublicationSnapshotReader` loads, in one
+1. **Lock and context.** The run takes the lock (another run in progress → `409`) and fails on a blank
+   `context-url`.
+2. **One PostgreSQL read.** `publikováno` is recorded and `PublicationSnapshotReader` loads, in one
    read-only transaction (one query per table), the vocabularies with their concepts and the diagrams
    with their nodes and edges into a `PublicationSnapshot`. It has no fields for users, comments or
    pending diagram edits, so excluded data cannot leak through a shared model. With
    `include-drafts=false`, `DraftFilter` applies the rules above to the snapshot.
-2. **`slovniky.jsonld`, one vocabulary at a time.** For each vocabulary
+3. **`slovniky.jsonld`, one vocabulary at a time.** For each vocabulary
    `OntologyDownloadService.downloadOntology(id, "json-ld")` is called, the PostgreSQL metadata is
-   added and the node is written by a streaming JSON writer into the run's directory. Only one
-   vocabulary is in memory at a time.
-3. **`diagramy.jsonld`** is built from PostgreSQL alone.
-4. **The publication record** is written as the last node of both files (node order in `@graph` has
-   no meaning), the ETag is computed and the run is committed by replacing `current.json`.
+   added and the node is written by a streaming JSON writer into a temporary directory
+   (`ismd-publication-*`). Only one vocabulary is in memory at a time.
+4. **`diagramy.jsonld`** is built from PostgreSQL alone.
+5. **The publication record** is written as the last node of both files (node order in `@graph` has
+   no meaning); size and ETag (SHA-256) of each file are computed (`BuiltFile`).
+6. **Archive.** `PublicationArchive.save(...)` stores the run and both files (gzip) in PostgreSQL in
+   one transaction, which also drops content outside `retain-files`.
+7. **Clean-up.** The temporary directory is deleted in every case; the run returns `PublicationRun`.
+
+Any failure fails the run (`PUBLICATION_FAILED`) and nothing is stored.
 
 Design points that follow from the existing code:
 
 - **Validation does not block publication.** The restriction on downloading vocabularies with
   validation errors lives in `OntologyController`, not in the service, so a direct service call
   includes every vocabulary.
-- **Cleaned content.** The service applies the same filtering and OFN transformation as the public
-  download, so the publication and a single vocabulary download match (apart from the draft filter).
-- **Failures are reported per vocabulary** (`stav_obsahu = FAILED`, `úplná = false`). If the run as a
-  whole fails, the previous files stay published.
+- **Cleaned content.** The service applies the same filtering and OFN transformation as the existing
+  vocabulary download (`/api/ontology/{slug}/download`), so the publication and a single vocabulary download match (apart from the draft filter).
+- **Failures are reported per vocabulary** (`stav_obsahu = FAILED`, `úplná = false`).
 - **An empty vocabulary is not a failure.** A vocabulary without RDF content is published with its
   metadata and `stav_obsahu = EMPTY`.
-- **Fuseki load.** Graphs are fetched one at a time through the existing Fuseki semaphore and the run
-  is at `check-cron` (default 04:00, after the reconciler at 03:00 and the outbox prune at 03:30), so
-  publication does not crowd out interactive requests. The public URLs build nothing, so they cannot
-  be abused to create load.
+- **Fuseki load.** Graphs are fetched one at a time through the existing Fuseki semaphore, so
+  publication does not crowd out interactive requests. Only an admin starts a run.
+
+## Archive
+
+Every publication is stored in PostgreSQL as audit trail and as the source of the admin download
+(Liquibase `025-create-publications.yaml`, schema `ismd_schema`):
+
+| Table | Columns | Retention |
+|---|---|---|
+| `publication` | `id`, `published_at` (`timestamptz`), `triggered_by` (e.g. `ADMIN:<username>`), `include_drafts`, `complete`, `vocabularies`, `diagrams`, `context_url` | Forever |
+| `publication_file` | `publication_id` (FK, `ON DELETE CASCADE`), `name`, `size`, `etag`, `content_gzip` (`bytea`, gzip of the file); unique (`publication_id`, `name`) | `name`, `size`, `etag` forever; `content_gzip` is set to `NULL` once the publication is older than the newest `retain-files` publications |
+
+`triggered_by` stays in the database; it is not part of the published files.
 
 ## Consistency
 
 PostgreSQL and TDB2 share no transaction (see
 [`PG_TDB2_CONSISTENCY.md`](./PG_TDB2_CONSISTENCY.md)). The PostgreSQL side is one consistent snapshot;
 each vocabulary's RDF is read shortly after. An edit made during a run can therefore appear in the RDF
-but not in the metadata. `publikováno` marks the PostgreSQL snapshot. With a 30-day period and a night
-run this is acceptable. Between publications the files deliberately do not follow changes; the
-existing REST endpoints give the current state.
+but not in the metadata. `publikováno` marks the PostgreSQL snapshot. An admin chooses when to publish,
+so this is acceptable. Between publications the files deliberately do not follow changes; the existing
+REST endpoints give the current state.
 
 ## Cataloguing
 
-ISMD does not generate the dataset metadata. It is created once, by hand, with the NKOD form and stored
-in [`datagov-cz/lkod-dia`](https://github.com/datagov-cz/lkod-dia) (e.g. `ismd/slovníky-a-diagramy.jsonld`),
-from where LinkedPipes ETL harvests it into NKOD:
+ISMD does not generate the dataset metadata and does not host the distributions. The catalogue record
+and its distributions live in [`datagov-cz/lkod-dia`](https://github.com/datagov-cz/lkod-dia) (e.g.
+`ismd/slovníky-a-diagramy.jsonld`) and belong to the DIA LKOD pipeline, which uploads the files ISMD
+produced; LinkedPipes ETL harvests the record into NKOD:
 
 - Dataset IRI `https://data.dia.gov.cz/zdroj/datové-sady/ismd/slovníky-a-diagramy`, publisher
   `https://rpp-opendata.egon.gov.cz/odrpp/zdroj/orgán-veřejné-moci/17651921` (DIA).
-- Two distributions (`…/distribuce/0` vocabularies, `…/distribuce/1` diagrams) with
-  `přístupové_url` and `soubor_ke_stažení` on the public endpoint URLs, format `JSON_LD`, media type
-  `application/ld+json` and `schéma` = the ISMD OD context URL (or a JSON Schema, if one is made). The
-  public URL includes the application's context path (`server.servlet.context-path`, default
-  `/popisujeme`): `https://<host>/popisujeme/api/publikace/slovniky.jsonld`.
-- `periodicita_aktualizace` = `http://publications.europa.eu/resource/authority/frequency/MONTHLY`.
-  **Changing `ismd.publication.interval` requires editing the record by hand**, or the catalogue is
-  wrong.
-- If `include-drafts = true`, the dataset description should say so explicitly.
+- Two distributions (vocabularies, diagrams), format `JSON_LD`, media type `application/ld+json` and
+  `schéma` = the ISMD OD context URL (or a JSON Schema, if one is made). The distribution URLs are
+  wherever LKOD DIA hosts the uploaded files.
+- `periodicita_aktualizace` = `http://publications.europa.eu/resource/authority/frequency/IRREG`
+  (irregular): publication runs on demand.
+- Drafts are published (`include-drafts=true`), so the dataset description must say so explicitly.
 
 ## Context hosting
 
-The ISMD OD context (and possibly the vocabulary it was generated from) is hosted in a dedicated LKOD
-DIA repository. A draft of the context is in this repository as a test resource,
-`src/test/resources/com/dia/publication/ismd-od-kontext.jsonld`; term IRIs are under the provisional
-`https://slovník.gov.cz/generický/ismd-otevřená-data/pojem/`. The tests expand both files through it
-and the OFN context. Before enabling (questions sent to the `lkod-dia` maintainers):
+The ISMD OD context is hosted in this repository and served by GitHub Pages:
 
-- **Repository and URL.** `lkod-dia` holds only catalogue records today and its ETL processes every
-  `.jsonld` in it as a record. The context could end up as a broken record; either the ETL skips it (a
-  separate folder) or a separate repository is used. `ismd.publication.context-url` names its stable
-  public URL.
+- **File and URL.** `pages/ismd-otevřená-data/draft/kontext.jsonld`, served at
+  `https://datagov-cz.github.io/ismd-tool-backend/ismd-otevřená-data/draft/kontext.jsonld`, the default
+  of `ismd.publication.context-url` (`PublicationConfig.DRAFT_CONTEXT_URL`).
+  `PublicationFilesTest.defaultContextUrl_pointsAtThePublishedDraftContext` checks that the default URL
+  maps to the file in `pages/`; the tests expand both files through it and the OFN context.
+- **Deployment.** `.github/workflows/pages.yml` runs on a push to `dev` that touches `pages/**` (and on
+  manual dispatch), validates every `.jsonld` with `jq` and deploys `pages/` to GitHub Pages. GitHub
+  Pages must be enabled for the repository (Source: GitHub Actions), which needs repository admin
+  rights.
 - **Headers.** JSON-LD processors fetch a remote context at run time; the URL must return
-  `application/ld+json` (or `application/json`) and `Access-Control-Allow-Origin: *`.
-  `raw.githubusercontent.com` returns `text/plain`; GitHub Pages works.
-- **Versioning.** Following OFN, published versions never change (`<YYYY-MM-DD>/…`); changing terms
-  means a new dated version and a new `context-url`, with the working version in `draft/`.
+  `application/ld+json` (or `application/json`) and `Access-Control-Allow-Origin: *`. GitHub Pages
+  serves both without configuration. `raw.githubusercontent.com` returns `text/plain` and is unsuitable.
+- **Versioning.** Following OFN, a dated folder `pages/ismd-otevřená-data/<YYYY-MM-DD>/kontext.jsonld`
+  never changes once published; `draft/` is the working, mutable version. Before production a dated
+  version is frozen and `context-url` is switched to it. Changing terms means a new dated folder and a
+  new `context-url`.
+- **One context** serves both files; their terms do not overlap. Term IRIs are under
+  `https://slovník.gov.cz/generický/ismd-otevřená-data/pojem/`.
 - **`@version` 1.1** is required: the timestamp terms use nested contexts, a JSON-LD 1.1 feature, as
   OFN does.
-
-## Open decisions
-
-| # | Decision | Proposal |
-|---|---|---|
-| 1 | Default of `include-drafts` | `true` per the requirement ("draft and published vocabularies"); `false` is safer for public data |
-| 2 | Exact location and URL of the context in LKOD DIA (see [Context hosting](#context-hosting)) | A folder outside ETL processing, served by GitHub Pages or data.dia.gov.cz |
-| 3 | One ISMD OD context for both files, or two profiles (`…/slovníky/`, `…/diagramy/`) | One; the terms do not overlap |
-| 4 | Underscores (DCAT-AP-CZ) vs hyphens (OFN Slovníky concept fields) in ISMD keys | Underscores, as requested |
-| 5 | IRI base (`iri-base`) | `https://data.dia.gov.cz/zdroj/ismd/` |
-| 6 | Persistent storage for `ismd.publication.directory` | Without a persistent volume the publication is rebuilt at startup after every deployment and the period restarts; that is enough. A volume would be an infrastructure hand-off. |
 
 ## Implementation
 
@@ -428,30 +429,44 @@ Package `com.dia.ismdtoolbackend.publication`:
 | `file.VocabularyFileWriter` | `slovniky.jsonld`: OFN JSON-LD download + PostgreSQL metadata, references to left-out concepts removed |
 | `file.DiagramFileWriter` | `diagramy.jsonld` from PostgreSQL alone |
 | `file.PublicationJson` | All keys in one place, the document frame, the publication record, timestamps |
-| `PublicationService` | One run: snapshot, filter, write both files, commit; guarded against concurrent runs |
-| `PublicationStore` | Run directories, `current.json`, reload after restart |
-| `PublicationScheduler` | Checks at startup and on `check-cron`, both on `publicationExecutor` |
-| `PublicationController` | `GET`/`HEAD` of both files |
+| `BuiltFile` | A file written by a run: `name`, `path`, `size`, `etag` |
+| `PublicationService` | One run: lock, snapshot, filter, write both files into a temporary directory, archive, clean up; returns `PublicationRun` or throws `PublicationInProgressException` / `PublicationFailedException` |
+| `PublicationRun` | Result of a stored run with its `id`, returned by `POST /run` |
+| `PublicationAdminController` | `POST /run`, `GET /history`, `GET /{id}/{file}`; delegates to `PublicationService` and `PublicationArchive` |
+| `archive.PublicationEntity`, `archive.PublicationFileEntity` | The `publication` and `publication_file` rows |
+| `archive.PublicationRepository`, `archive.PublicationFileRepository` | Their repositories |
+| `archive.PublicationArchive` | `save` (with retention), `history`, `file` |
+| `archive.PublicationSummary`, `archive.PublicationFileSummaryRow` | The history entry and its content-free file projection |
 
-Outside the package: Liquibase `024-diagram-iri-id.yaml` + `DiagramEntity.iriId`;
-`AsyncConfig.publicationExecutor`; the exact paths in `SecurityConfig`; the CORS rule in `CorsConfig`
-and `CorsConfigUtil`. `OntologyDownloadService` and the repositories are reused unchanged;
-`VocabularyConstants.CONTEXT` already pointed at OFN `2026-02-26`.
+Outside the package: Liquibase `024-diagram-iri-id.yaml` + `DiagramEntity.iriId`; Liquibase
+`025-create-publications.yaml`; `/api/admin/publikace/**` in `SecurityConfig`;
+`PublicationInProgressException`, `PublicationFailedException`, `PublicationFilePrunedException` in
+`exception`, mapped in `GlobalExceptionHandler` to `PUBLICATION_*` in `ErrorCode`; the context in
+`pages/ismd-otevřená-data/draft/kontext.jsonld` and its deployment in `.github/workflows/pages.yml`.
+`OntologyDownloadService` and the repositories are reused unchanged; `VocabularyConstants.CONTEXT`
+already pointed at OFN `2026-02-26`.
+
+`PublicationFileEntity.content_gzip` is mapped with `columnDefinition = "bytea"`: without it, schema
+validation against real PostgreSQL fails (`bytea` reported as `BINARY` vs `VARBINARY`); H2 does not
+catch it.
 
 **Tests:** `DiagramRepositoryTest` (diagram IRI), `PublicationSnapshotReaderTest`, `DraftFilterTest`,
 `PublicationFilesTest` (real `JsonExporter` output, expansion through both real contexts, every key a
-defined term), `PublicationServiceTest`, `PublicationSchedulerTest`, `PublicationSchedulerAsyncTest`,
-`PublicationControllerTest`, `SecurityFilterChainIntegrationTest` (public paths, CORS, other paths under
-`/api/publikace` answer `401`). The key rules were checked by deliberately breaking them. There is no
-validation against the OFN JSON Schema: no schema validator is on the classpath.
+defined term, default `context-url` maps to the file in `pages/`), `PublicationServiceTest` (stored
+files and run, temporary build removed, drafts off, a snapshot, writer or archive failure stores
+nothing, missing `context-url`, run in progress), `archive.PublicationArchivePostgresTest` (real
+PostgreSQL via Testcontainers: `bytea` round trip, retention keeps metadata and drops content, not
+found), `PublicationAdminControllerTest`. The key rules were checked by deliberately breaking them.
+There is no validation against the OFN JSON Schema: no schema validator is on the classpath.
 
 ## Enabling
 
-Publication stays off until these steps are done:
+There is no `enabled` switch and nothing to hand off to infrastructure. Before production use:
 
-1. Answers from the `lkod-dia` maintainers → final context, `context-url`, term IRIs and key spelling
-   (constants in `PublicationJson`).
-2. Publish the context and create the catalogue record (distribution URLs
-   `https://<host>/popisujeme/api/publikace/*.jsonld`).
-3. Set `ismd.publication.enabled=true` and an `https://` `context-url` per environment
-   (infrastructure hand-off); optionally a persistent volume for `directory`.
+1. Enable GitHub Pages for the repository (Source: GitHub Actions; needs repository admin rights) and
+   verify that the draft context URL resolves with `application/ld+json`.
+2. Freeze a dated context version (`pages/ismd-otevřená-data/<YYYY-MM-DD>/`) and set `context-url` to
+   it.
+3. An admin runs `POST /api/admin/publikace/run` and downloads both files via
+   `GET /api/admin/publikace/{id}/{file}`.
+4. The DIA LKOD pipeline uploads them and maintains the catalogue record.
