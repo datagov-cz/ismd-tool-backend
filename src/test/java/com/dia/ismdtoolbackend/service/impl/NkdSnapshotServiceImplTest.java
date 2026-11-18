@@ -171,7 +171,7 @@ class NkdSnapshotServiceImplTest {
 
         NkdConceptSnapshotEntity result = service.createOrRefreshSnapshot(owner, NKD_IRI,
                 SnapshotLinkType.BROADER_CLASS.value(), new OwnerChangeSet(),
-                new com.dia.ismdtoolbackend.service.snapshot.NkdLookup.Prefetched(java.util.Set.of(), java.util.Map.of()));
+                new com.dia.ismdtoolbackend.service.snapshot.NkdLookup.Prefetched(java.util.Optional.of(java.util.Set.of()), java.util.Map.of()));
 
         assertThat(result).isSameAs(existing);
         org.mockito.Mockito.verifyNoInteractions(nkdSparqlClient);

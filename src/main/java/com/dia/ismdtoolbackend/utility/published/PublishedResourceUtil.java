@@ -180,11 +180,15 @@ public class PublishedResourceUtil {
             return Collections.emptyList();
         }
 
-        List<String> publishedIris = nkdSparqlClient.getPublishedResourcesList(resourceIris);
+        Optional<Set<String>> answer = nkdSparqlClient.findPublishedAmong(resourceIris);
+        if (answer.isEmpty()) {
+            log.warn("NKD did not answer; publication and domain/range checks skipped for {} IRI(s) of {}",
+                    resourceIris.size(), resourceIris.get(0));
+            return Collections.emptyList();
+        }
         log.info("Found {} published resources in NKD out of {} total resources",
-                publishedIris.size(), resourceIris.size());
-
-        return publishedIris;
+                answer.get().size(), resourceIris.size());
+        return List.copyOf(answer.get());
     }
 
     /**

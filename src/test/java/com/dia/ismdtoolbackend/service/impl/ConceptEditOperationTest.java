@@ -188,7 +188,7 @@ class ConceptEditOperationTest {
         void enqueuesAndSavesNothingWhenTheLinkReconcileRejects() {
             graph.add(conceptResource, RDFS.domain, graph.createResource(NKD_SUPERCLASS));
             givenEditorReturns(unchanged());
-            when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(List.of(NKD_SUPERCLASS));
+            when(nkdSparqlClient.findPublishedAmong(anyList())).thenReturn(java.util.Optional.of(java.util.Set.of(NKD_SUPERCLASS)));
 
             assertThatThrownBy(() -> operation.editConcept(CONCEPT_ID, editModel))
                     .isInstanceOf(OntologyValidationException.class);

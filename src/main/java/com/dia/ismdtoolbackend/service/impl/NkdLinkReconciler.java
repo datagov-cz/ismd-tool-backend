@@ -16,10 +16,10 @@ import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.rdf.model.StmtIterator;
 import com.dia.ismdtoolbackend.service.snapshot.NkdLookup;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
@@ -49,7 +49,9 @@ class NkdLinkReconciler {
      * graph's scheme, which is true of a <em>working copy</em> — a locally-owned concept whose own IRI is
      * in NKD. Such a target is external-looking and published, but it is ours, so both paths below
      * subtract the locally-owned IRIs first: it must never be rejected, and never snapshotted as a copy
-     * of someone else's concept. The detector stays IO-free; the ownership lookup belongs here.
+     * of someone else's concept. Only the owner's graph counts as local: a concept of another ISMD
+     * vocabulary that NKD publishes is an NKD concept like any other. The detector stays IO-free; the
+     * ownership lookup belongs here.
      */
     OwnerChangeSet reconcileNkdLinks(ConceptMetadataEntity owner, Model model) {
         return reconcileNkdLinks(owner, model, live());
@@ -72,13 +74,18 @@ class NkdLinkReconciler {
         List<NkdLinkDetector.LinkTarget> detectedTargets =
                 nkdLinkDetector.allowedTargets(ownerIri, owner.getConceptType(), graphScheme, model);
 
-        Set<String> locallyOwned = locallyOwnedAmong(domainRangeTargets, detectedTargets);
+        Set<String> locallyOwned = locallyOwnedAmong(graphScheme, domainRangeTargets, detectedTargets);
 
         List<String> foreignDomainRangeTargets = domainRangeTargets.stream()
                 .filter(iri -> !locallyOwned.contains(iri))
                 .toList();
         if (!foreignDomainRangeTargets.isEmpty()) {
-            Set<String> publishedForbidden = nkd.publishedAmong(foreignDomainRangeTargets);
+            Optional<Set<String>> answer = nkd.publishedAmong(foreignDomainRangeTargets);
+            if (answer.isEmpty()) {
+                log.warn("NKD did not answer; domain/range check skipped for concept {} (targets {})",
+                        ownerIri, foreignDomainRangeTargets);
+            }
+            Set<String> publishedForbidden = answer.orElse(Set.of());
             if (!publishedForbidden.isEmpty()) {
                 throw new OntologyValidationException(
                         "Definiční obor / obor hodnot nesmí odkazovat na publikovaný pojem v NKD: "
@@ -125,24 +132,29 @@ class NkdLinkReconciler {
     }
 
     /**
-     * Which of the reconcile candidates are concepts we own locally (working copies). One batch lookup
-     * over the union of both candidate sets, so the reject path and the snapshot path share a single query.
+     * Which of the reconcile candidates are working copies: concepts in the owner's graph {@code graphName}.
+     * One batch lookup over the union of both candidate sets, so the reject path and the snapshot path share
+     * a single query.
      */
-    Set<String> locallyOwnedAmong(List<String> domainRangeTargets,
-                                          List<NkdLinkDetector.LinkTarget> detectedTargets) {
+    Set<String> locallyOwnedAmong(String graphName, List<String> domainRangeTargets,
+                                  List<NkdLinkDetector.LinkTarget> detectedTargets) {
         Set<String> candidates = new HashSet<>(domainRangeTargets);
         detectedTargets.forEach(t -> candidates.add(t.targetIri()));
-        if (candidates.isEmpty()) {
+        return ownedIn(graphName, candidates);
+    }
+
+    private Set<String> ownedIn(String graphName, Collection<String> iris) {
+        if (graphName == null || iris.isEmpty()) {
             return Set.of();
         }
-        return conceptMetadataRepository.findByConceptIriIn(new ArrayList<>(candidates)).stream()
+        return conceptMetadataRepository.findByGraphNameAndConceptIriIn(graphName, List.copyOf(iris)).stream()
                 .map(ConceptMetadataEntity::getConceptIri)
                 .collect(Collectors.toSet());
     }
 
     /**
      * What a reconcile of {@code model}'s links would ask NKD, fetched now, outside the edit's transaction:
-     * the external IRIs the payload names, minus concepts owned locally.
+     * the external IRIs the payload names, minus working copies in the owner's graph.
      */
     NkdLookup prefetch(String graphScheme, Collection<String> referencedIris) {
         List<String> external = referencedIris.stream()
@@ -154,9 +166,7 @@ class NkdLinkReconciler {
         if (external.isEmpty()) {
             return NkdLookup.prefetch(nkdSparqlClient, List.of());
         }
-        Set<String> owned = conceptMetadataRepository.findByConceptIriIn(external).stream()
-                .map(ConceptMetadataEntity::getConceptIri)
-                .collect(Collectors.toSet());
+        Set<String> owned = ownedIn(graphScheme, external);
         return NkdLookup.prefetch(nkdSparqlClient,
                 external.stream().filter(iri -> !owned.contains(iri)).toList());
     }

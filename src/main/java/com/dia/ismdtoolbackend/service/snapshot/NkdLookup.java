@@ -17,13 +17,14 @@ import java.util.Set;
  * ({@link #prefetch}), so no NKD call runs while the row lock and the connection are held; other callers ask
  * NKD as they go ({@link #live}).
  *
- * <p>Fail-open either way: NKD trouble never fails a write. An IRI NKD could not be asked about counts as not
- * published, and a concept that could not be fetched leaves its existing snapshot as it is.
+ * <p>Fail-open either way: NKD trouble never fails a write. {@link #publishedAmong} reports a check NKD did not
+ * answer as empty, so the caller can say it skipped; a concept that could not be fetched leaves its existing
+ * snapshot as it is.
  */
 public interface NkdLookup {
 
-    /** The IRIs among {@code iris} NKD publishes. */
-    Set<String> publishedAmong(Collection<String> iris);
+    /** The IRIs among {@code iris} NKD publishes, or empty when NKD did not answer. */
+    Optional<Set<String>> publishedAmong(Collection<String> iris);
 
     /** NKD's copy of one concept, or empty when it could not be fetched. */
     Optional<Fetched> concept(String iri);
@@ -39,7 +40,7 @@ public interface NkdLookup {
     /** Asks NKD about {@code iris} now and answers from memory afterwards; other IRIs have no answer. */
     static NkdLookup prefetch(NkdSparqlClient client, Collection<String> iris) {
         Live live = new Live(client);
-        Set<String> published = live.publishedAmong(iris);
+        Optional<Set<String>> published = live.publishedAmong(iris);
         Map<String, Fetched> concepts = new HashMap<>();
         for (String iri : iris) {
             live.concept(iri).ifPresent(fetched -> concepts.put(iri, fetched));
@@ -56,15 +57,15 @@ public interface NkdLookup {
         }
 
         @Override
-        public Set<String> publishedAmong(Collection<String> iris) {
+        public Optional<Set<String>> publishedAmong(Collection<String> iris) {
             if (iris.isEmpty()) {
-                return Set.of();
+                return Optional.of(Set.of());
             }
             try {
-                return new HashSet<>(client.getPublishedResourcesList(List.copyOf(iris)));
+                return client.findPublishedAmong(List.copyOf(iris));
             } catch (RuntimeException e) {
-                log.warn("NKD published-check failed (fail-open, enforcement skipped): {}", e.getMessage());
-                return Set.of();
+                log.warn("NKD published-check failed: {}", e.getMessage());
+                return Optional.empty();
             }
         }
 
@@ -81,13 +82,19 @@ public interface NkdLookup {
         }
     }
 
-    record Prefetched(Set<String> published, Map<String, Fetched> concepts) implements NkdLookup {
+    /** {@code published} empty: NKD did not answer the prefetch. */
+    record Prefetched(Optional<Set<String>> published, Map<String, Fetched> concepts) implements NkdLookup {
 
         @Override
-        public Set<String> publishedAmong(Collection<String> iris) {
-            Set<String> out = new HashSet<>(iris);
-            out.retainAll(published);
-            return out;
+        public Optional<Set<String>> publishedAmong(Collection<String> iris) {
+            if (iris.isEmpty()) {
+                return Optional.of(Set.of());
+            }
+            return published.map(answer -> {
+                Set<String> out = new HashSet<>(iris);
+                out.retainAll(answer);
+                return out;
+            });
         }
 
         @Override

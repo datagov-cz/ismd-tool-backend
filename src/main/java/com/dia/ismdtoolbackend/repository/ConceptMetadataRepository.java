@@ -142,6 +142,8 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
 
     List<ConceptMetadataEntity> findByConceptIriIn(List<String> conceptIris);
 
+    List<ConceptMetadataEntity> findByGraphNameAndConceptIriIn(String graphName, List<String> conceptIris);
+
     @EntityGraph(attributePaths = "ontologyMetadata")
     Optional<ConceptMetadataEntity> findBySlug(String slug);
 

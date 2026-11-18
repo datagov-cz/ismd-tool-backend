@@ -50,6 +50,7 @@ import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -379,13 +380,30 @@ class OntologyUploadValidationParityTest {
         nkdReportsPublished(NKD_CLASS);
         ConceptMetadataEntity workingCopy = new ConceptMetadataEntity();
         workingCopy.setConceptIri(NKD_CLASS);
-        when(conceptMetadataRepository.findByConceptIriIn(anyList())).thenReturn(List.of(workingCopy));
+        when(conceptMetadataRepository.findByGraphNameAndConceptIriIn(eq(VOCABULARY), anyList()))
+                .thenReturn(List.of(workingCopy));
 
         OntologyUploadResultDto uploaded = upload(vocabulary()
                 + concept(GOOD, "owl:DatatypeProperty", "; rdfs:domain <" + NKD_CLASS + ">"));
 
         assertThat(savedConceptIris()).isEqualTo(List.of(GOOD));
         assertThat(uploaded.rejectedConcepts()).isEmpty();
+    }
+
+    /** Only the uploaded vocabulary's own concepts are exempt; one owned by another vocabulary is not. */
+    @Test
+    void domainPointingAtAPublishedConceptOfAnotherVocabularyIsRejected() throws Exception {
+        nkdReportsPublished(NKD_CLASS);
+        ConceptMetadataEntity elsewhere = new ConceptMetadataEntity();
+        elsewhere.setConceptIri(NKD_CLASS);
+        lenient().when(conceptMetadataRepository.findByConceptIriIn(anyList())).thenReturn(List.of(elsewhere));
+
+        OntologyUploadResultDto uploaded = upload(vocabulary()
+                + concept(GOOD, "owl:Class", "")
+                + concept(BAD, "owl:DatatypeProperty", "; rdfs:domain <" + NKD_CLASS + ">"));
+
+        assertThat(savedConceptIris()).isEqualTo(List.of(GOOD));
+        assertThat(uploaded.rejectedConcepts()).extracting(r -> r.iri()).containsExactly(BAD);
     }
 
     // --- Role guard -----------------------------------------------------------

@@ -1,8 +1,13 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.NkdConceptSnapshotEntity;
+import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.SnapshotLinkType;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
@@ -19,9 +24,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import static com.dia.ismdtoolbackend.service.impl.ConceptServiceTestData.CONCEPT_ID;
@@ -34,6 +41,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -84,7 +92,31 @@ class NkdLinkReconcilerTest {
             entity.setIsPublished(true);
             return entity;
         }).toList();
-        when(conceptMetadataRepository.findByConceptIriIn(anyList())).thenReturn(owned);
+        when(conceptMetadataRepository.findByGraphNameAndConceptIriIn(eq(GRAPH_NAME), anyList())).thenReturn(owned);
+    }
+
+    /**
+     * A row for {@code iri} in another vocabulary's graph, as the instance-wide lookup would see it. Lenient:
+     * the reconciler must not ask that query at all.
+     */
+    private void givenOwnedByAnotherVocabulary(String iri) {
+        ConceptMetadataEntity entity = new ConceptMetadataEntity();
+        entity.setConceptIri(iri);
+        entity.setGraphName("https://slovník.gov.cz/agendový/999");
+        lenient().when(conceptMetadataRepository.findByConceptIriIn(anyList())).thenReturn(List.of(entity));
+    }
+
+    private static List<ILoggingEvent> warningsDuring(Runnable action) {
+        Logger logger = (Logger) LoggerFactory.getLogger(NkdLinkReconciler.class);
+        ListAppender<ILoggingEvent> logs = new ListAppender<>();
+        logs.start();
+        logger.addAppender(logs);
+        try {
+            action.run();
+        } finally {
+            logger.detachAppender(logs);
+        }
+        return logs.list.stream().filter(e -> e.getLevel() == Level.WARN).toList();
     }
 
     private void givenExistingSnapshotOf(String nkdIri, NkdConceptSnapshotEntity snapshot) {
@@ -126,6 +158,33 @@ class NkdLinkReconcilerTest {
         }
 
         @Test
+        void snapshotsAPublishedConceptOfAnotherVocabulary() {
+            link(RDFS.subClassOf, FOREIGN);
+            givenOwnedByAnotherVocabulary(FOREIGN);
+
+            reconciler.reconcileNkdLinks(owner, graph);
+
+            verify(nkdSnapshotService).createOrRefreshSnapshot(
+                    eq(owner), eq(FOREIGN), eq(SnapshotLinkType.BROADER_CLASS.value()), any(), any());
+        }
+
+        /** Diagram: own class → own Vztah → foreign class. The range is a link to track, never a rejection. */
+        @Test
+        void relationshipRangeOnAPublishedForeignClassIsSnapshottedNotRejected() {
+            owner.setConceptType(ConceptType.VZTAH);
+            link(RDFS.domain, GRAPH_NAME + "/pojem/own-class");
+            link(RDFS.range, FOREIGN);
+            givenOwnedByAnotherVocabulary(FOREIGN);
+            lenient().when(nkdSparqlClient.findPublishedAmong(anyList())).thenReturn(Optional.of(Set.of(FOREIGN)));
+
+            reconciler.reconcileNkdLinks(owner, graph);
+
+            verify(nkdSparqlClient, never()).findPublishedAmong(anyList());
+            verify(nkdSnapshotService).createOrRefreshSnapshot(
+                    eq(owner), eq(FOREIGN), eq(SnapshotLinkType.RANGE_TARGET.value()), any(), any());
+        }
+
+        @Test
         void removesTheSnapshotOfATargetThatBecameOwned() {
             link(RDFS.subClassOf, NKD_SUPERCLASS);
             givenLocallyOwned(NKD_SUPERCLASS);
@@ -157,7 +216,7 @@ class NkdLinkReconcilerTest {
         @Test
         void rejectsADomainOnAPublishedNkdConcept() {
             link(RDFS.domain, NKD_SUPERCLASS);
-            when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(List.of(NKD_SUPERCLASS));
+            when(nkdSparqlClient.findPublishedAmong(anyList())).thenReturn(Optional.of(Set.of(NKD_SUPERCLASS)));
 
             assertThatThrownBy(() -> reconciler.reconcileNkdLinks(owner, graph))
                     .isInstanceOf(OntologyValidationException.class)
@@ -168,12 +227,37 @@ class NkdLinkReconcilerTest {
         @Test
         void allowsTheLinkWhenNkdIsDown() {
             link(RDFS.domain, NKD_SUPERCLASS);
-            when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenThrow(new RuntimeException("NKD down"));
+            when(nkdSparqlClient.findPublishedAmong(anyList())).thenThrow(new RuntimeException("NKD down"));
 
             OwnerChangeSet delta = reconciler.reconcileNkdLinks(owner, graph);
 
             assertThat(delta.toAdd).isEmpty();
             assertThat(delta.toRemove).isEmpty();
+        }
+
+        /** Fail-open, but not silent: the skipped check is logged with the concept and its targets. */
+        @Test
+        void allowsTheLinkWhenNkdDoesNotAnswer_andWarns() {
+            link(RDFS.domain, NKD_SUPERCLASS);
+            when(nkdSparqlClient.findPublishedAmong(anyList())).thenReturn(Optional.empty());
+
+            List<ILoggingEvent> warnings = warningsDuring(() -> {
+                OwnerChangeSet delta = reconciler.reconcileNkdLinks(owner, graph);
+                assertThat(delta.toAdd).isEmpty();
+                assertThat(delta.toRemove).isEmpty();
+            });
+
+            assertThat(warnings).singleElement().satisfies(e -> assertThat(e.getFormattedMessage())
+                    .contains("domain/range check skipped").contains(CONCEPT_IRI).contains(NKD_SUPERCLASS));
+        }
+
+        /** NKD answered "nothing published": no skip warning. */
+        @Test
+        void answeredWithNothingPublishedDoesNotWarn() {
+            link(RDFS.domain, NKD_SUPERCLASS);
+            when(nkdSparqlClient.findPublishedAmong(anyList())).thenReturn(Optional.of(Set.of()));
+
+            assertThat(warningsDuring(() -> reconciler.reconcileNkdLinks(owner, graph))).isEmpty();
         }
 
         @Test
@@ -183,7 +267,21 @@ class NkdLinkReconcilerTest {
 
             reconciler.reconcileNkdLinks(owner, graph);
 
-            verify(nkdSparqlClient, never()).getPublishedResourcesList(anyList());
+            verify(nkdSparqlClient, never()).findPublishedAmong(anyList());
+        }
+
+        /** Diagram: foreign class → own Vztah → own class. Published in NKD, so ISMD origin does not exempt it. */
+        @Test
+        void rejectsADomainOnAPublishedConceptOfAnotherVocabulary() {
+            owner.setConceptType(ConceptType.VZTAH);
+            link(RDFS.domain, FOREIGN);
+            link(RDFS.range, GRAPH_NAME + "/pojem/own-class");
+            givenOwnedByAnotherVocabulary(FOREIGN);
+            when(nkdSparqlClient.findPublishedAmong(anyList())).thenReturn(Optional.of(Set.of(FOREIGN)));
+
+            assertThatThrownBy(() -> reconciler.reconcileNkdLinks(owner, graph))
+                    .isInstanceOf(OntologyValidationException.class)
+                    .hasMessageContaining(FOREIGN);
         }
 
         @Test
@@ -191,14 +289,14 @@ class NkdLinkReconcilerTest {
             link(RDFS.domain, NKD_SUPERCLASS);
             link(RDFS.range, FOREIGN);
             givenLocallyOwned(NKD_SUPERCLASS);
-            when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(List.of(FOREIGN));
+            when(nkdSparqlClient.findPublishedAmong(anyList())).thenReturn(Optional.of(Set.of(FOREIGN)));
 
             assertThatThrownBy(() -> reconciler.reconcileNkdLinks(owner, graph))
                     .isInstanceOf(OntologyValidationException.class)
                     .hasMessageContaining(FOREIGN)
                     .hasMessageNotContaining(NKD_SUPERCLASS);
 
-            verify(nkdSparqlClient).getPublishedResourcesList(askedCaptor.capture());
+            verify(nkdSparqlClient).findPublishedAmong(askedCaptor.capture());
             assertThat(Set.copyOf(askedCaptor.getValue())).containsExactly(FOREIGN);
         }
     }
@@ -210,19 +308,30 @@ class NkdLinkReconcilerTest {
         @Test
         void asksNkdOnlyAboutExternalIrisThatAreNotOwnedLocally() {
             givenLocallyOwned(NKD_SUPERCLASS);
-            when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(List.of());
+            when(nkdSparqlClient.findPublishedAmong(anyList())).thenReturn(Optional.of(Set.of()));
 
             reconciler.prefetch(GRAPH_NAME, List.of(NKD_SUPERCLASS, FOREIGN, GRAPH_NAME + "/pojem/own", " "));
 
-            verify(nkdSparqlClient).getPublishedResourcesList(askedCaptor.capture());
+            verify(nkdSparqlClient).findPublishedAmong(askedCaptor.capture());
             assertThat(askedCaptor.getValue()).containsExactly(FOREIGN);
             verify(nkdSparqlClient).fetchPublishedConceptWithScheme(FOREIGN);
             verify(nkdSparqlClient, never()).fetchPublishedConceptWithScheme(NKD_SUPERCLASS);
         }
 
         @Test
+        void asksNkdAboutAConceptOfAnotherVocabulary() {
+            givenOwnedByAnotherVocabulary(FOREIGN);
+            when(nkdSparqlClient.findPublishedAmong(anyList())).thenReturn(Optional.of(Set.of()));
+
+            reconciler.prefetch(GRAPH_NAME, List.of(FOREIGN));
+
+            verify(nkdSparqlClient).findPublishedAmong(askedCaptor.capture());
+            assertThat(askedCaptor.getValue()).containsExactly(FOREIGN);
+        }
+
+        @Test
         void reconcileWithAPrefetchedLookupCallsNkdNever_andStillRejects() {
-            when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(List.of(FOREIGN));
+            when(nkdSparqlClient.findPublishedAmong(anyList())).thenReturn(Optional.of(Set.of(FOREIGN)));
             com.dia.ismdtoolbackend.service.snapshot.NkdLookup nkd = reconciler.prefetch(GRAPH_NAME, List.of(FOREIGN));
             org.mockito.Mockito.clearInvocations(nkdSparqlClient);
             link(RDFS.domain, FOREIGN);
@@ -236,15 +345,19 @@ class NkdLinkReconcilerTest {
         /** NKD down at prefetch time: nothing is known, so the edit goes through (fail-open). */
         @Test
         void nkdDownAtPrefetchLetsTheEditThrough() {
-            when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenThrow(new RuntimeException("NKD down"));
+            when(nkdSparqlClient.findPublishedAmong(anyList())).thenThrow(new RuntimeException("NKD down"));
             when(nkdSparqlClient.fetchPublishedConceptWithScheme(FOREIGN)).thenThrow(new RuntimeException("NKD down"));
             com.dia.ismdtoolbackend.service.snapshot.NkdLookup nkd = reconciler.prefetch(GRAPH_NAME, List.of(FOREIGN));
             link(RDFS.domain, FOREIGN);
 
-            OwnerChangeSet delta = reconciler.reconcileNkdLinks(owner, graph, nkd);
+            List<ILoggingEvent> warnings = warningsDuring(() -> {
+                OwnerChangeSet delta = reconciler.reconcileNkdLinks(owner, graph, nkd);
+                assertThat(delta.toAdd).isEmpty();
+                assertThat(delta.toRemove).isEmpty();
+            });
 
-            assertThat(delta.toAdd).isEmpty();
-            assertThat(delta.toRemove).isEmpty();
+            assertThat(warnings).singleElement()
+                    .satisfies(e -> assertThat(e.getFormattedMessage()).contains("domain/range check skipped"));
         }
     }
 }

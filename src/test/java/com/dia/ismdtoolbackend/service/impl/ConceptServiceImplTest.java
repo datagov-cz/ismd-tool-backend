@@ -79,7 +79,7 @@ class ConceptServiceImplTest {
         ClassConceptEditModel editModel = ConceptServiceTestData.editModel();
         ConceptMetadataModel edited = metadata("a");
         com.dia.ismdtoolbackend.service.snapshot.NkdLookup nkd =
-                new com.dia.ismdtoolbackend.service.snapshot.NkdLookup.Prefetched(java.util.Set.of(), java.util.Map.of());
+                new com.dia.ismdtoolbackend.service.snapshot.NkdLookup.Prefetched(java.util.Optional.of(java.util.Set.of()), java.util.Map.of());
         when(editOperation.prefetchNkd(CONCEPT_ID, editModel)).thenReturn(nkd);
         when(editOperation.editConcept(CONCEPT_ID, editModel, nkd)).thenReturn(edited);
 
