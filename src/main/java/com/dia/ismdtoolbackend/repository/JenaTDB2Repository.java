@@ -316,6 +316,11 @@ public class JenaTDB2Repository {
         return conceptQueries.fetchConceptLabels(conceptIris);
     }
 
+    /** The concept's current link targets (domain, range, super-class/-property, exact match) in its graph. */
+    public List<String> fetchLinkTargets(String conceptIri, String graphName) {
+        return conceptQueries.fetchLinkTargets(conceptIri, graphName);
+    }
+
     public ConceptHierarchyLinks fetchConceptHierarchy(String conceptIri, String graphName) {
         return conceptQueries.fetchConceptHierarchy(conceptIri, graphName);
     }

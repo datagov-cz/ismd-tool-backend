@@ -10,6 +10,7 @@ import com.dia.ismdtoolbackend.models.OntologyDetailModel.ConceptDetailModel;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel.DeviationStatus;
 import com.dia.ismdtoolbackend.repository.NkdConceptSnapshotRepository;
+import com.dia.ismdtoolbackend.service.snapshot.NkdLookup;
 import com.dia.ismdtoolbackend.service.snapshot.OwnerChangeSet;
 import com.dia.ismdtoolbackend.utility.published.NkdSnapshotMaterializer;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
@@ -47,7 +48,6 @@ class NkdSnapshotServiceImplTest {
 
     @Mock private NkdConceptSnapshotRepository snapshotRepository;
     @Mock private NkdSparqlClient nkdSparqlClient;
-    @Mock private DeviationResolutionEnricher deviationEnricher;
     private final NkdSnapshotMaterializer materializer = new NkdSnapshotMaterializer();
 
     private NkdSnapshotServiceImpl service;
@@ -56,12 +56,21 @@ class NkdSnapshotServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        service = new NkdSnapshotServiceImpl(snapshotRepository, nkdSparqlClient, materializer,
-                new ConceptDeviationComparator(), deviationEnricher);
+        service = new NkdSnapshotServiceImpl(snapshotRepository, materializer, new ConceptDeviationComparator());
         owner = new ConceptMetadataEntity();
         owner.setId(17L);
         owner.setConceptIri(OWNER_IRI);
         owner.setGraphName(OWNER_GRAPH);
+    }
+
+    /** NKD asked as the call goes, through the mocked client. */
+    private NkdLookup live() {
+        return NkdLookup.live(nkdSparqlClient);
+    }
+
+    private void nkdPublishes(ConceptDetailModel published) {
+        when(nkdSparqlClient.fetchPublishedConceptWithScheme(NKD_IRI))
+                .thenReturn(Optional.of(new PublishedConcept(published, NKD_SCHEME)));
     }
 
     private Model rawNkd(String label) {
@@ -91,7 +100,7 @@ class NkdSnapshotServiceImplTest {
     @Test
     void createOrRefresh_rejectsDisallowedLinkPredicate() {
         OwnerChangeSet cs = new OwnerChangeSet();
-        assertThatThrownBy(() -> service.createOrRefreshSnapshot(owner, NKD_IRI, "domain", cs))
+        assertThatThrownBy(() -> service.createOrRefreshSnapshot(owner, NKD_IRI, "domain", cs, live()))
                 .isInstanceOf(OntologyValidationException.class)   // → HTTP 400, not 500
                 .hasMessageContaining("domain");
 
@@ -110,7 +119,7 @@ class NkdSnapshotServiceImplTest {
         when(snapshotRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         OwnerChangeSet cs = new OwnerChangeSet();
-        NkdConceptSnapshotEntity saved = service.createOrRefreshSnapshot(owner, NKD_IRI, SnapshotLinkType.BROADER_CLASS.value(), cs);
+        NkdConceptSnapshotEntity saved = service.createOrRefreshSnapshot(owner, NKD_IRI, SnapshotLinkType.BROADER_CLASS.value(), cs, live());
 
         assertThat(saved.getOwningConcept()).isSameAs(owner);
         assertThat(saved.getNkdIri()).isEqualTo(NKD_IRI);
@@ -152,7 +161,7 @@ class NkdSnapshotServiceImplTest {
         when(snapshotRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         OwnerChangeSet cs = new OwnerChangeSet();
-        service.createOrRefreshSnapshot(owner, NKD_IRI, SnapshotLinkType.BROADER_CLASS.value(), cs);
+        service.createOrRefreshSnapshot(owner, NKD_IRI, SnapshotLinkType.BROADER_CLASS.value(), cs, live());
 
         // The PG copy is refreshed to the NEW payload; the old label is gone from it.
         assertThat(existing.getMaterializedTriples()).contains("New").doesNotContain("Old");
@@ -171,7 +180,7 @@ class NkdSnapshotServiceImplTest {
 
         NkdConceptSnapshotEntity result = service.createOrRefreshSnapshot(owner, NKD_IRI,
                 SnapshotLinkType.BROADER_CLASS.value(), new OwnerChangeSet(),
-                new com.dia.ismdtoolbackend.service.snapshot.NkdLookup.Prefetched(java.util.Optional.of(java.util.Set.of()), java.util.Map.of()));
+                com.dia.ismdtoolbackend.service.snapshot.NkdLookup.none());
 
         assertThat(result).isSameAs(existing);
         org.mockito.Mockito.verifyNoInteractions(nkdSparqlClient);
@@ -192,7 +201,7 @@ class NkdSnapshotServiceImplTest {
         when(nkdSparqlClient.fetchPublishedConceptWithScheme(NKD_IRI)).thenReturn(Optional.empty());
 
         OwnerChangeSet cs = new OwnerChangeSet();
-        NkdConceptSnapshotEntity result = service.createOrRefreshSnapshot(owner, NKD_IRI, SnapshotLinkType.BROADER_CLASS.value(), cs);
+        NkdConceptSnapshotEntity result = service.createOrRefreshSnapshot(owner, NKD_IRI, SnapshotLinkType.BROADER_CLASS.value(), cs, live());
 
         assertThat(result).isNull();
         verify(snapshotRepository).delete(existing);
@@ -220,7 +229,7 @@ class NkdSnapshotServiceImplTest {
 
         OwnerChangeSet cs = new OwnerChangeSet();
         NkdConceptSnapshotEntity result =
-                service.createOrRefreshSnapshot(owner, NKD_IRI, SnapshotLinkType.BROADER_CLASS.value(), cs);
+                service.createOrRefreshSnapshot(owner, NKD_IRI, SnapshotLinkType.BROADER_CLASS.value(), cs, live());
 
         assertThat(result).isSameAs(existing);       // returns the untouched existing snapshot
         verify(snapshotRepository, never()).delete(any());
@@ -245,12 +254,14 @@ class NkdSnapshotServiceImplTest {
         existing.setSnapshot(storedDetail);
 
         when(snapshotRepository.findByOwningConceptIdAndNkdIri(17L, NKD_IRI)).thenReturn(Optional.of(existing));
-        // Live NKD now deviates from the stored copy → evaluateDeviation reports HAS_DEVIATIONS.
-        when(nkdSparqlClient.fetchPublishedConcept(NKD_IRI)).thenReturn(Optional.of(detail("Nová definice")));
+        // NKD now deviates from the stored copy → evaluateDeviation reports HAS_DEVIATIONS. The warmer
+        // fetches no raw triples for a link that already has a copy.
+        nkdPublishes(detail("Nová definice"));
         when(snapshotRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        NkdLookup nkd = NkdLookup.prefetchConcepts(nkdSparqlClient, List.of(NKD_IRI), iri -> false);
 
         OwnerChangeSet cs = new OwnerChangeSet();
-        service.refreshOrSeedForWarming(owner, NKD_IRI, SnapshotLinkType.BROADER_CLASS.value(), cs);
+        service.refreshOrSeedForWarming(owner, NKD_IRI, SnapshotLinkType.BROADER_CLASS.value(), cs, nkd);
 
         // The stored copy is UNTOUCHED — a read never adopts upstream drift.
         assertThat(existing.getMaterializedTriples()).isEqualTo(frozenTriples).contains("Old");
@@ -275,7 +286,7 @@ class NkdSnapshotServiceImplTest {
         when(snapshotRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         OwnerChangeSet cs = new OwnerChangeSet();
-        service.refreshOrSeedForWarming(owner, NKD_IRI, SnapshotLinkType.BROADER_CLASS.value(), cs);
+        service.refreshOrSeedForWarming(owner, NKD_IRI, SnapshotLinkType.BROADER_CLASS.value(), cs, live());
 
         // The copy is materialized and stamped NO_DEVIATION by construction (nothing to deviate from yet).
         ArgumentCaptor<NkdConceptSnapshotEntity> saved = ArgumentCaptor.forClass(NkdConceptSnapshotEntity.class);
@@ -283,9 +294,8 @@ class NkdSnapshotServiceImplTest {
         assertThat(saved.getValue().getSnapshot()).isEqualTo(published);
         assertThat(saved.getValue().getMaterializedTriples()).contains("First");
         assertThat(saved.getValue().getLastDeviationStatus()).isEqualTo(DeviationStatus.NO_DEVIATION);
-        // No re-evaluation path was taken.
-        verify(nkdSparqlClient, never()).fetchPublishedConcept(any());
-        verify(deviationEnricher, never()).enrich(any());
+        // No re-evaluation path was taken: the one concept fetch is the materialization's.
+        verify(nkdSparqlClient).fetchPublishedConceptWithScheme(NKD_IRI);
     }
 
     /** Owner's outgoing triples: a subClassOf link + the namespaced hierarchy prop, both → nkdIri. */
@@ -334,10 +344,10 @@ class NkdSnapshotServiceImplTest {
     @Test
     void evaluateDeviation_storedCopyOnLocalSide_cachesStatusAndTimestamp() {
         NkdConceptSnapshotEntity snap = storedSnapshot("Uložená definice");
-        when(nkdSparqlClient.fetchPublishedConcept(NKD_IRI)).thenReturn(Optional.of(detail("Definice z NKD")));
+        nkdPublishes(detail("Definice z NKD"));
         when(snapshotRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        PublishedConceptDeviationModel result = service.evaluateDeviation(snap);
+        PublishedConceptDeviationModel result = service.evaluateDeviation(snap, live());
 
         assertThat(result.getStatus()).isEqualTo(DeviationStatus.HAS_DEVIATIONS);
         // The stored copy is the local side, live NKD the published side, stamped with the snapshot's origin.
@@ -345,7 +355,6 @@ class NkdSnapshotServiceImplTest {
         assertThat(result.getDefinition().getPublishedValue()).isEqualTo(Map.of("cs", "Definice z NKD"));
         assertThat(result.getOrigin()).isEqualTo(SnapshotOrigin.LINK_TARGET);
         assertThat(result.getSource().getIri()).isEqualTo(NKD_IRI);
-        verify(deviationEnricher).enrich(result);
         assertThat(snap.getLastDeviationStatus()).isEqualTo(DeviationStatus.HAS_DEVIATIONS);
         assertThat(snap.getLastCheckedAt()).isNotNull();
         verify(snapshotRepository).save(snap);
@@ -354,10 +363,10 @@ class NkdSnapshotServiceImplTest {
     @Test
     void evaluateDeviation_unchangedUpstream_noDeviation() {
         NkdConceptSnapshotEntity snap = storedSnapshot("Stejná definice");
-        when(nkdSparqlClient.fetchPublishedConcept(NKD_IRI)).thenReturn(Optional.of(detail("Stejná definice")));
+        nkdPublishes(detail("Stejná definice"));
         when(snapshotRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        PublishedConceptDeviationModel result = service.evaluateDeviation(snap);
+        PublishedConceptDeviationModel result = service.evaluateDeviation(snap, live());
 
         assertThat(result.getStatus()).isEqualTo(DeviationStatus.NO_DEVIATION);
         assertThat(result.getDefinition()).isNull();
@@ -370,14 +379,39 @@ class NkdSnapshotServiceImplTest {
         snap.setNkdIri(NKD_IRI);
         snap.setSnapshot(detail());
 
-        when(nkdSparqlClient.fetchPublishedConcept(NKD_IRI)).thenReturn(Optional.empty());
+        when(nkdSparqlClient.fetchPublishedConceptWithScheme(NKD_IRI)).thenReturn(Optional.empty());
         when(snapshotRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        PublishedConceptDeviationModel result = service.evaluateDeviation(snap);
+        PublishedConceptDeviationModel result = service.evaluateDeviation(snap, live());
 
         assertThat(result.getStatus()).isEqualTo(DeviationStatus.CONCEPT_NOT_FOUND_IN_NKD);
         assertThat(snap.getLastDeviationStatus()).isEqualTo(DeviationStatus.CONCEPT_NOT_FOUND_IN_NKD);
-        verify(deviationEnricher, never()).enrich(any());
+    }
+
+    /** NKD did not answer: the comparison is untrusted, and the cached status says why. */
+    @Test
+    void evaluateDeviation_nkdUnavailable_returnsEndpointUnavailable() {
+        NkdConceptSnapshotEntity snap = storedSnapshot("Uložená definice");
+        when(nkdSparqlClient.fetchPublishedConceptWithScheme(NKD_IRI)).thenThrow(new RuntimeException("NKD down"));
+        when(snapshotRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        PublishedConceptDeviationModel result = service.evaluateDeviation(snap, live());
+
+        assertThat(result.getStatus()).isEqualTo(DeviationStatus.ENDPOINT_UNAVAILABLE);
+        assertThat(snap.getLastDeviationStatus()).isEqualTo(DeviationStatus.ENDPOINT_UNAVAILABLE);
+    }
+
+    /** A prefetched lookup answers alone: the deviation asks NKD nothing more. */
+    @Test
+    void evaluateDeviation_readsOnlyThePrefetchedCopy() {
+        NkdConceptSnapshotEntity snap = storedSnapshot("Uložená definice");
+        nkdPublishes(detail("Definice z NKD"));
+        when(snapshotRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        NkdLookup nkd = NkdLookup.prefetchConcepts(nkdSparqlClient, List.of(NKD_IRI), iri -> false);
+        org.mockito.Mockito.clearInvocations(nkdSparqlClient);
+
+        assertThat(service.evaluateDeviation(snap, nkd).getStatus()).isEqualTo(DeviationStatus.HAS_DEVIATIONS);
+        org.mockito.Mockito.verifyNoInteractions(nkdSparqlClient);
     }
 
     @Test

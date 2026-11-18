@@ -59,16 +59,20 @@ class ConceptEditOperation {
      * The NKD answers this edit's link reconcile will need, fetched now. Runs before the edit's transaction,
      * so NKD latency or an outage never holds the row lock or a database connection; a failure here only
      * makes the reconcile skip what it could not learn.
+     *
+     * <p>Covers the IRIs the edit names and the concept's current link targets: a field the edit leaves null
+     * keeps its stored value (sync and diagram edits carry only some fields), and the reconcile checks it too.
      */
     NkdLookup prefetchNkd(Long conceptId, ConceptEditModel conceptEditModel) {
         accessGuard.assertCanModify(conceptId);
         ConceptIriNormalizer.normalize(conceptEditModel);
         Optional<ConceptMetadataEntity> metadata = conceptMetadataRepository.findById(conceptId);
         if (metadata.isEmpty()) {
-            return nkdLinkReconciler.prefetch(null, List.of());   // the edit itself reports the missing row
+            return NkdLookup.none();   // the edit itself reports the missing row
         }
         ConceptInputView view = ConceptInputView.of(conceptEditModel);
-        List<String> referenced = new java.util.ArrayList<>();
+        List<String> referenced = new java.util.ArrayList<>(
+                jenaTDB2Repository.fetchLinkTargets(metadata.get().getConceptIri(), metadata.get().getGraphName()));
         if (view != null) {
             view.references().values().forEach(referenced::addAll);
             if (view.exactMatch() != null) {

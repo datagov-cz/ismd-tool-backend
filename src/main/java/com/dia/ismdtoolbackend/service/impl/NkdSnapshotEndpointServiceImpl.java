@@ -15,6 +15,8 @@ import com.dia.ismdtoolbackend.service.NkdSnapshotEndpointService;
 import com.dia.ismdtoolbackend.service.NkdSnapshotService;
 import com.dia.ismdtoolbackend.service.snapshot.LinkSnapshotAssembler;
 import com.dia.ismdtoolbackend.service.snapshot.OwnerChangeSet;
+import com.dia.ismdtoolbackend.client.NkdSparqlClient;
+import com.dia.ismdtoolbackend.service.snapshot.NkdLookup;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.rdf.model.Model;
@@ -27,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -44,10 +47,24 @@ public class NkdSnapshotEndpointServiceImpl implements NkdSnapshotEndpointServic
     private final ConceptMetadataRepository conceptMetadataRepository;
     private final OutboxWriter outboxWriter;
     private final OutboxRelayTrigger outboxRelayTrigger;
+    private final NkdSparqlClient nkdSparqlClient;
+    private final DeviationResolutionEnricher deviationEnricher;
+    private final ConceptWriteTransaction writeTransaction;
 
+    /**
+     * NKD first, outside any transaction (the copy and its triples), then the refresh in a bounded one; the
+     * deviation's reference labels are resolved after it commits.
+     */
     @Override
-    @Transactional
     public LinkSnapshotDto updateSnapshot(Long conceptId, Long snapshotId) {
+        String nkdIri = loadOwnedSnapshot(conceptId, snapshotId).getNkdIri();
+        NkdLookup nkd = NkdLookup.prefetchConcepts(nkdSparqlClient, List.of(nkdIri), iri -> true);
+        LinkSnapshotDto result = writeTransaction.run(() -> refresh(conceptId, snapshotId, nkd));
+        deviationEnricher.enrich(result.getDeviation());
+        return result;
+    }
+
+    private LinkSnapshotDto refresh(Long conceptId, Long snapshotId, NkdLookup nkd) {
         NkdConceptSnapshotEntity snapshot = loadOwnedSnapshot(conceptId, snapshotId);
         ConceptMetadataEntity owner = snapshot.getOwningConcept();
         String graphName = snapshot.getGraphName();
@@ -55,11 +72,11 @@ public class NkdSnapshotEndpointServiceImpl implements NkdSnapshotEndpointServic
 
         OwnerChangeSet cs = new OwnerChangeSet();
 
-        // Re-snapshot (best-effort fetch inside the service). Returns null when NKD has no such concept
+        // Re-snapshot from the prefetched copy. Returns null when NKD has no such concept
         // (confirmed gone) — the service already folded the copy-removal into cs; we also drop the owner's
         // dangling link triple here (we hold the owner-graph view, the service doesn't).
         NkdConceptSnapshotEntity refreshed =
-                nkdSnapshotService.createOrRefreshSnapshot(owner, nkdIri, snapshot.getLinkPredicate(), cs);
+                nkdSnapshotService.createOrRefreshSnapshot(owner, nkdIri, snapshot.getLinkPredicate(), cs, nkd);
 
         if (refreshed == null) {
             // Upstream-deletion cascade: also remove the owner→nkdIri link edges.
@@ -71,8 +88,8 @@ public class NkdSnapshotEndpointServiceImpl implements NkdSnapshotEndpointServic
                             .status(DeviationStatus.CONCEPT_NOT_FOUND_IN_NKD).build());
         }
 
-        // Evaluate deviation live (the endpoint wants the full per-field diff, unlike the warm path).
-        PublishedConceptDeviationModel deviation = nkdSnapshotService.evaluateDeviation(refreshed);
+        // The full per-field diff, unlike the warm path, against the same prefetched copy.
+        PublishedConceptDeviationModel deviation = nkdSnapshotService.evaluateDeviation(refreshed, nkd);
         flush(graphName, owner, cs);
         return LinkSnapshotAssembler.fromFreshDeviation(refreshed, deviation);
     }

@@ -38,7 +38,7 @@ class ConceptServiceImplTest {
     @BeforeEach
     void setUp() {
         service = new ConceptServiceImpl(createOperation, editOperation, deleteOperation, syncOperation, detailReader,
-                new ConceptEditTransaction(org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class)));
+                new ConceptWriteTransaction(org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class)));
     }
 
     private static ConceptMetadataModel metadata(String iri) {
@@ -91,7 +91,7 @@ class ConceptServiceImplTest {
         ClassConceptEditModel editModel = ConceptServiceTestData.editModel();
         ConceptMetadataModel edited = metadata("a");
         com.dia.ismdtoolbackend.service.snapshot.NkdLookup nkd =
-                new com.dia.ismdtoolbackend.service.snapshot.NkdLookup.Prefetched(java.util.Optional.of(java.util.Set.of()), java.util.Map.of());
+                com.dia.ismdtoolbackend.service.snapshot.NkdLookup.none();
         when(editOperation.prefetchNkd(CONCEPT_ID, editModel)).thenReturn(nkd);
         when(editOperation.editConcept(CONCEPT_ID, editModel, nkd)).thenReturn(edited);
 
@@ -108,12 +108,24 @@ class ConceptServiceImplTest {
         verify(deleteOperation).deleteConcept(CONCEPT_ID);
     }
 
+    /** The plan (all NKD reads) first, then the write with it. */
     @Test
-    void syncWorkingCopyDelegates() {
+    void syncWorkingCopyPlansThenApplies() {
         List<String> fields = List.of("name");
-        when(syncOperation.syncWorkingCopy(CONCEPT_ID, fields)).thenReturn("synced");
+        WorkingCopySyncOperation.SyncPlan plan =
+                new WorkingCopySyncOperation.SyncPlan(null, "synced", null, false, 1, 1, null);
+        org.springframework.transaction.PlatformTransactionManager txManager =
+                org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class);
+        ConceptServiceImpl transactional = new ConceptServiceImpl(createOperation, editOperation, deleteOperation,
+                syncOperation, detailReader, new ConceptWriteTransaction(txManager));
+        when(syncOperation.planSync(CONCEPT_ID, fields)).thenReturn(plan);
+        when(syncOperation.applySync(CONCEPT_ID, plan)).thenReturn("synced");
 
-        assertThat(service.syncWorkingCopy(CONCEPT_ID, fields)).isEqualTo("synced");
+        assertThat(transactional.syncWorkingCopy(CONCEPT_ID, fields)).isEqualTo("synced");
+        InOrder order = inOrder(syncOperation, txManager);
+        order.verify(syncOperation).planSync(CONCEPT_ID, fields);
+        order.verify(txManager).getTransaction(org.mockito.ArgumentMatchers.any());
+        order.verify(syncOperation).applySync(CONCEPT_ID, plan);
     }
 
     @Test

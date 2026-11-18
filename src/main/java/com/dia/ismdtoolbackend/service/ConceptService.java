@@ -5,6 +5,7 @@ import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
+import com.dia.ismdtoolbackend.service.snapshot.NkdLookup;
 import org.apache.jena.ontology.OntologyException;
 
 import java.util.List;
@@ -15,6 +16,15 @@ public interface ConceptService {
     List<ConceptMetadataModel> createConcepts(List<? extends ConceptCreateModel> createModels, String userId);
     void deleteConcept(Long conceptId);
     ConceptMetadataModel editConcept(Long conceptId, ConceptEditModel conceptEditModel);
+
+    /**
+     * The NKD answers an edit of {@code conceptId} with {@code conceptEditModel} needs, fetched now. For a
+     * caller that runs the edit inside its own transaction: call this before opening it.
+     */
+    NkdLookup prefetchEdit(Long conceptId, ConceptEditModel conceptEditModel);
+
+    /** The edit, reading NKD only through {@code nkd} from {@link #prefetchEdit}; joins the caller's transaction. */
+    ConceptMetadataModel editConcept(Long conceptId, ConceptEditModel conceptEditModel, NkdLookup nkd);
 
     /**
      * Takes the listed deviating characteristics of a working copy from live NKD. Accepting every

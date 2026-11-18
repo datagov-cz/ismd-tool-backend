@@ -555,4 +555,33 @@ class ConceptEditOperationTest {
                     .hasMessageContaining("Nepodařilo se aktualizovat metadata pojmu");
         }
     }
+
+    /** The edit's NKD answers are fetched before its transaction, for every link the reconcile will check. */
+    @Nested
+    class NkdPrefetch {
+
+        /** A field the edit leaves null keeps its stored link; the prefetch must cover that link too. */
+        @Test
+        void coversTheConceptsCurrentLinks_notOnlyTheIrisTheEditNames() {
+            when(conceptMetadataRepository.findById(CONCEPT_ID)).thenReturn(java.util.Optional.of(concept));
+            when(jenaTDB2Repository.fetchLinkTargets(CONCEPT_IRI, GRAPH_NAME)).thenReturn(List.of(NKD_SUPERCLASS));
+            when(nkdSparqlClient.findPublishedAmong(anyList()))
+                    .thenReturn(java.util.Optional.of(Set.of(NKD_SUPERCLASS)));
+
+            com.dia.ismdtoolbackend.service.snapshot.NkdLookup nkd = operation.prefetchNkd(CONCEPT_ID, editModel);
+
+            assertThat(nkd.publishedAmong(List.of(NKD_SUPERCLASS))).contains(Set.of(NKD_SUPERCLASS));
+            verify(nkdSparqlClient).fetchPublishedConceptWithScheme(NKD_SUPERCLASS);
+        }
+
+        @Test
+        void aMissingConceptRowAnswersNothing() {
+            when(conceptMetadataRepository.findById(CONCEPT_ID)).thenReturn(java.util.Optional.empty());
+
+            com.dia.ismdtoolbackend.service.snapshot.NkdLookup nkd = operation.prefetchNkd(CONCEPT_ID, editModel);
+
+            assertThat(nkd.publishedAmong(List.of(NKD_SUPERCLASS))).isEmpty();
+            org.mockito.Mockito.verifyNoInteractions(nkdSparqlClient);
+        }
+    }
 }

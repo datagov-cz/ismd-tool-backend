@@ -62,8 +62,8 @@ public final class OntologyServiceFixture {
     private OfnWriteGate ofnWriteGate = OntologyUploadServiceFixture.ofnWriteGate();
     private NkdSparqlClient nkdSparqlClient = mock(NkdSparqlClient.class);
     /** Over a mock manager the write runs without a transaction; PG tests pass one over the real manager. */
-    private ConceptEditTransaction writeTransaction =
-            new ConceptEditTransaction(mock(org.springframework.transaction.PlatformTransactionManager.class));
+    private ConceptWriteTransaction writeTransaction =
+            new ConceptWriteTransaction(mock(org.springframework.transaction.PlatformTransactionManager.class));
 
     public OntologyServiceImpl build() {
         return new OntologyServiceImpl(createOperation(), editOperation(), deleteOperation(), detailReader(),

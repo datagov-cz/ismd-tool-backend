@@ -36,7 +36,7 @@ public class OntologyServiceImpl implements OntologyService {
     private final OntologyDetailReader detailReader;
     private final OntologyMetadataReader metadataReader;
     private final OntologyTurtleExport turtleExport;
-    private final ConceptEditTransaction writeTransaction;
+    private final ConceptWriteTransaction writeTransaction;
 
     @Override
     @Transactional

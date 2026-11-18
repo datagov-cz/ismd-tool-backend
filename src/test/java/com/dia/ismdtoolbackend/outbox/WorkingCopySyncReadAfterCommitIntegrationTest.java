@@ -71,6 +71,7 @@ import static org.mockito.Mockito.when;
  * twin is stubbed.
  */
 @DataJpaTest
+@org.junit.jupiter.api.extension.ExtendWith(com.dia.ismdtoolbackend.testsupport.security.SignedInAdmin.class)
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @ActiveProfiles("junit")
 @Import({WorkingCopySyncReadAfterCommitIntegrationTest.Beans.class, WorkingCopyDeviationTestBeans.class,
@@ -260,7 +261,7 @@ class WorkingCopySyncReadAfterCommitIntegrationTest extends PostgresIntegrationT
                     .outboxRepository(outboxRepository)
                     .outboxRelayTrigger(trigger)
                     .workingCopyDeviationService(deviationService)
-                    .editTransaction(new com.dia.ismdtoolbackend.service.impl.ConceptEditTransaction(txManager))
+                    .writeTransaction(new com.dia.ismdtoolbackend.service.impl.ConceptWriteTransaction(txManager))
                     .build();
         }
     }

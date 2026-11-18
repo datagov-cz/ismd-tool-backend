@@ -318,6 +318,22 @@ class NkdLinkReconcilerTest {
             verify(nkdSparqlClient, never()).fetchPublishedConceptWithScheme(NKD_SUPERCLASS);
         }
 
+        /**
+         * A target the prefetch was not asked about (the edit changed in between) is not "not published": the
+         * check is skipped with the warning, as when NKD does not answer.
+         */
+        @Test
+        void aTargetThePrefetchDidNotCover_isSkippedWithAWarning_neverTreatedAsUnpublished() {
+            when(nkdSparqlClient.findPublishedAmong(anyList())).thenReturn(Optional.of(Set.of()));
+            com.dia.ismdtoolbackend.service.snapshot.NkdLookup nkd = reconciler.prefetch(GRAPH_NAME, List.of(FOREIGN));
+            link(RDFS.domain, NKD_SUPERCLASS);
+
+            List<ILoggingEvent> warnings = warningsDuring(() -> reconciler.reconcileNkdLinks(owner, graph, nkd));
+
+            assertThat(warnings).singleElement().satisfies(e -> assertThat(e.getFormattedMessage())
+                    .contains("domain/range check skipped").contains(NKD_SUPERCLASS));
+        }
+
         /** A value that is not a safe IRI never reaches the query; the input validation rejects it later. */
         @Test
         void leavesUnsafeValuesOutOfTheNkdQuery() {

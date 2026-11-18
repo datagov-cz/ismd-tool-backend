@@ -602,8 +602,8 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
         // One findByDiagramId builds and classifies the whole work-list.
         verify(pendingEditRepo, times(1)).findByDiagramId(diagramId);
         // The old shape issued ~44 of these for 10 rows just to order them; now only the applier's own
-        // per-change lookup remains (one per staged edit).
-        verify(pendingEditRepo, atMost(10)).findByDiagramIdAndConceptIri(any(), any());
+        // per-change lookups remain: one in the NKD prefetch, one in the change's transaction.
+        verify(pendingEditRepo, atMost(20)).findByDiagramIdAndConceptIri(any(), any());
     }
 
     /**

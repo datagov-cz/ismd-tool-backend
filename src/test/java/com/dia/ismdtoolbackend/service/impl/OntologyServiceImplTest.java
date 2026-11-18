@@ -59,7 +59,7 @@ class OntologyServiceImplTest {
     void setUp() {
         service = new OntologyServiceImpl(createOperation, editOperation, deleteOperation, detailReader,
                 metadataReader, turtleExport,
-                new ConceptEditTransaction(org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class)));
+                new ConceptWriteTransaction(org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class)));
     }
 
     @Nested
@@ -166,7 +166,7 @@ class OntologyServiceImplTest {
             org.springframework.transaction.PlatformTransactionManager txManager =
                     org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class);
             OntologyServiceImpl transactional = new OntologyServiceImpl(createOperation, editOperation,
-                    deleteOperation, detailReader, metadataReader, turtleExport, new ConceptEditTransaction(txManager));
+                    deleteOperation, detailReader, metadataReader, turtleExport, new ConceptWriteTransaction(txManager));
             OntologyCreateWithConceptsRequestDto request =
                     new OntologyCreateWithConceptsRequestDto(createModel(), List.of(), List.of(), List.of());
             com.dia.ismdtoolbackend.service.snapshot.NkdLookup nkd =

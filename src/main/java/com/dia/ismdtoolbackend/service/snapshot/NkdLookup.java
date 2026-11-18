@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Predicate;
 
 /**
  * The NKD answers a concept edit's link reconcile needs. A concept edit fetches them before its transaction
@@ -45,12 +46,30 @@ public interface NkdLookup {
         for (String iri : iris) {
             live.concept(iri).ifPresent(fetched -> concepts.put(iri, fetched));
         }
-        return new Prefetched(published, concepts);
+        return new Prefetched(Set.copyOf(iris), published, concepts);
     }
 
     /** Asks NKD only which of {@code iris} are published; concept fetches have no answer. */
     static NkdLookup prefetchPublished(NkdSparqlClient client, Collection<String> iris) {
-        return new Prefetched(new Live(client).publishedAmong(iris), Map.of());
+        return new Prefetched(Set.copyOf(iris), new Live(client).publishedAmong(iris), Map.of());
+    }
+
+    /** Knows nothing: every question answers as NKD not answering. */
+    static NkdLookup none() {
+        return new Prefetched(Set.of(), Optional.empty(), Map.of());
+    }
+
+    /**
+     * Fetches NKD's copy of each of {@code iris} now, with its raw triples only where {@code needsRaw} says a
+     * copy will be materialized from them. The published check is not asked: it answers as NKD not answering.
+     */
+    static NkdLookup prefetchConcepts(NkdSparqlClient client, Collection<String> iris, Predicate<String> needsRaw) {
+        Live live = new Live(client);
+        Map<String, Fetched> concepts = new HashMap<>();
+        for (String iri : iris) {
+            live.concept(iri, needsRaw.test(iri)).ifPresent(fetched -> concepts.put(iri, fetched));
+        }
+        return new Prefetched(Set.of(), Optional.empty(), concepts);
     }
 
     @Slf4j
@@ -76,9 +95,14 @@ public interface NkdLookup {
 
         @Override
         public Optional<Fetched> concept(String iri) {
+            return concept(iri, true);
+        }
+
+        Optional<Fetched> concept(String iri, boolean withRaw) {
             try {
                 Optional<NkdSparqlClient.PublishedConcept> published = client.fetchPublishedConceptWithScheme(iri);
-                Optional<Model> raw = published.isPresent() ? client.fetchPublishedConceptRaw(iri) : Optional.empty();
+                Optional<Model> raw = withRaw && published.isPresent()
+                        ? client.fetchPublishedConceptRaw(iri) : Optional.empty();
                 return Optional.of(new Fetched(published, raw));
             } catch (RuntimeException e) {
                 log.warn("NKD unavailable fetching {} — existing snapshot kept: {}", iri, e.getMessage());
@@ -87,13 +111,21 @@ public interface NkdLookup {
         }
     }
 
-    /** {@code published} empty: NKD did not answer the prefetch. */
-    record Prefetched(Optional<Set<String>> published, Map<String, Fetched> concepts) implements NkdLookup {
+    /**
+     * Answers from what was fetched. {@code asked}: the IRIs the published check covered; a question about any
+     * other IRI answers as NKD not answering, never as "not published". {@code published} empty: NKD did not
+     * answer the check.
+     */
+    record Prefetched(Set<String> asked, Optional<Set<String>> published, Map<String, Fetched> concepts)
+            implements NkdLookup {
 
         @Override
         public Optional<Set<String>> publishedAmong(Collection<String> iris) {
             if (iris.isEmpty()) {
                 return Optional.of(Set.of());
+            }
+            if (!asked.containsAll(iris)) {
+                return Optional.empty();
             }
             return published.map(answer -> {
                 Set<String> out = new HashSet<>(iris);

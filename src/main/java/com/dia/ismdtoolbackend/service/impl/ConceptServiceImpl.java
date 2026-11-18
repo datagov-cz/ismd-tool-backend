@@ -27,14 +27,14 @@ public class ConceptServiceImpl implements ConceptService {
     private final ConceptDeleteOperation deleteOperation;
     private final WorkingCopySyncOperation syncOperation;
     private final ConceptDetailReader detailReader;
-    private final ConceptEditTransaction editTransaction;
+    private final ConceptWriteTransaction writeTransaction;
 
     /** NKD first, outside any transaction, then the create in a bounded one, as for {@link #editConcept}. */
     @Override
     @CacheEvict(cacheNames = WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, allEntries = true)
     public ConceptMetadataModel createConcept(ConceptCreateModel createModel, String userId) {
         NkdLookup nkd = createOperation.prefetchNkd(createModel);
-        return editTransaction.run(() -> createOperation.createConcept(createModel, userId, nkd));
+        return writeTransaction.run(() -> createOperation.createConcept(createModel, userId, nkd));
     }
 
     /** All or nothing: one transaction for the batch, NKD asked for each concept before it. */
@@ -42,7 +42,7 @@ public class ConceptServiceImpl implements ConceptService {
     @CacheEvict(cacheNames = WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, allEntries = true)
     public List<ConceptMetadataModel> createConcepts(List<? extends ConceptCreateModel> createModels, String userId) {
         List<NkdLookup> lookups = createModels.stream().map(createOperation::prefetchNkd).toList();
-        return editTransaction.run(() -> java.util.stream.IntStream.range(0, createModels.size())
+        return writeTransaction.run(() -> java.util.stream.IntStream.range(0, createModels.size())
                 .mapToObj(i -> createOperation.createConcept(createModels.get(i), userId, lookups.get(i)))
                 .toList());
     }
@@ -55,21 +55,33 @@ public class ConceptServiceImpl implements ConceptService {
     }
 
     /**
-     * NKD first, outside any transaction, then the edit in a bounded one ({@link ConceptEditTransaction}), so
+     * NKD first, outside any transaction, then the edit in a bounded one ({@link ConceptWriteTransaction}), so
      * NKD latency never holds the row lock or a connection.
      */
     @Override
     @CacheEvict(cacheNames = WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, allEntries = true)
     public ConceptMetadataModel editConcept(Long conceptId, ConceptEditModel conceptEditModel) {
-        NkdLookup nkd = editOperation.prefetchNkd(conceptId, conceptEditModel);
-        return editTransaction.run(() -> editOperation.editConcept(conceptId, conceptEditModel, nkd));
+        NkdLookup nkd = prefetchEdit(conceptId, conceptEditModel);
+        return editConcept(conceptId, conceptEditModel, nkd);
     }
 
     @Override
-    @Transactional
+    public NkdLookup prefetchEdit(Long conceptId, ConceptEditModel conceptEditModel) {
+        return editOperation.prefetchNkd(conceptId, conceptEditModel);
+    }
+
+    @Override
+    @CacheEvict(cacheNames = WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, allEntries = true)
+    public ConceptMetadataModel editConcept(Long conceptId, ConceptEditModel conceptEditModel, NkdLookup nkd) {
+        return writeTransaction.run(() -> editOperation.editConcept(conceptId, conceptEditModel, nkd));
+    }
+
+    /** NKD first, outside any transaction (the twin, the deviation, the edit's answers), then the write. */
+    @Override
     @CacheEvict(cacheNames = WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, allEntries = true)
     public String syncWorkingCopy(Long conceptId, List<String> fieldsToAccept) {
-        return syncOperation.syncWorkingCopy(conceptId, fieldsToAccept);
+        WorkingCopySyncOperation.SyncPlan plan = syncOperation.planSync(conceptId, fieldsToAccept);
+        return writeTransaction.run(() -> syncOperation.applySync(conceptId, plan));
     }
 
     @Override

@@ -63,8 +63,8 @@ public final class ConceptServiceFixture {
     /** Real: pure, and finds no links in data without external NKD triples. */
     private NkdLinkDetector nkdLinkDetector = new NkdLinkDetector();
     /** Over a mock manager the edit runs without a transaction; PG tests pass one over the real manager. */
-    private ConceptEditTransaction editTransaction =
-            new ConceptEditTransaction(mock(org.springframework.transaction.PlatformTransactionManager.class));
+    private ConceptWriteTransaction writeTransaction =
+            new ConceptWriteTransaction(mock(org.springframework.transaction.PlatformTransactionManager.class));
     private WorkingCopySyncFields syncFields = new WorkingCopySyncFields();
     private NkdConfig nkdConfig = new NkdConfig();
     /** Real: pure, so every create and edit test also passes the OFN safety net. */
@@ -80,7 +80,7 @@ public final class ConceptServiceFixture {
                 new WorkingCopySyncOperation(conceptMetadataRepository, jenaTDB2Repository, nkdSparqlClient,
                         deviationComparator, syncFields, accessGuard(), editOperation, detailReader),
                 detailReader,
-                editTransaction);
+                writeTransaction);
     }
 
     ConceptCreateOperation buildCreateOperation() {

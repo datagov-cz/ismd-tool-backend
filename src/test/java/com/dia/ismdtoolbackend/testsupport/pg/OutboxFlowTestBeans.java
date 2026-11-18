@@ -100,7 +100,7 @@ public class OutboxFlowTestBeans {
                 .outboxWriter(writer)
                 .outboxRepository(outboxRepository)
                 .outboxRelayTrigger(trigger)
-                .editTransaction(new com.dia.ismdtoolbackend.service.impl.ConceptEditTransaction(txManager))
+                .writeTransaction(new com.dia.ismdtoolbackend.service.impl.ConceptWriteTransaction(txManager))
                 .build();
     }
 
@@ -112,7 +112,7 @@ public class OutboxFlowTestBeans {
                                             OutboxEntryRepository outboxRepository, OutboxRelayTrigger trigger,
                                             org.springframework.transaction.PlatformTransactionManager txManager) {
         return new OntologyServiceFixture()
-                .writeTransaction(new com.dia.ismdtoolbackend.service.impl.ConceptEditTransaction(txManager))
+                .writeTransaction(new com.dia.ismdtoolbackend.service.impl.ConceptWriteTransaction(txManager))
                 .ontologyMetadataRepository(ontologyRepository)
                 .metadataTouchService(touchService)
                 .conceptMetadataRepository(conceptRepository)

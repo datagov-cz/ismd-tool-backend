@@ -42,17 +42,17 @@ public class NkdSnapshotOwnerWarmer {
 
     /**
      * Snapshot all {@code targets} for {@code owner} (writing PG rows) in its own transaction, isolated
-     * from sibling owners. Returns true only if a TDB2 delta was produced; the warm path is PG-only, so
+     * from sibling owners. Reads NKD only through {@code nkd}, fetched before the transaction. Returns true only if a TDB2 delta was produced; the warm path is PG-only, so
      * this is normally false (no relay nudge needed).
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public boolean warmOwner(String graphName, ConceptMetadataEntity owner, List<Target> targets) {
+    public boolean warmOwner(String graphName, ConceptMetadataEntity owner, List<Target> targets, NkdLookup nkd) {
         OwnerChangeSet cs = new OwnerChangeSet();
         for (Target t : targets) {
             // Read-triggered warming: an existing copy is re-evaluated (drift → HAS_DEVIATIONS), never
             // overwritten — only a first-time link materializes. Overwriting the copy is an explicit
             // command (updateLocalCopy / edit reconcile), never a side effect of a read.
-            nkdSnapshotService.refreshOrSeedForWarming(owner, t.nkdIri(), t.linkType(), cs);
+            nkdSnapshotService.refreshOrSeedForWarming(owner, t.nkdIri(), t.linkType(), cs, nkd);
         }
         if (cs.toRemove.isEmpty() && cs.toAdd.isEmpty()) {
             return false;
