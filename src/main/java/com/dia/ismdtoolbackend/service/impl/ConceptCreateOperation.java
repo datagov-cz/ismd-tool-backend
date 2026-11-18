@@ -24,6 +24,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.vocabulary.RDF;
+import com.dia.ismdtoolbackend.service.snapshot.NkdLookup;
+import com.dia.ismdtoolbackend.utility.validation.ConceptInputView;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -45,8 +48,29 @@ class ConceptCreateOperation {
     private final InitialGraphGuard initialGraphGuard;
     private final OfnWriteGate ofnWriteGate;
     private final JenaTDB2Repository jenaTDB2Repository;
+    private final NkdLinkReconciler nkdLinkReconciler;
 
     ConceptMetadataModel createConcept(ConceptCreateModel createModel, String userId) {
+        return createConcept(createModel, userId, nkdLinkReconciler.live());
+    }
+
+    /**
+     * Which of the concept's domain/range targets NKD publishes, asked now: runs before the create's
+     * transaction, so NKD latency never holds a database connection.
+     */
+    NkdLookup prefetchNkd(ConceptCreateModel createModel) {
+        ConceptIriNormalizer.normalize(createModel);
+        ConceptInputView view = ConceptInputView.of(createModel);
+        List<String> referenced = new ArrayList<>();
+        if (view != null) {
+            referenced.addAll(view.references().getOrDefault("domain", List.of()));
+            referenced.addAll(view.references().getOrDefault("range", List.of()));
+        }
+        return nkdLinkReconciler.prefetchPublished(createModel.getOntologyGraphName(), referenced);
+    }
+
+    /** The create, reading NKD only through {@code nkd}. */
+    ConceptMetadataModel createConcept(ConceptCreateModel createModel, String userId, NkdLookup nkd) {
         log.info("Creating concept: type={}, name={}, namespace={}, userId={}",
                 createModel.getConceptType(), createModel.getNameModel(),
                 createModel.getNamespace(), userId);
@@ -63,6 +87,8 @@ class ConceptCreateOperation {
 
         initialGraphGuard.requireInitialGraphApplied(ontologyGraphName);
         ofnWriteGate.requireWritableConcepts(conceptResource.getModel(), ontologyGraphName, List.of(conceptUri));
+        nkdLinkReconciler.rejectPublishedDomainRange(conceptUri, createModel.getConceptTypeEnum(), ontologyGraphName,
+                conceptResource.getModel(), nkd);
 
         // Enqueue the concept's triples (empty remove set), committed atomically with the metadata
         // below. If the PG tx fails, the outbox row rolls back with it, so nothing reaches TDB2.

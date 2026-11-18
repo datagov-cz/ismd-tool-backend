@@ -2,6 +2,8 @@ package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
+import com.dia.ismdtoolbackend.enums.ConceptType;
+import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.service.NkdSnapshotService;
 import com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector;
@@ -18,6 +20,9 @@ import org.apache.jena.rdf.model.StmtIterator;
 import com.dia.ismdtoolbackend.service.snapshot.NkdLookup;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -76,22 +81,9 @@ class NkdLinkReconciler {
 
         Set<String> locallyOwned = locallyOwnedAmong(graphScheme, domainRangeTargets, detectedTargets);
 
-        List<String> foreignDomainRangeTargets = domainRangeTargets.stream()
+        requireNonePublished(ownerIri, domainRangeTargets.stream()
                 .filter(iri -> !locallyOwned.contains(iri))
-                .toList();
-        if (!foreignDomainRangeTargets.isEmpty()) {
-            Optional<Set<String>> answer = nkd.publishedAmong(foreignDomainRangeTargets);
-            if (answer.isEmpty()) {
-                log.warn("NKD did not answer; domain/range check skipped for concept {} (targets {})",
-                        ownerIri, foreignDomainRangeTargets);
-            }
-            Set<String> publishedForbidden = answer.orElse(Set.of());
-            if (!publishedForbidden.isEmpty()) {
-                throw new OntologyValidationException(
-                        "Definiční obor / obor hodnot nesmí odkazovat na publikovaný pojem v NKD: "
-                                + publishedForbidden);
-            }
-        }
+                .toList(), nkd);
 
         List<NkdLinkDetector.LinkTarget> allowed = detectedTargets.stream()
                 .filter(t -> !locallyOwned.contains(t.targetIri()))
@@ -114,6 +106,70 @@ class NkdLinkReconciler {
                     owner, target.targetIri(), target.linkType().value(), ownerChangeSet, nkd);
         }
         return ownerChangeSet;
+    }
+
+    /**
+     * The create half of the rule: rejects (400) a new concept whose {@code rdfs:domain} / {@code rdfs:range}
+     * is a concept NKD publishes. Working copies in {@code graphName} are exempt; a create has no prior link
+     * state, so there is nothing to snapshot or remove here (the warmer takes the copies).
+     */
+    void rejectPublishedDomainRange(String conceptIri, ConceptType conceptType, String graphName, Model model,
+                                    NkdLookup nkd) {
+        rejectPublishedDomainRange(graphName, Map.of(conceptIri, conceptType), model, nkd);
+    }
+
+    /**
+     * As above for several new concepts of one graph, in one NKD question; the 400 names every offending
+     * concept with its published targets.
+     */
+    void rejectPublishedDomainRange(String graphName, Map<String, ConceptType> concepts, Model model, NkdLookup nkd) {
+        Map<String, List<String>> targets = new LinkedHashMap<>();
+        concepts.forEach((iri, type) -> {
+            List<String> found = nkdLinkDetector.forbiddenDomainRangeTargets(iri, type, graphName, model);
+            if (!found.isEmpty()) {
+                targets.put(iri, found);
+            }
+        });
+        Set<String> candidates = new LinkedHashSet<>();
+        targets.values().forEach(candidates::addAll);
+        candidates.removeAll(ownedIn(graphName, candidates));
+        if (candidates.isEmpty()) {
+            return;
+        }
+        Optional<Set<String>> answer = nkd.publishedAmong(candidates);
+        if (answer.isEmpty()) {
+            log.warn("NKD did not answer; domain/range check skipped for concept(s) {} (targets {})",
+                    targets.keySet(), candidates);
+            return;
+        }
+        Map<String, List<String>> offending = new LinkedHashMap<>();
+        targets.forEach((iri, found) -> {
+            List<String> published = found.stream().filter(answer.get()::contains).toList();
+            if (!published.isEmpty()) {
+                offending.put(iri, published);
+            }
+        });
+        if (!offending.isEmpty()) {
+            throw new OntologyValidationException(
+                    "Definiční obor / obor hodnot nesmí odkazovat na publikovaný pojem v NKD: " + offending);
+        }
+    }
+
+    /** Throws when NKD publishes any of {@code foreignTargets}; NKD not answering skips the check with a warning. */
+    private static void requireNonePublished(String conceptIri, List<String> foreignTargets, NkdLookup nkd) {
+        if (foreignTargets.isEmpty()) {
+            return;
+        }
+        Optional<Set<String>> answer = nkd.publishedAmong(foreignTargets);
+        if (answer.isEmpty()) {
+            log.warn("NKD did not answer; domain/range check skipped for concept {} (targets {})",
+                    conceptIri, foreignTargets);
+            return;
+        }
+        if (!answer.get().isEmpty()) {
+            throw new OntologyValidationException(
+                    "Definiční obor / obor hodnot nesmí odkazovat na publikovaný pojem v NKD: " + answer.get());
+        }
     }
 
     /** The owner concept's current outgoing statements in {@code model} (for unlink triple removal). */
@@ -157,17 +213,27 @@ class NkdLinkReconciler {
      * the external IRIs the payload names, minus working copies in the owner's graph.
      */
     NkdLookup prefetch(String graphScheme, Collection<String> referencedIris) {
+        return NkdLookup.prefetch(nkdSparqlClient, nkdCandidates(graphScheme, referencedIris));
+    }
+
+    /** As {@link #prefetch}, asking only which IRIs are published (a create takes no copies). */
+    NkdLookup prefetchPublished(String graphScheme, Collection<String> referencedIris) {
+        return NkdLookup.prefetchPublished(nkdSparqlClient, nkdCandidates(graphScheme, referencedIris));
+    }
+
+    /**
+     * The referenced IRIs NKD can be asked about: outside {@code graphScheme}, safe to put in a query, and not
+     * working copies in that graph. Values that are not IRIs are left for the input validation to reject.
+     */
+    private List<String> nkdCandidates(String graphScheme, Collection<String> referencedIris) {
         List<String> external = referencedIris.stream()
                 .filter(iri -> iri != null && !iri.isBlank())
                 .map(String::trim)
                 .filter(iri -> graphScheme == null || !iri.startsWith(graphScheme))
+                .filter(SparqlIriValidator::isSafeHttpIri)
                 .distinct()
                 .toList();
-        if (external.isEmpty()) {
-            return NkdLookup.prefetch(nkdSparqlClient, List.of());
-        }
         Set<String> owned = ownedIn(graphScheme, external);
-        return NkdLookup.prefetch(nkdSparqlClient,
-                external.stream().filter(iri -> !owned.contains(iri)).toList());
+        return external.stream().filter(iri -> !owned.contains(iri)).toList();
     }
 }

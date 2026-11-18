@@ -7,8 +7,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.util.function.Supplier;
 
 /**
- * The concept edit's transaction. Its timeout bounds how long the row lock and the database connection are
- * held, a wait for the lock included. Inside a caller's transaction (diagram materialize) the edit joins it.
+ * The transaction of a concept edit or create. Its timeout bounds how long the row lock and the database
+ * connection are held, a wait for the lock included. Inside a caller's transaction (diagram materialize) the
+ * work joins it.
  */
 @Component
 public class ConceptEditTransaction {

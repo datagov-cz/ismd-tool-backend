@@ -14,6 +14,7 @@ import com.dia.ismdtoolbackend.models.OntologyEditModel;
 import com.dia.ismdtoolbackend.models.OntologyRef;
 import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
 import com.dia.ismdtoolbackend.service.OntologyService;
+import com.dia.ismdtoolbackend.service.snapshot.NkdLookup;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
@@ -35,6 +36,7 @@ public class OntologyServiceImpl implements OntologyService {
     private final OntologyDetailReader detailReader;
     private final OntologyMetadataReader metadataReader;
     private final OntologyTurtleExport turtleExport;
+    private final ConceptEditTransaction writeTransaction;
 
     @Override
     @Transactional
@@ -54,13 +56,14 @@ public class OntologyServiceImpl implements OntologyService {
         return createOperation.createOntology(ontologyCreateModel, userId);
     }
 
+    /** NKD first, outside any transaction, then the create in a bounded one. */
     @Override
-    @Transactional
     @CacheEvict(cacheNames = {ReferencedConceptResolutionEngine.CACHE_NAME,
             WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, OntologyGraphNames.CACHE_NAME},
             allEntries = true)
     public OntologyCreateWithConceptsResponseDto createWithConcepts(OntologyCreateWithConceptsRequestDto request, String userId) {
-        return createOperation.createWithConcepts(request, userId);
+        NkdLookup nkd = createOperation.prefetchNkd(request);
+        return writeTransaction.run(() -> createOperation.createWithConcepts(request, userId, nkd));
     }
 
     @Override

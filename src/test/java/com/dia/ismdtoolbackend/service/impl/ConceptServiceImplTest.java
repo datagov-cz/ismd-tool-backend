@@ -51,9 +51,15 @@ class ConceptServiceImplTest {
     void createConceptDelegates() {
         ClassConceptModel createModel = ConceptServiceTestData.createModel();
         ConceptMetadataModel created = metadata("a");
-        when(createOperation.createConcept(createModel, USER_ID)).thenReturn(created);
+        com.dia.ismdtoolbackend.service.snapshot.NkdLookup nkd = org.mockito.Mockito.mock(
+                com.dia.ismdtoolbackend.service.snapshot.NkdLookup.class);
+        when(createOperation.prefetchNkd(createModel)).thenReturn(nkd);
+        when(createOperation.createConcept(createModel, USER_ID, nkd)).thenReturn(created);
 
         assertThat(service.createConcept(createModel, USER_ID)).isSameAs(created);
+        InOrder order = inOrder(createOperation);
+        order.verify(createOperation).prefetchNkd(createModel);
+        order.verify(createOperation).createConcept(createModel, USER_ID, nkd);
     }
 
     @Test
@@ -62,15 +68,21 @@ class ConceptServiceImplTest {
         ClassConceptModel second = ConceptModels.trida("Druhý");
         ConceptMetadataModel firstCreated = metadata("a");
         ConceptMetadataModel secondCreated = metadata("b");
-        when(createOperation.createConcept(first, USER_ID)).thenReturn(firstCreated);
-        when(createOperation.createConcept(second, USER_ID)).thenReturn(secondCreated);
+        var firstNkd = org.mockito.Mockito.mock(com.dia.ismdtoolbackend.service.snapshot.NkdLookup.class);
+        var secondNkd = org.mockito.Mockito.mock(com.dia.ismdtoolbackend.service.snapshot.NkdLookup.class);
+        when(createOperation.prefetchNkd(first)).thenReturn(firstNkd);
+        when(createOperation.prefetchNkd(second)).thenReturn(secondNkd);
+        when(createOperation.createConcept(first, USER_ID, firstNkd)).thenReturn(firstCreated);
+        when(createOperation.createConcept(second, USER_ID, secondNkd)).thenReturn(secondCreated);
 
         List<ConceptMetadataModel> result = service.createConcepts(List.of(first, second), USER_ID);
 
         assertThat(result).containsExactly(firstCreated, secondCreated);
         InOrder order = inOrder(createOperation);
-        order.verify(createOperation).createConcept(first, USER_ID);
-        order.verify(createOperation).createConcept(second, USER_ID);
+        order.verify(createOperation).prefetchNkd(first);
+        order.verify(createOperation).prefetchNkd(second);
+        order.verify(createOperation).createConcept(first, USER_ID, firstNkd);
+        order.verify(createOperation).createConcept(second, USER_ID, secondNkd);
     }
 
     /** NKD is asked first, then the edit runs with what was fetched. */

@@ -318,6 +318,17 @@ class NkdLinkReconcilerTest {
             verify(nkdSparqlClient, never()).fetchPublishedConceptWithScheme(NKD_SUPERCLASS);
         }
 
+        /** A value that is not a safe IRI never reaches the query; the input validation rejects it later. */
+        @Test
+        void leavesUnsafeValuesOutOfTheNkdQuery() {
+            when(nkdSparqlClient.findPublishedAmong(anyList())).thenReturn(Optional.of(Set.of()));
+
+            reconciler.prefetchPublished(GRAPH_NAME, List.of(FOREIGN, "not an iri", "https://x.org/a> } DROP"));
+
+            verify(nkdSparqlClient).findPublishedAmong(askedCaptor.capture());
+            assertThat(askedCaptor.getValue()).containsExactly(FOREIGN);
+        }
+
         @Test
         void asksNkdAboutAConceptOfAnotherVocabulary() {
             givenOwnedByAnotherVocabulary(FOREIGN);

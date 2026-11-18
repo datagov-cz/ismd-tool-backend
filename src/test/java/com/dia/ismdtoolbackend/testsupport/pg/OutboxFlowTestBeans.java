@@ -109,8 +109,10 @@ public class OutboxFlowTestBeans {
                                             MetadataTouchService touchService,
                                             ConceptMetadataRepository conceptRepository,
                                             InMemoryTdb2 tdb2, OutboxWriter writer,
-                                            OutboxEntryRepository outboxRepository, OutboxRelayTrigger trigger) {
+                                            OutboxEntryRepository outboxRepository, OutboxRelayTrigger trigger,
+                                            org.springframework.transaction.PlatformTransactionManager txManager) {
         return new OntologyServiceFixture()
+                .writeTransaction(new com.dia.ismdtoolbackend.service.impl.ConceptEditTransaction(txManager))
                 .ontologyMetadataRepository(ontologyRepository)
                 .metadataTouchService(touchService)
                 .conceptMetadataRepository(conceptRepository)

@@ -48,6 +48,11 @@ public interface NkdLookup {
         return new Prefetched(published, concepts);
     }
 
+    /** Asks NKD only which of {@code iris} are published; concept fetches have no answer. */
+    static NkdLookup prefetchPublished(NkdSparqlClient client, Collection<String> iris) {
+        return new Prefetched(new Live(client).publishedAmong(iris), Map.of());
+    }
+
     @Slf4j
     final class Live implements NkdLookup {
         private final NkdSparqlClient client;

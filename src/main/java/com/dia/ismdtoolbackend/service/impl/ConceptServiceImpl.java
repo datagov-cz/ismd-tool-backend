@@ -29,20 +29,22 @@ public class ConceptServiceImpl implements ConceptService {
     private final ConceptDetailReader detailReader;
     private final ConceptEditTransaction editTransaction;
 
+    /** NKD first, outside any transaction, then the create in a bounded one, as for {@link #editConcept}. */
     @Override
-    @Transactional
     @CacheEvict(cacheNames = WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, allEntries = true)
     public ConceptMetadataModel createConcept(ConceptCreateModel createModel, String userId) {
-        return createOperation.createConcept(createModel, userId);
+        NkdLookup nkd = createOperation.prefetchNkd(createModel);
+        return editTransaction.run(() -> createOperation.createConcept(createModel, userId, nkd));
     }
 
+    /** All or nothing: one transaction for the batch, NKD asked for each concept before it. */
     @Override
-    @Transactional
     @CacheEvict(cacheNames = WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, allEntries = true)
     public List<ConceptMetadataModel> createConcepts(List<? extends ConceptCreateModel> createModels, String userId) {
-        return createModels.stream()
-                .map(createModel -> createOperation.createConcept(createModel, userId))
-                .toList();
+        List<NkdLookup> lookups = createModels.stream().map(createOperation::prefetchNkd).toList();
+        return editTransaction.run(() -> java.util.stream.IntStream.range(0, createModels.size())
+                .mapToObj(i -> createOperation.createConcept(createModels.get(i), userId, lookups.get(i)))
+                .toList());
     }
 
     @Override

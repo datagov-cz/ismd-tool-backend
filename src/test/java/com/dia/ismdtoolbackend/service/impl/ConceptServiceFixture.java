@@ -86,7 +86,7 @@ public final class ConceptServiceFixture {
     ConceptCreateOperation buildCreateOperation() {
         return new ConceptCreateOperation(conceptMetadataRepository, ontologyMetadataRepository, metadataTouchService,
                 conceptMetadataMapper, conceptCreator, outboxWriter, outboxRelayTrigger, initialGraphGuard(), ofnWriteGate,
-                jenaTDB2Repository);
+                jenaTDB2Repository, buildNkdLinkReconciler());
     }
 
     ConceptEditOperation buildEditOperation() {
