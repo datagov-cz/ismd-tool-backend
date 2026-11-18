@@ -80,7 +80,7 @@ import static org.mockito.Mockito.when;
         OntologyUploadServiceImpl.class, UploadFileReader.class, UploadVocabularyLock.class,
         OfnConfiguration.class, OfnWriteGate.class,
         UploadConceptRoleResolver.class, UploadConceptGate.class, UploadMetadataWriter.class,
-        UploadValidationRunner.class, OntologyUploadTransactions.class,
+        UploadValidationRunner.class, OntologyUploadTransactions.class, UploadGraphGuard.class,
         OntologyUploadTransactionIntegrationTest.Beans.class})
 // NOT_SUPPORTED: the upload opens its own transactions, as it does behind a real request.
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -98,6 +98,8 @@ class OntologyUploadTransactionIntegrationTest extends PostgresIntegrationTestBa
     @Autowired private OntologyMetadataRepository ontologyRepository;
     @Autowired private ConceptMetadataRepository conceptRepository;
     @Autowired private TransactionTemplate txTemplate;
+    /** Outbox state is not under test here; no unapplied rows. */
+    @MockitoBean private com.dia.ismdtoolbackend.outbox.OutboxEntryRepository outboxRepository;
     @MockitoBean private JenaTDB2Repository jenaTDB2Repository;
     @MockitoBean private ValidationClient validationClient;
     @MockitoBean private PublishedResourceUtil publishedResourceUtil;

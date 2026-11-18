@@ -230,6 +230,101 @@ class OntologyUploadServiceImplTest {
         verify(jenaTDB2Repository).putOntologyModel(eq(ontologyIRI), any(OntModel.class));
     }
 
+    private static final String GUARDED_ONTOLOGY = "http://example.org/guarded";
+
+    /** A minimal vocabulary upload of {@link #GUARDED_ONTOLOGY} whose metadata save succeeds. */
+    private void givenUploadableVocabulary(boolean metadataSaves) throws IOException {
+        byte[] content = String.format("@prefix owl: <http://www.w3.org/2002/07/owl#> . <%s> a owl:Ontology, "
+                + "<http://www.w3.org/2004/02/skos/core#ConceptScheme>, "
+                + "<https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> .", GUARDED_ONTOLOGY)
+                .getBytes();
+        when(multipartFile.getInputStream()).thenAnswer(inv -> new java.io.ByteArrayInputStream(content));
+        when(multipartFile.getOriginalFilename()).thenReturn("guarded.ttl");
+        when(multipartFile.isEmpty()).thenReturn(false);
+        when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
+        if (metadataSaves) {
+            OntologyMetadataEntity saved = new OntologyMetadataEntity();
+            saved.setGraphName(GUARDED_ONTOLOGY);
+            saved.setUserId("user123");
+            saved.setId(1L);
+            when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(saved);
+            when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.of(saved));
+        }
+    }
+
+    private static List<ch.qos.logback.classic.spi.ILoggingEvent> warningsOf(Class<?> source, Runnable action) {
+        ch.qos.logback.classic.Logger logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(source);
+        ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> logs =
+                new ch.qos.logback.core.read.ListAppender<>();
+        logs.start();
+        logger.addAppender(logs);
+        try {
+            action.run();
+        } finally {
+            logger.detachAppender(logs);
+        }
+        return logs.list.stream().filter(e -> e.getLevel() == ch.qos.logback.classic.Level.WARN).toList();
+    }
+
+    /** A queued delete of an earlier vocabulary with this IRI would later remove the uploaded graph. */
+    @Test
+    void upload_whileAnOutboxRowForTheGraphIsUnapplied_isRejectedAndWritesNothing() throws Exception {
+        givenUploadableVocabulary(false);
+        when(fixture.outboxRepository().existsEarlierUnappliedForGraph(GUARDED_ONTOLOGY, Long.MAX_VALUE))
+                .thenReturn(true);
+
+        assertThatThrownBy(() -> ontologyUploadService.uploadFromFile(
+                multipartFile, "user123", NormalizeMode.NORMALIZE_ALL, null))
+                .isInstanceOf(com.dia.ismdtoolbackend.exception.OntologyCreationConflictException.class)
+                .hasMessageContaining(GUARDED_ONTOLOGY);
+        verify(jenaTDB2Repository, never()).putOntologyModel(anyString(), any(OntModel.class));
+        verify(ontologyMetadataRepository, never()).save(any());
+    }
+
+    /** A graph left by a failed earlier upload or delete is replaced, and the replacement is logged. */
+    @Test
+    void upload_overAGraphWithoutAVocabularyRow_replacesItAndWarns() throws Exception {
+        givenUploadableVocabulary(true);
+        when(jenaTDB2Repository.graphHasData(GUARDED_ONTOLOGY)).thenReturn(true);
+
+        List<ch.qos.logback.classic.spi.ILoggingEvent> warnings = warningsOf(
+                uploadGraphGuardClass(), () -> {
+                    try {
+                        ontologyUploadService.uploadFromFile(multipartFile, "user123", NormalizeMode.NORMALIZE_ALL, null);
+                    } catch (IOException e) {
+                        throw new java.io.UncheckedIOException(e);
+                    }
+                });
+
+        verify(jenaTDB2Repository).putOntologyModel(eq(GUARDED_ONTOLOGY), any(OntModel.class));
+        assertThat(warnings).singleElement().satisfies(e -> assertThat(e.getFormattedMessage())
+                .contains(GUARDED_ONTOLOGY).contains("no vocabulary row"));
+    }
+
+    @Test
+    void upload_ofANewGraph_logsNoReplacement() throws Exception {
+        givenUploadableVocabulary(true);
+
+        List<ch.qos.logback.classic.spi.ILoggingEvent> warnings = warningsOf(uploadGraphGuardClass(), () -> {
+            try {
+                ontologyUploadService.uploadFromFile(multipartFile, "user123", NormalizeMode.NORMALIZE_ALL, null);
+            } catch (IOException e) {
+                throw new java.io.UncheckedIOException(e);
+            }
+        });
+
+        verify(jenaTDB2Repository).graphHasData(GUARDED_ONTOLOGY);
+        assertThat(warnings).isEmpty();
+    }
+
+    private static Class<?> uploadGraphGuardClass() {
+        try {
+            return Class.forName("com.dia.ismdtoolbackend.service.impl.UploadGraphGuard");
+        } catch (ClassNotFoundException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     @Test
     void upload_runsValidationOnTheInjectedExecutor_notTheCommonPool() throws Exception {
         String ontologyIRI = "http://example.org/test-ontology";

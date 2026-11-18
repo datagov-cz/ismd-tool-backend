@@ -53,6 +53,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
     private final UploadMetadataWriter metadataWriter;
     private final OntologyUploadTransactions transactions;
     private final UploadValidationRunner validationRunner;
+    private final UploadGraphGuard graphGuard;
 
     @Override
     public Lang determineRDFFormat(MultipartFile file) {
@@ -83,6 +84,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             // One upload per vocabulary at a time, so the existence check below is reliable.
             claim = vocabularyLock.claim(graphName);
             metadataWriter.checkSlugUniqueness(graphName);
+            graphGuard.requireNoUnappliedWrites(graphName);
 
             // 3. skos:inScheme for owned concepts lacking it, only as the user decided (asks when undecided).
             Set<String> chosen = InSchemeStamping.chosen(finalModel, graphName, normalizeMode, conceptsToNormalize);
@@ -122,6 +124,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
 
             // 6. Save RDF data to TDB2 first — if this fails, no metadata exists, clean exit
             try {
+                graphGuard.warnIfGraphHoldsData(graphName);
                 jenaTDB2Repository.putOntologyModel(graphName, finalModel);
             } catch (Exception e) {
                 throw new OntologyUploadRdfStoreException(

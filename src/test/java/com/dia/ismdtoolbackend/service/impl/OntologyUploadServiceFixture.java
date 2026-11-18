@@ -45,6 +45,8 @@ public final class OntologyUploadServiceFixture {
     private ValidationReportRepository validationReportRepository = mock(ValidationReportRepository.class);
     private JenaTDB2Repository jenaTDB2Repository = mock(JenaTDB2Repository.class);
     private PublishedResourceUtil publishedResourceUtil = mock(PublishedResourceUtil.class);
+    private com.dia.ismdtoolbackend.outbox.OutboxEntryRepository outboxRepository =
+            mock(com.dia.ismdtoolbackend.outbox.OutboxEntryRepository.class);
     /** {@code null} builds the real gate over {@link #conceptMetadataRepository}. */
     @Getter(AccessLevel.NONE)
     @Setter(AccessLevel.NONE)
@@ -76,7 +78,8 @@ public final class OntologyUploadServiceFixture {
                 jenaTDB2Repository,
                 metadataWriter,
                 transactions,
-                new UploadValidationRunner(validationClient, transactions, validationExecutor));
+                new UploadValidationRunner(validationClient, transactions, validationExecutor),
+                new UploadGraphGuard(outboxRepository, jenaTDB2Repository));
     }
 
     /** The real OFN gate, as the application configures it. */

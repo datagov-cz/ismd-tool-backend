@@ -54,6 +54,23 @@ zápisu.
 smazání slovníku. **Nepokryto:** **upload** slovníku (stále přímý zápis — tuto cestu jistí
 rekonciliátor a existující **best effort** revert).
 
+### Upload a úložiště grafů
+
+Upload zapíše graf nejprve do Fuseki, potom commitne řádek slovníku; při neúspěšném commitu graf zase
+smaže. Graf bez řádku (`GRAPH_ORPHAN`) přesto může zůstat, když proces skončí mezi oběma zápisy, když
+selže i ono úklidové smazání, nebo když se záznam `DELETE_GRAPH` ze smazání slovníku nedostane do Fuseki.
+Upload proti tomu chrání dvě kontroly:
+
+- **Neaplikovaný záznam outboxu pro graf → `409 ONTOLOGY_CREATION_CONFLICT`.** Dokud je pro graf
+  nějaký záznam čekající nebo `FAILED`, upload stejného IRI se odmítne: frontované smazání dřívějšího
+  slovníku by jinak nový graf odstranilo, až by se konečně aplikovalo. Zopakujte selhaný záznam (nebo
+  počkejte na relay) a nahrajte znovu.
+- **Zbylý graf bez řádku → nahrazen, s WARN.** Upload přes takový graf jej nahradí a zaloguje
+  `Graph <iri> holds data but has no vocabulary row; the upload replaces it`. Opakované nahrání tak
+  uklidí zbytky dřívějších neúspěšných pokusů.
+
+Data vložená do Fuseki mimo aplikaci chráněna **nejsou**: viz provozní příručka níže.
+
 ## Životní cyklus záznamu
 
 ```
@@ -206,6 +223,14 @@ curl -s -X POST "http://localhost:8081/popisujeme/api/admin/reconciler/run" \
   spusťte sken znovu — může jít o přechodný stav (PG commit dorazil těsně po PG snímku skenu).
 - **`SUSPECTED_RENAME`:** pravděpodobně nedokončené přejmenování; obě IRI jsou hlášena spolu. Pouze
   hlášení.
+- **`GRAPH_ORPHAN`:** graf s vlastněnými pojmy a bez řádku slovníku. Pouze hlášení. Příští upload
+  stejného IRI jej nahradí (WARN v logu); chcete-li jej místo toho odstranit, smažte graf ve Fuseki.
+- **Změny Fuseki nebo PostgreSQL mimo aplikaci** (obnova ze zálohy, výmaz dat, ruční nahrání): aplikace
+  bere existující slovníky z PostgreSQL a upload nahradí graf, který nemá řádek. Proto:
+  - obnovujte nebo mažte **obě úložiště společně**, ze záloh ze stejného okamžiku;
+  - po změně spusťte rekonciliátor (`POST /run`) a vyřešte každý `GRAPH_ORPHAN` a `PG_MISSING_RDF`,
+    než uživatelé začnou znovu zapisovat;
+  - graf slovníku, který má aplikace vlastnit, nikdy nenahrávejte do Fuseki ručně; nahrajte jej uploadem.
 - **`409` na `POST /run`:** plánovaný nebo jiný ruční běh ještě probíhá. Použijte `GET /report`.
 - **Běh skončí chybou max-concepts:** dataset překračuje `reconciler.max-concepts`. Zvyšte limit (nebo
   stránkujte snímek).
