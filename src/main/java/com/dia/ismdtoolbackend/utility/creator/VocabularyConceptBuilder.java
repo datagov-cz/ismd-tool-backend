@@ -54,7 +54,7 @@ public final class VocabularyConceptBuilder {
         URIGenerator generator = new URIGenerator();
         generator.setEffectiveNamespace(UtilityMethods.ensureNamespaceEndsWithDelimiter(graph));
         Map<String, String> iris = new LinkedHashMap<>();
-        Set<String> usedIris = new HashSet<>(Set.of(graph, graph + "/casovy-okamzik-vytvoreni"));
+        Set<String> usedIris = new HashSet<>(Set.of(graph));
         models.forEach((ref, model) -> {
             String iri = generator.generateConceptURI(model.getNameModel().getName().get("cs"), null);
             if (!UtilityMethods.isValidIRI(iri)) throw invalid("Neplatné IRI pojmu " + ref + ": " + iri);

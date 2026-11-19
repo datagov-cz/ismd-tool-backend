@@ -24,7 +24,7 @@ class ConceptEditorLabelsTest extends ConceptEditorTestBase {
     private static final String CONCEPT = DEFAULT_NS + "pojem/třída";
 
     private void seed(String extraPredicates) {
-        Ttl.add(model, "<" + CONCEPT + "> a ofn:třída ; skos:prefLabel \"Třída\"@cs " + extraPredicates + " .");
+        Ttl.add(model, "<" + CONCEPT + "> a owl:Class ; skos:prefLabel \"Třída\"@cs " + extraPredicates + " .");
     }
 
     private ConceptEditor.EditResult edit() {
@@ -32,7 +32,7 @@ class ConceptEditorLabelsTest extends ConceptEditorTestBase {
     }
 
     private void assertModelIs(String predicates) {
-        Model expected = Ttl.parse("<" + CONCEPT + "> a ofn:třída ; skos:prefLabel \"Třída\"@cs " + predicates + " .");
+        Model expected = Ttl.parse("<" + CONCEPT + "> a owl:Class ; skos:prefLabel \"Třída\"@cs " + predicates + " .");
         assertThat(model.isIsomorphicWith(expected))
                 .as("missing: %s%nextra: %s", expected.difference(model), model.difference(expected))
                 .isTrue();

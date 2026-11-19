@@ -4,9 +4,12 @@ import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptSourceTag;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
+import com.dia.ismdtoolbackend.exception.OfnConformanceException;
 import com.dia.ismdtoolbackend.models.NameModel;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
+import com.dia.ismdtoolbackend.ofn.ConformanceIssue;
+import com.dia.ismdtoolbackend.ofn.OfnWriteGate;
 import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
@@ -29,6 +32,7 @@ import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
+import org.mockito.InOrder;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
@@ -43,10 +47,17 @@ import static com.dia.ismdtoolbackend.service.impl.ConceptServiceTestData.USER_I
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.anySet;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -58,6 +69,7 @@ class ConceptCreateOperationTest {
     private JenaTDB2Repository jenaTDB2Repository;
     private OutboxWriter outboxWriter;
     private OutboxRelayTrigger outboxRelayTrigger;
+    private OfnWriteGate ofnWriteGate;
     private ConceptCreateOperation operation;
 
     @Captor private ArgumentCaptor<Set<Statement>> addedCaptor;
@@ -70,7 +82,9 @@ class ConceptCreateOperationTest {
 
     @BeforeEach
     void setUp() {
-        ConceptServiceFixture fixture = new ConceptServiceFixture();
+        // The creator is a mock, so the gate is too; ConceptCreateOfnSafetyNetTest runs the real pair.
+        ofnWriteGate = mock(OfnWriteGate.class);
+        ConceptServiceFixture fixture = new ConceptServiceFixture().ofnWriteGate(ofnWriteGate);
         conceptMetadataRepository = fixture.conceptMetadataRepository();
         ontologyMetadataRepository = fixture.ontologyMetadataRepository();
         conceptCreator = fixture.conceptCreator();
@@ -139,7 +153,9 @@ class ConceptCreateOperationTest {
             verify(outboxWriter).enqueueUpsert(eq(GRAPH_NAME), eq(CONCEPT_IRI), eq(Set.of()), addedCaptor.capture());
             assertThat(addedCaptor.getValue()).containsExactly(label);
             verify(outboxRelayTrigger).nudgeAfterCommit();
-            verifyNoInteractions(jenaTDB2Repository);
+            // Only the collision read; the triples reach TDB2 through the outbox.
+            verify(jenaTDB2Repository).conceptFoundInGraph(CONCEPT_IRI, GRAPH_NAME);
+            verifyNoMoreInteractions(jenaTDB2Repository);
         }
 
         @Test
@@ -250,6 +266,62 @@ class ConceptCreateOperationTest {
             verifyNoInteractions(outboxWriter);
             verify(conceptMetadataRepository, never()).save(any());
         }
+
+        @Test
+        void rejectsAnIriWhoseTriplesTheGraphAlreadyHolds() {
+            when(conceptCreator.createSingleConcept(createModel)).thenReturn(createdResource);
+            when(conceptMetadataRepository.findByConceptIri(CONCEPT_IRI)).thenReturn(Optional.empty());
+            when(jenaTDB2Repository.conceptFoundInGraph(CONCEPT_IRI, GRAPH_NAME)).thenReturn(true);
+
+            assertThatThrownBy(() -> operation.createConcept(createModel, USER_ID))
+                    .isInstanceOf(ConceptValidationException.class)
+                    .hasMessageContaining(CONCEPT_IRI);
+            verifyNoInteractions(outboxWriter, ofnWriteGate);
+            verify(conceptMetadataRepository, never()).save(any());
+        }
+
+        @Test
+        void rejectsAnIriOutsideTheVocabularyNamespace() {
+            String foreignIri = "https://slovník.gov.cz/jiný/pojem/x";
+            when(conceptCreator.createSingleConcept(createModel))
+                    .thenReturn(createdModel.createResource(foreignIri));
+
+            assertThatThrownBy(() -> operation.createConcept(createModel, USER_ID))
+                    .isInstanceOf(ConceptValidationException.class)
+                    .hasMessageContaining("neleží ve jmenném prostoru");
+            verifyNoInteractions(outboxWriter, ofnWriteGate);
+            verify(conceptMetadataRepository, never()).save(any());
+        }
+    }
+
+    @Nested
+    class OfnSafetyNet {
+
+        @Test
+        void checksTheCreatedConceptBeforeQueueingIt() {
+            givenCreatableConcept();
+            when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(savedConcept);
+
+            operation.createConcept(createModel, USER_ID);
+
+            InOrder order = inOrder(ofnWriteGate, outboxWriter);
+            order.verify(ofnWriteGate).requireWritableConcepts(createdModel, GRAPH_NAME, List.of(CONCEPT_IRI));
+            order.verify(outboxWriter).enqueueUpsert(eq(GRAPH_NAME), eq(CONCEPT_IRI), anySet(), anySet());
+        }
+
+        @Test
+        void aRefusedConceptIsNeitherQueuedNorSaved() {
+            when(conceptCreator.createSingleConcept(createModel)).thenReturn(createdResource);
+            when(conceptMetadataRepository.findByConceptIri(CONCEPT_IRI)).thenReturn(Optional.empty());
+            OfnConformanceException refusal = new OfnConformanceException(OfnConformanceException.Context.WRITE,
+                    GRAPH_NAME, List.of(new ConformanceIssue(ConformanceIssue.Kind.CONCEPT_EXCLUDED, CONCEPT_IRI,
+                    "pojmy[0]", "no OWL kind")));
+            doThrow(refusal).when(ofnWriteGate).requireWritableConcepts(any(Model.class), anyString(), anyCollection());
+
+            assertThatThrownBy(() -> operation.createConcept(createModel, USER_ID)).isSameAs(refusal);
+            verifyNoInteractions(outboxWriter, outboxRelayTrigger);
+            verify(conceptMetadataRepository, never()).save(any());
+        }
     }
 
     @Nested
@@ -276,7 +348,9 @@ class ConceptCreateOperationTest {
                     .hasMessage("Nepodařilo se uložit metadata pojmu.");
             // The outbox row rolls back with the transaction.
             verify(outboxRelayTrigger, never()).nudgeAfterCommit();
-            verifyNoInteractions(jenaTDB2Repository);
+            // Only the collision read; the triples reach TDB2 through the outbox.
+            verify(jenaTDB2Repository).conceptFoundInGraph(CONCEPT_IRI, GRAPH_NAME);
+            verifyNoMoreInteractions(jenaTDB2Repository);
         }
     }
 }

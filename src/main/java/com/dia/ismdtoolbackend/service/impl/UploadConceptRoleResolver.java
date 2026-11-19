@@ -2,7 +2,7 @@ package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.controller.dto.RejectedConceptDto;
 import com.dia.ismdtoolbackend.enums.ConceptType;
-import com.dia.ismdtoolbackend.utility.exporter.turtle.OFNTypeNormalizer;
+import com.dia.ismdtoolbackend.ofn.OfnIris;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.rdf.model.Model;
@@ -43,7 +43,7 @@ class UploadConceptRoleResolver {
         while (concepts.hasNext()) {
             Resource concept = concepts.next();
             if (!concept.isURIResource()
-                    || !OFNTypeNormalizer.isOwnedConcept(concept.getURI(), graphName)
+                    || !OfnIris.isOwnedBy(concept.getURI(), graphName)
                     || !concept.hasProperty(SKOS.inScheme)) {
                 continue;
             }
@@ -87,15 +87,11 @@ class UploadConceptRoleResolver {
     }
 
     /**
-     * Resolves a concept's role via {@link ConceptType#fromRdfTypes}, the shared mapping that
-     * accepts both the OFN role IRIs ISMD writes and the OWL types imported data carries.
-     * {@link OFNTypeNormalizer#normalize} has already stamped the role tags by the time this runs,
-     * so an OFN concept with no matching OWL type still resolves.
+     * Resolves a concept's role from its OWL kind ({@code owl:Class}, {@code owl:DatatypeProperty},
+     * {@code owl:ObjectProperty}).
      *
-     * <p>Rejects when no single role can be read — either nothing recognizable is present
-     * ({@code KONCEPT}, the base type every concept carries, which is terminal and not
-     * role-narrowing), or the data claims two roles at once. Contradictory data is broken input,
-     * not something to repair by picking a winner.
+     * <p>Rejects when no single role can be read: no OWL kind at all, or two at once. Contradictory
+     * data is broken input, not something to repair by picking a winner.
      */
     RoleResolution resolveRole(Resource conceptResource) {
         List<String> types = conceptResource.listProperties(RDF.type)
@@ -112,31 +108,24 @@ class UploadConceptRoleResolver {
             return RoleResolution.rejected("conflicting types: " + conflicting);
         }
 
-        ConceptType resolved = ConceptType.fromRdfTypes(types);
-        return resolved == ConceptType.KONCEPT
+        return declared.isEmpty()
                 ? RoleResolution.rejected("no recognized type")
-                : RoleResolution.of(resolved);
+                : RoleResolution.of(declared.iterator().next());
     }
 
     /**
-     * The distinct roles a concept declares, across both the OFN role tags and their OWL
-     * equivalents. A well-formed concept declares exactly one; more means the vocabulary claims
-     * the concept is, say, both a vlastnost and a vztah.
+     * The distinct roles a concept's OWL kinds declare. A well-formed concept declares exactly one;
+     * more means the vocabulary claims the concept is, say, both a vlastnost and a vztah.
      */
     private Set<ConceptType> declaredRoles(Resource conceptResource, List<String> types) {
-        Model model = conceptResource.getModel();
         Set<ConceptType> roles = EnumSet.noneOf(ConceptType.class);
-
-        if (types.contains(OWL2.Class.getURI())
-                || conceptResource.hasProperty(RDF.type, model.createResource(OFN_NAMESPACE + TRIDA))) {
+        if (types.contains(OWL2.Class.getURI())) {
             roles.add(ConceptType.TRIDA);
         }
-        if (types.contains(OWL2.DatatypeProperty.getURI())
-                || conceptResource.hasProperty(RDF.type, model.createResource(OFN_NAMESPACE + VLASTNOST))) {
+        if (types.contains(OWL2.DatatypeProperty.getURI())) {
             roles.add(ConceptType.VLASTNOST);
         }
-        if (types.contains(OWL2.ObjectProperty.getURI())
-                || conceptResource.hasProperty(RDF.type, model.createResource(OFN_NAMESPACE + VZTAH))) {
+        if (types.contains(OWL2.ObjectProperty.getURI())) {
             roles.add(ConceptType.VZTAH);
         }
         return roles;

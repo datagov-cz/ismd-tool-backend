@@ -69,6 +69,8 @@ databaseChangeLog:
   - include:
       file: db/changelog/v1/023-diagram-edge-last-known-endpoints.yaml
   - include:
+      file: db/changelog/v1/024-rdf-migration-log.yaml
+  - include:
       file: db/changelog/v1/024-diagram-iri-id.yaml
   - include:
       file: db/changelog/v1/025-create-publications.yaml

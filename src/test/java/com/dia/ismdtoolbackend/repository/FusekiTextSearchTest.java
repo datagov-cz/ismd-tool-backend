@@ -83,7 +83,7 @@ class FusekiTextSearchTest {
         search = searchOver(dataset, new MockEnvironment());
         search.setAvailable(true);
         store(GRAPH, """
-                pojem:řidič a skos:Concept, slovníky:třída, owl:Class ;
+                pojem:řidič a skos:Concept, owl:Class ;
                     skos:prefLabel "Řidič"@cs ;
                     skos:altLabel "Šofér"@cs ;
                     dct:description "Osoba řídící vozidlo"@cs ;
@@ -92,7 +92,7 @@ class FusekiTextSearchTest {
                     skos:altLabel "auto řidiče"@cs .
                 pojem:řídí a skos:Concept, owl:ObjectProperty ;
                     skos:prefLabel "řídí řidič"@cs .
-                pojem:jméno-řidiče a skos:Concept, slovníky:vlastnost ;
+                pojem:jméno-řidiče a skos:Concept, owl:DatatypeProperty ;
                     skos:prefLabel "jméno řidiče"@cs .
                 """);
         store(HIDDEN_GRAPH, """

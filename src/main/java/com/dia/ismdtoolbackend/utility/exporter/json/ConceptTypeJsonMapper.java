@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.utility.exporter.json;
 
 import com.dia.ismdtoolbackend.exception.ConflictingConceptTypeException;
+import com.dia.ismdtoolbackend.ofn.OfnIris;
 import com.dia.ismdtoolbackend.utility.validation.ConceptRoleConflict;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.rdf.model.*;
@@ -20,11 +21,10 @@ final class ConceptTypeJsonMapper {
     Set<Resource> getConceptTypes(OntModel ontModel) {
         return Set.of(
                 ontModel.getResource(OFN_NAMESPACE + POJEM),
-                ontModel.getResource(OFN_NAMESPACE + VZTAH),
-                ontModel.getResource(OFN_NAMESPACE + VLASTNOST),
-                ontModel.getResource(OFN_NAMESPACE + TRIDA),
                 ontModel.getResource(OFN_NAMESPACE + TSP),
                 ontModel.getResource(OFN_NAMESPACE + TOP),
+                ontModel.getResource(OfnIris.TYP_SUBJEKTU_PRAVA),
+                ontModel.getResource(OfnIris.TYP_OBJEKTU_PRAVA),
                 ontModel.getResource(OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ),
                 ontModel.getResource(OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ),
                 ontModel.createResource(SKOS_NS + "Concept"),
@@ -39,8 +39,8 @@ final class ConceptTypeJsonMapper {
     }
 
     /**
-     * Maps a concept's RDF types to JSON type names. Property and relationship are exclusive: the OFN
-     * tag and the OWL type must agree, and a concept carrying one of each kind is rejected.
+     * Maps a concept's RDF types to JSON type names; the kind comes from the OWL type. A concept typed as
+     * both property and relationship is rejected.
      */
     List<String> getConceptTypes(Resource concept, OntModel ontModel) {
         if (ConceptRoleConflict.isPropertyAndRelationship(concept)) {
@@ -51,41 +51,31 @@ final class ConceptTypeJsonMapper {
         types.add(POJEM_JSON_LD);
         types.add("Koncept");
 
+        // Order is part of the payload: kind first, then the legal and publicity types.
         String[][] typeMapping = {
-                {TRIDA, TRIDA_JSON_LD},
-                {VZTAH, VZTAH_JSON_LD},
-                {VLASTNOST, VLASTNOST_JSON_LD},
-                {TSP, TSP_JSON_LD},
-                {TOP, TOP_JSON_LD},
-                {VEREJNY_UDAJ, VEREJNY_UDAJ_JSON_LD},
-                {NEVEREJNY_UDAJ, NEVEREJNY_UDAJ_JSON_LD}
+                {OWL_CLASS, TRIDA_JSON_LD},
+                {OWL_OBJECT_PROPERTY, VZTAH_JSON_LD},
+                {OWL_DATATYPE_PROPERTY, VLASTNOST_JSON_LD},
+                {OFN_NAMESPACE + TSP, TSP_JSON_LD},
+                {OFN_NAMESPACE + TOP, TOP_JSON_LD},
+                {OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ, VEREJNY_UDAJ_JSON_LD},
+                {OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ, NEVEREJNY_UDAJ_JSON_LD}
         };
 
         for (String[] mapping : typeMapping) {
-            String namespace = (mapping[0].equals(VEREJNY_UDAJ) || mapping[0].equals(NEVEREJNY_UDAJ))
-                    ? OFN_NAMESPACE_LEGAL : OFN_NAMESPACE;
-            if (hasType(concept, ontModel, namespace + mapping[0])) {
+            if (hasType(concept, ontModel, mapping[0])) {
                 types.add(mapping[1]);
             }
         }
-
-        addOwlTypeIfPresent(concept, ontModel, types);
+        // Typ subjektu/objektu práva: the OFN vsgov: type (the slovníky: one above is the legacy shape).
+        if (hasType(concept, ontModel, OfnIris.TYP_SUBJEKTU_PRAVA) && !types.contains(TSP_JSON_LD)) {
+            types.add(TSP_JSON_LD);
+        }
+        if (hasType(concept, ontModel, OfnIris.TYP_OBJEKTU_PRAVA) && !types.contains(TOP_JSON_LD)) {
+            types.add(TOP_JSON_LD);
+        }
 
         return types;
-    }
-
-    void addOwlTypeIfPresent(Resource concept, OntModel ontModel, List<String> types) {
-        if (hasType(concept, ontModel, OWL_CLASS) && !types.contains(TRIDA_JSON_LD)) {
-            types.add(TRIDA_JSON_LD);
-        }
-
-        if (hasType(concept, ontModel, OWL_OBJECT_PROPERTY) && !types.contains(VZTAH_JSON_LD)) {
-            types.add(VZTAH_JSON_LD);
-        }
-
-        if (hasType(concept, ontModel, OWL_DATATYPE_PROPERTY) && !types.contains(VLASTNOST_JSON_LD)) {
-            types.add(VLASTNOST_JSON_LD);
-        }
     }
 
     private static boolean hasType(Resource concept, OntModel ontModel, String typeIri) {

@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.service;
 
+import com.dia.ismdtoolbackend.exception.OfnConformanceException;
+import com.dia.ismdtoolbackend.ofn.OfnIris;
 import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.controller.dto.RejectedConceptDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
@@ -41,6 +43,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
@@ -122,11 +125,11 @@ class OntologyUploadValidationParityTest {
     }
 
     private static String vocabulary() {
-        return "<" + VOCABULARY + "> a owl:Ontology, skos:ConceptScheme . ";
+        return "<" + VOCABULARY + "> a owl:Ontology, skos:ConceptScheme, ofn:slovník . ";
     }
 
     private static String concept(String iri, String type, String body) {
-        return "<" + iri + "> a ofn:pojem, " + type + " ; skos:inScheme <" + VOCABULARY + "> " + body + " . ";
+        return "<" + iri + "> a ofn:pojem, skos:Concept, " + type + " ; skos:inScheme <" + VOCABULARY + "> " + body + " . ";
     }
 
     private List<String> savedConceptIris() {
@@ -140,12 +143,47 @@ class OntologyUploadValidationParityTest {
         return uploaded.rejectedConcepts().stream().map(RejectedConceptDto::iri).toList();
     }
 
+    // --- OFN gate -----------------------------------------------------------
+
+    @Test
+    void vocabularyThatIsNotOfnItself_rejectsTheWholeUpload_storingNothing() {
+        assertThatThrownBy(() -> upload("<" + VOCABULARY + "> a owl:Ontology, skos:ConceptScheme . "
+                + concept(GOOD, "owl:Class", "")))
+                .isInstanceOfSatisfying(OfnConformanceException.class, e -> {
+                    assertThat(e.getContext()).isEqualTo(OfnConformanceException.Context.UPLOAD);
+                    assertThat(e.getIssues()).allSatisfy(issue -> assertThat(issue.conceptIri()).isNull());
+                });
+        verifyNoInteractions(jenaTDB2Repository);
+    }
+
+    @Test
+    void conceptWithANonOfnValue_isRejected_withTheFieldAndReason_othersImported() throws Exception {
+        OntologyUploadResultDto uploaded = upload(vocabulary()
+                + concept(GOOD, "owl:Class", "")
+                + concept(BAD, "owl:Class", "; <https://slovník.gov.cz/agendový/999/inTezaurus> \"true\""));
+
+        assertThat(savedConceptIris()).isEqualTo(List.of(GOOD));
+        assertThat(rejectedIris(uploaded)).isEqualTo(List.of(BAD));
+        assertThat(uploaded.rejectedConcepts().get(0).reason())
+                .startsWith("OFN: ")
+                .contains("není definována v kontextu OFN");
+    }
+
+    @Test
+    void incompleteConcept_isImportedAsADraft() throws Exception {
+        OntologyUploadResultDto uploaded = upload(vocabulary()
+                + concept(GOOD, "owl:ObjectProperty", ""));
+
+        assertThat(savedConceptIris()).isEqualTo(List.of(GOOD));
+        assertThat(uploaded.rejectedConcepts()).isEmpty();
+    }
+
     // --- Trailing-slash IRIs ------------------------------------------------
 
     @Test
     void trailingSlashIrisAreCorrectedBeforeAnythingIsStored() throws Exception {
-        OntologyUploadResultDto uploaded = upload("<" + VOCABULARY + "/> a owl:Ontology, skos:ConceptScheme . "
-                + "<" + GOOD + "/> a ofn:pojem, owl:Class ; skos:inScheme <" + VOCABULARY + "/> ;"
+        OntologyUploadResultDto uploaded = upload("<" + VOCABULARY + "/> a owl:Ontology, skos:ConceptScheme, ofn:slovník . "
+                + "<" + GOOD + "/> a ofn:pojem, skos:Concept, owl:Class ; skos:inScheme <" + VOCABULARY + "/> ;"
                 + " ofn:definující-ustanovení <" + ELI + "/> .");
 
         assertThat(storedGraphName).isEqualTo(VOCABULARY);
@@ -216,7 +254,7 @@ class OntologyUploadValidationParityTest {
     @Test
     void nonLegalSourceWithoutAUrlIsImported() throws Exception {
         OntologyUploadResultDto uploaded = upload(vocabulary()
-                + concept(GOOD, "owl:Class", "; <https://slovník.gov.cz/definující-nelegislativní-zdroj>"
+                + concept(GOOD, "owl:Class", "; ofn:definující-nelegislativní-zdroj"
                 + " [ a " + DIGITAL_OBJECT + " ; <http://purl.org/dc/terms/title> \"Směrnice EU\"@cs ]"));
 
         assertThat(savedConceptIris()).isEqualTo(List.of(GOOD));
@@ -227,7 +265,7 @@ class OntologyUploadValidationParityTest {
     @Test
     void nonLegalSourceWithAnInvalidUrlIsRejected() throws Exception {
         OntologyUploadResultDto uploaded = upload(vocabulary()
-                + concept(BAD, "owl:Class", "; <https://slovník.gov.cz/definující-nelegislativní-zdroj>"
+                + concept(BAD, "owl:Class", "; ofn:definující-nelegislativní-zdroj"
                 + " [ a " + DIGITAL_OBJECT + " ; <http://schema.org/url> \"not a url\" ]"));
 
         assertThat(rejectedIris(uploaded)).isEqualTo(List.of(BAD));
@@ -274,8 +312,8 @@ class OntologyUploadValidationParityTest {
 
         Resource created = new ConceptCreator().createSingleConcept(model);
         Model graph = ModelFactory.createDefaultModel().add(created.getModel());
-        graph.createResource(VOCABULARY).addProperty(RDF.type, OWL2.Ontology).addProperty(RDF.type, SKOS.ConceptScheme);
-        created.inModel(graph).addProperty(RDF.type, OWL2.Class);
+        graph.createResource(VOCABULARY).addProperty(RDF.type, OWL2.Ontology).addProperty(RDF.type, SKOS.ConceptScheme)
+                .addProperty(RDF.type, graph.createResource(OfnIris.SLOVNIK));
         StringWriter turtle = new StringWriter();
         graph.write(turtle, "TTL");
         when(file.getBytes()).thenReturn(turtle.toString().getBytes(StandardCharsets.UTF_8));

@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.ofn.OfnIris;
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.enums.SnapshotOrigin;
@@ -18,7 +19,6 @@ import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.rdf.model.Model;
-import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.StmtIterator;
@@ -244,14 +244,17 @@ class WorkingCopySyncOperation {
         return null;
     }
 
+    /** The concept's privacy provisions. */
     List<String> currentPrivacyProvisions(Model model, Resource concept) {
-        Property provisionProperty = model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
         List<String> provisions = new ArrayList<>();
-        StmtIterator it = model.listStatements(concept, provisionProperty, (RDFNode) null);
+        StmtIterator it = model.listStatements(concept, model.createProperty(OfnIris.USTANOVENI_NEVEREJNOST), (RDFNode) null);
         try {
             while (it.hasNext()) {
                 RDFNode object = it.next().getObject();
-                provisions.add(object.isURIResource() ? object.asResource().getURI() : object.toString());
+                String value = object.isURIResource() ? object.asResource().getURI() : object.toString();
+                if (!provisions.contains(value)) {
+                    provisions.add(value);
+                }
             }
         } finally {
             it.close();

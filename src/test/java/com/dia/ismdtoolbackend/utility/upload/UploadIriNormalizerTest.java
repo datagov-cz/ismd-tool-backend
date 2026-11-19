@@ -1,4 +1,4 @@
-package com.dia.ismdtoolbackend.utility.validation;
+package com.dia.ismdtoolbackend.utility.upload;
 
 import com.dia.ismdtoolbackend.exception.OntologyUploadIriCollisionException;
 import org.apache.jena.rdf.model.Model;

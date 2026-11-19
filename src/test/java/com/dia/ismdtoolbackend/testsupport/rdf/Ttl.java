@@ -26,7 +26,7 @@ import java.util.stream.Collectors;
  *
  * <pre>{@code
  * Model m = Ttl.parse("""
- *     pojem:osoba a owl:Class, slovníky:třída ;
+ *     pojem:osoba a owl:Class, slovníky:pojem ;
  *         skos:prefLabel "Osoba"@cs .
  *     """);
  * }</pre>

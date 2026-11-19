@@ -231,7 +231,7 @@ class ConceptJsonMapperValueShapesTest {
         @DisplayName("rdfs:subPropertyOf maps by role: vlastnost to nadřazená-vlastnost, other concepts nowhere")
         void subPropertyByRole() {
             OntModel model = Ttl.parseOnt(HEADER + """
-                    pojem:jméno a slovníky:vlastnost ; rdfs:subPropertyOf pojem:označení .
+                    pojem:jméno a owl:DatatypeProperty ; rdfs:subPropertyOf pojem:označení .
                     pojem:x a skos:Concept ; rdfs:subPropertyOf pojem:označení .
                     """);
             ModelStructure structure = new ModelAnalyzer().analyzeModel(model);
@@ -240,6 +240,21 @@ class ConceptJsonMapperValueShapesTest {
                     .containsEntry(NADRAZENA_VLASTNOST, List.of(Ttl.POJEM + "označení"));
             assertThat(mapper.processConceptByIri(model, structure, CONCEPT))
                     .doesNotContainKeys(NADRAZENA_VLASTNOST, NADRAZENY_VZTAH);
+        }
+
+        @Test
+        @DisplayName("the parent key follows the OWL kind")
+        void subPropertyByOwlKind() {
+            OntModel model = Ttl.parseOnt(HEADER + """
+                    pojem:jméno a skos:Concept, owl:DatatypeProperty ; rdfs:subPropertyOf pojem:označení .
+                    pojem:bydlí-v a skos:Concept, owl:ObjectProperty ; rdfs:subPropertyOf pojem:souvisí .
+                    """);
+            ModelStructure structure = new ModelAnalyzer().analyzeModel(model);
+
+            assertThat(mapper.processConceptByIri(model, structure, Ttl.POJEM + "jméno"))
+                    .containsEntry(NADRAZENA_VLASTNOST, List.of(Ttl.POJEM + "označení"));
+            assertThat(mapper.processConceptByIri(model, structure, Ttl.POJEM + "bydlí-v"))
+                    .containsEntry(NADRAZENY_VZTAH, List.of(Ttl.POJEM + "souvisí"));
         }
     }
 

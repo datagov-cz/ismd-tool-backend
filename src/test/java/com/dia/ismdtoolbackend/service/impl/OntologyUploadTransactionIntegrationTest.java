@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.ofn.OfnConfiguration;
+import com.dia.ismdtoolbackend.ofn.OfnWriteGate;
 import com.dia.ismdtoolbackend.IsmdToolBackendApplication;
 import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.config.AsyncConfig;
@@ -75,7 +77,8 @@ import static org.mockito.Mockito.when;
 @EntityScan(basePackageClasses = ConceptMetadataEntity.class)
 @EnableJpaRepositories(basePackageClasses = ConceptMetadataRepository.class)
 @Import({JpaAuditingConfig.class, TransactionTemplateConfig.class, AsyncConfig.class,
-        OntologyUploadServiceImpl.class, UploadFileReader.class, UploadModelNormalizer.class, UploadVocabularyLock.class,
+        OntologyUploadServiceImpl.class, UploadFileReader.class, UploadVocabularyLock.class,
+        OfnConfiguration.class, OfnWriteGate.class,
         UploadConceptRoleResolver.class, UploadConceptGate.class, UploadMetadataWriter.class,
         UploadValidationRunner.class, OntologyUploadTransactions.class,
         OntologyUploadTransactionIntegrationTest.Beans.class})
@@ -88,8 +91,8 @@ class OntologyUploadTransactionIntegrationTest extends PostgresIntegrationTestBa
     private static final String TURTLE = "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
             + " @prefix skos: <http://www.w3.org/2004/02/skos/core#> ."
             + " @prefix ofn: <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/> ."
-            + " <" + VOCABULARY + "> a owl:Ontology, skos:ConceptScheme ."
-            + " <" + CONCEPT + "> a ofn:pojem, owl:Class ; skos:inScheme <" + VOCABULARY + "> .";
+            + " <" + VOCABULARY + "> a owl:Ontology, skos:ConceptScheme, ofn:slovník ."
+            + " <" + CONCEPT + "> a ofn:pojem, skos:Concept, owl:Class ; skos:inScheme <" + VOCABULARY + "> .";
 
     @Autowired private OntologyUploadServiceImpl uploadService;
     @Autowired private OntologyMetadataRepository ontologyRepository;

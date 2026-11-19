@@ -2,13 +2,21 @@ package com.dia.ismdtoolbackend.service;
 
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.exception.EmptyDataException;
-import com.dia.ismdtoolbackend.exception.JsonExportException;
 import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.impl.OntologyDownloadServiceImpl;
 import com.dia.ismdtoolbackend.testsupport.rdf.JsonLd;
 import com.dia.ismdtoolbackend.testsupport.rdf.Ttl;
-import com.dia.ismdtoolbackend.utility.exporter.json.JsonExporter;
+import com.dia.ismdtoolbackend.exception.OfnConformanceException;
+import com.dia.ismdtoolbackend.ofn.ConformanceIssue;
+import com.dia.ismdtoolbackend.ofn.OfnJsonLdParser;
+import com.dia.ismdtoolbackend.ofn.OfnRdf;
+import com.dia.ismdtoolbackend.ofn.OfnSpecification;
+import com.dia.ismdtoolbackend.ofn.OfnDates;
+import com.dia.ismdtoolbackend.ofn.OfnVocabularyExporter;
+import com.dia.ismdtoolbackend.service.impl.OntologyUploadServiceFixture;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.jena.atlas.web.HttpException;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
@@ -36,6 +44,10 @@ import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -60,10 +72,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * {@link OntologyDownloadServiceImpl} fetches the vocabulary graph from Fuseki over GSP, runs the
- * real OFN filter and formatter, and serializes Turtle or OFN JSON-LD. Fuseki is a {@link FakeFuseki}
- * {@link HttpClient} handed to the real Jena connection, so the request and the parsed response are
- * Jena's own; nothing leaves the JVM.
+ * {@link OntologyDownloadServiceImpl} fetches the vocabulary graph from Fuseki over GSP and downloads it
+ * through the real OFN exporter: blocked with every issue when it does not conform, otherwise JSON-LD and
+ * Turtle of the same graph. Fuseki is a {@link FakeFuseki} {@link HttpClient} handed to the real Jena
+ * connection, so the request and the parsed response are Jena's own; nothing leaves the JVM.
  */
 @ExtendWith(MockitoExtension.class)
 class OntologyDownloadServiceImplTest {
@@ -74,29 +86,25 @@ class OntologyDownloadServiceImplTest {
 
     private static final String FUSEKI_ENDPOINT = "http://fuseki.invalid/ds";
     private static final Long ONTOLOGY_ID = 1L;
-    private static final String GRAPH_NAME = Ttl.VOCABULARY;
+    private static final String GRAPH_NAME = "https://slovník.gov.cz/datový/test-slovník";
 
-    /** Graph as Fuseki stores it: an auxiliary resource and an empty literal the filter drops. */
+    /** An OFN-conformant vocabulary as Fuseki stores it. */
     private static final String STORED_GRAPH = """
-            ex: a owl:Ontology ;
+            <https://slovník.gov.cz/datový/test-slovník> a owl:Ontology, skos:ConceptScheme, slovníky:slovník ;
                 skos:prefLabel "Testovací slovník"@cs .
-            pojem:osoba a owl:Class, skos:Concept, slovníky:pojem, slovníky:třída ;
+            pojem:osoba a owl:Class, skos:Concept, slovníky:pojem ;
+                skos:inScheme <https://slovník.gov.cz/datový/test-slovník> ;
                 skos:prefLabel "Osoba"@cs ;
-                dct:description ""@cs ;
-                dct:conformsTo <https://zakon.example.org/sb/89-2012/par/23> ;
+                slovníky:definující-ustanovení <https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2012/89> ;
                 rdfs:subClassOf pojem:subjekt .
-            pojem:pomocná-vlastnost a rdf:Property .
             """;
 
-    /** {@link #STORED_GRAPH} after filtering and the OFN rewrites. */
-    private static final String EXPORTED_GRAPH = """
-            ex: a owl:Ontology, skos:ConceptScheme, slovníky:slovník ;
-                skos:prefLabel "Testovací slovník"@cs .
-            pojem:osoba a owl:Class, skos:Concept, slovníky:pojem, slovníky:třída ;
-                skos:prefLabel "Osoba"@cs ;
-                slovníky:definující-ustanovení <https://zakon.example.org/sb/89-2012/par/23> ;
-                rdfs:subClassOf pojem:subjekt ;
-                <https://slovník.gov.cz/nadřazená-třída> pojem:subjekt .
+    /** {@link #STORED_GRAPH} with a value OFN cannot express and a Vztah without domain and range. */
+    private static final String NONCONFORMANT_GRAPH = STORED_GRAPH + """
+            pojem:osoba <https://slovník.gov.cz/datový/test-slovník/pojem/inTezaurus> "true" .
+            pojem:má-adresu a owl:ObjectProperty, skos:Concept, slovníky:pojem ;
+                skos:inScheme <https://slovník.gov.cz/datový/test-slovník> ;
+                skos:prefLabel "má adresu"@cs .
             """;
 
     @Mock
@@ -105,19 +113,27 @@ class OntologyDownloadServiceImplTest {
     private final FakeFuseki fuseki = new FakeFuseki();
     private final Semaphore semaphore = new Semaphore(1, true);
 
-    private OntologyDownloadServiceImpl service(JsonExporter exporter, int semaphoreTimeoutMs) {
+    private OntologyDownloadServiceImpl service(int semaphoreTimeoutMs) {
+        OfnSpecification specification = OfnSpecification.bundled();
+        OfnVocabularyExporter exporter = new OfnVocabularyExporter(
+                OntologyUploadServiceFixture.ofnWriteGate(), specification, new OfnRdf(specification));
         return new OntologyDownloadServiceImpl(
                 FUSEKI_ENDPOINT, fuseki, ontologyMetadataRepository, exporter, semaphore, semaphoreTimeoutMs);
     }
 
     private OntologyDownloadServiceImpl service() {
-        return service(new JsonExporter(), 0);
+        return service(0);
     }
 
     private void ontologyExists() {
+        ontologyExists(null);
+    }
+
+    private void ontologyExists(LocalDateTime updatedAt) {
         OntologyMetadataEntity metadata = new OntologyMetadataEntity();
         metadata.setId(ONTOLOGY_ID);
         metadata.setGraphName(GRAPH_NAME);
+        metadata.setUpdatedAt(updatedAt);
         when(ontologyMetadataRepository.findById(ONTOLOGY_ID)).thenReturn(Optional.of(metadata));
     }
 
@@ -132,7 +148,7 @@ class OntologyDownloadServiceImplTest {
 
             String ttl = service().downloadOntology(ONTOLOGY_ID, format);
 
-            assertIsomorphic(EXPORTED_GRAPH, Ttl.parse(ttl));
+            assertIsomorphic(STORED_GRAPH, Ttl.parse(ttl));
         }
 
         @Test
@@ -167,45 +183,104 @@ class OntologyDownloadServiceImplTest {
 
         @ParameterizedTest
         @ValueSource(strings = {"json-ld", "JSON-LD", "Json-Ld"})
-        void exportsTheTransformedGraph(String format) {
+        void isTheStoredGraph_inOfnTerms(String format) throws Exception {
             ontologyExists();
             fuseki.servesTurtle(STORED_GRAPH);
 
             String json = service().downloadOntology(ONTOLOGY_ID, format);
 
-            Model expanded = JsonLd.expand(json);
-            assertContainsTriples(expanded, """
-                    pojem:osoba skos:prefLabel "Osoba"@cs ;
-                        skos:inScheme ex: .
-                    """);
-            assertThat(expanded.containsResource(expanded.createResource(Ttl.POJEM + "pomocná-vlastnost")))
-                    .as("filtered resource").isFalse();
+            Model expanded = ModelFactory.createDefaultModel();
+            OfnJsonLdParser.parse(json, expanded);
+            assertIsomorphic(STORED_GRAPH, expanded);
+            JsonNode document = new ObjectMapper().readTree(json);
+            assertThat(document.get("@context").asText()).isEqualTo(OfnSpecification.bundled().contextUrl());
+            assertThat(document.get("pojmy").get(0).get("typ").toString())
+                    .contains("Třída").doesNotContain("slovníky:třída");
         }
 
         @Test
-        void hasTheExporterSeeTheTransformedModel() {
+        void andTurtle_areTheSameGraph() {
             ontologyExists();
             fuseki.servesTurtle(STORED_GRAPH);
-            JsonExporter exporter = mock(JsonExporter.class);
-            when(exporter.exportToJson(any(Model.class))).thenAnswer(inv -> Ttl.write(inv.getArgument(0, Model.class)));
 
-            String result = service(exporter, 0).downloadOntology(ONTOLOGY_ID, "json-ld");
+            String json = service().downloadOntology(ONTOLOGY_ID, "json-ld");
+            String ttl = service().downloadOntology(ONTOLOGY_ID, "ttl");
 
-            assertIsomorphic(EXPORTED_GRAPH, Ttl.parse(result));
+            Model fromJson = ModelFactory.createDefaultModel();
+            OfnJsonLdParser.parse(json, fromJson);
+            assertThat(fromJson.isIsomorphicWith(Ttl.parse(ttl))).isTrue();
+        }
+    }
+
+    @Nested
+    class LastChange {
+
+        /** {@link #STORED_GRAPH} with the last-change date an uploaded file carried. */
+        private static final String UPLOADED_WITH_LAST_CHANGE = STORED_GRAPH + """
+                <https://slovník.gov.cz/datový/test-slovník> slovníky:okamžik-poslední-změny [
+                    a čas:časový-okamžik ; čas:datum-a-čas "2020-01-01T00:00:00Z"^^xsd:dateTimeStamp ] .
+                """;
+
+        private static final LocalDateTime UPDATED_AT = LocalDateTime.of(2026, 11, 4, 9, 30, 15, 123_000_000);
+
+        private static String expectedLastChange() {
+            return UPDATED_AT.atZone(ZoneId.systemDefault()).withZoneSameInstant(OfnDates.ZONE)
+                    .toOffsetDateTime().truncatedTo(ChronoUnit.SECONDS)
+                    .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
         }
 
         @Test
-        void wrapsAnExporterFailure() {
-            ontologyExists();
-            fuseki.servesTurtle(STORED_GRAPH);
-            JsonExporter exporter = mock(JsonExporter.class);
-            RuntimeException failure = new RuntimeException("JSON serialization failed");
-            when(exporter.exportToJson(any(Model.class))).thenThrow(failure);
+        void aktualizovano_isTheMetadataLastChange_notTheUploadedValue() throws Exception {
+            ontologyExists(UPDATED_AT);
+            fuseki.servesTurtle(UPLOADED_WITH_LAST_CHANGE);
 
-            assertThatThrownBy(() -> service(exporter, 0).downloadOntology(ONTOLOGY_ID, "json-ld"))
-                    .isInstanceOf(JsonExportException.class)
-                    .hasMessage("Chyba při exportu do JSON formátu: JSON serialization failed")
-                    .hasCause(failure);
+            JsonNode lastChange = new ObjectMapper()
+                    .readTree(service().downloadOntology(ONTOLOGY_ID, "json-ld")).get("aktualizováno");
+
+            assertThat(lastChange.get("typ").asText()).isEqualTo("Časový okamžik");
+            assertThat(lastChange.get("datum_a_čas").asText()).isEqualTo(expectedLastChange());
+        }
+
+        @Test
+        void turtle_hasOnlyTheMetadataLastChange() {
+            ontologyExists(UPDATED_AT);
+            fuseki.servesTurtle(UPLOADED_WITH_LAST_CHANGE);
+
+            Model ttl = Ttl.parse(service().downloadOntology(ONTOLOGY_ID, "ttl"));
+
+            assertIsomorphic(STORED_GRAPH + """
+                    <https://slovník.gov.cz/datový/test-slovník> slovníky:okamžik-poslední-změny [
+                        a čas:časový-okamžik ; čas:datum-a-čas "%s"^^xsd:dateTimeStamp ] .
+                    """.formatted(expectedLastChange()), ttl);
+        }
+
+        @Test
+        void withoutAMetadataLastChange_theUploadedValueIsDropped() throws Exception {
+            ontologyExists(null);
+            fuseki.servesTurtle(UPLOADED_WITH_LAST_CHANGE);
+
+            JsonNode document = new ObjectMapper().readTree(service().downloadOntology(ONTOLOGY_ID, "json-ld"));
+
+            assertThat(document.has("aktualizováno")).isFalse();
+        }
+    }
+
+    @Nested
+    class OfnBlock {
+
+        @ParameterizedTest
+        @ValueSource(strings = {"ttl", "json-ld"})
+        void aNonConformantVocabulary_isBlocked_withEveryIssue(String format) {
+            ontologyExists();
+            fuseki.servesTurtle(NONCONFORMANT_GRAPH);
+
+            assertThatThrownBy(() -> service().downloadOntology(ONTOLOGY_ID, format))
+                    .isInstanceOfSatisfying(OfnConformanceException.class, e -> {
+                        assertThat(e.getContext()).isEqualTo(OfnConformanceException.Context.DOWNLOAD);
+                        assertThat(e.getIssues()).extracting(issue -> issue.kind())
+                                .containsExactlyInAnyOrder(ConformanceIssue.Kind.VALUE_DROPPED,
+                                        ConformanceIssue.Kind.CONCEPT_INCOMPLETE);
+                    });
             assertThat(semaphore.availablePermits()).isOne();
         }
     }
@@ -294,7 +369,7 @@ class OntologyDownloadServiceImplTest {
             fuseki.servesTurtle(STORED_GRAPH);
             String ttl = service.downloadOntology(ONTOLOGY_ID, "ttl");
 
-            assertIsomorphic(EXPORTED_GRAPH, Ttl.parse(ttl));
+            assertIsomorphic(STORED_GRAPH, Ttl.parse(ttl));
             assertThat(semaphore.availablePermits()).isOne();
         }
 
@@ -316,7 +391,7 @@ class OntologyDownloadServiceImplTest {
                 assertThat(fuseki.requests).hasSize(1);
 
                 finish.countDown();
-                assertIsomorphic(EXPORTED_GRAPH, Ttl.parse(first.get(5, TimeUnit.SECONDS)));
+                assertIsomorphic(STORED_GRAPH, Ttl.parse(first.get(5, TimeUnit.SECONDS)));
             } finally {
                 finish.countDown();
                 executor.shutdownNow();
@@ -341,7 +416,7 @@ class OntologyDownloadServiceImplTest {
         @Test
         void interruptedWaitKeepsTheInterruptFlag() {
             ontologyExists();
-            OntologyDownloadServiceImpl service = service(new JsonExporter(), 250);
+            OntologyDownloadServiceImpl service = service(250);
             Thread.currentThread().interrupt();
             try {
                 assertThatThrownBy(() -> service.downloadOntology(ONTOLOGY_ID, "ttl"))

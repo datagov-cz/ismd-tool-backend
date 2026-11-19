@@ -34,7 +34,7 @@ class RenameSeversWorkingCopyTest {
     private void invokeUpdate(ConceptMetadataEntity metadata, ConceptEditModel edit,
                               ConceptEditor.EditResult editResult, boolean severOnRename) throws Exception {
         ConceptEditOperation editOperation =
-                new ConceptEditOperation(null, null, null, null, null, null, null, null, null, null);
+                new ConceptEditOperation(null, null, null, null, null, null, null, null, null, null, null);
         editOperation.updateMetadataFromEditResult(metadata, edit, editResult, severOnRename);
     }
 
