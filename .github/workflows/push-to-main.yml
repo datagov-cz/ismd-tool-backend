@@ -140,6 +140,14 @@ jobs:
           VERSION="${{ needs.create-tag.outputs.version }}"
           SYNC_BRANCH="sync-main-to-dev-v${VERSION}"
           
+          # Releases merge into main with a merge commit, so dev always lacks that commit; what matters
+          # is content. If merging main into dev would leave dev's tree unchanged, there is nothing to sync.
+          if [ "$(git merge-tree --write-tree origin/dev origin/main)" = "$(git rev-parse 'origin/dev^{tree}')" ]; then
+            echo "dev already has everything on main; no sync branch or PR needed"
+            echo "### No sync needed - dev already contains main (v$VERSION)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
           echo "Creating sync branch $SYNC_BRANCH from main..."
           git checkout -b $SYNC_BRANCH origin/main
           
