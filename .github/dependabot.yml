@@ -40,6 +40,10 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: chore
+    # Java major upgrades (e.g. 17 -> 24) are manual; minor/patch tags and digest refreshes stay automatic.
+    ignore:
+      - dependency-name: eclipse-temurin
+        update-types: ["version-update:semver-major"]
     groups:
       docker-images:
         patterns:
