@@ -50,7 +50,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Both published files, written from real exporter output and expanded through the real contexts: the
- * bundled OFN Slovníky context and the draft ISMD OD context that is proposed for lkod-dia.
+ * bundled OFN Slovníky context and the draft ISMD OD context in {@code pages/}.
  */
 class PublicationFilesTest {
 

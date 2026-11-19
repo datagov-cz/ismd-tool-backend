@@ -31,7 +31,7 @@ final class PublicationJson {
     static final String TIME_TYPE = "Časový okamžik";
     static final String DATUM_A_CAS = "datum_a_čas";
 
-    // ISMD OD terms; spelling follows DCAT-AP-CZ (underscores), pending the lkod-dia answer
+    // ISMD OD terms; spelling follows DCAT-AP-CZ (underscores)
     static final String RECORD_TYPE = "Publikace ISMD";
     static final String PUBLIKOVANO = "publikováno";
     static final String UPLNA = "úplná";

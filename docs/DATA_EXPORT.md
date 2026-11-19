@@ -48,9 +48,11 @@ and applies the export rules in one place.
 | Property | Default | Meaning |
 |---|---|---|
 | `ismd.publication.include-drafts` | `true` | Drafts are published. `false` leaves out draft vocabularies, draft concepts of published vocabularies and the diagrams of left-out vocabularies (see [Drafts](#drafts)) |
-| `ismd.publication.retain-files` | `12` | How many of the newest stored publications keep their file content in PostgreSQL (at least 1); metadata is kept forever (see [Archive](#archive)) |
+| `ismd.publication.retain-files` | `30` | How many of the newest stored publications keep their file content in PostgreSQL (at least 1); metadata is kept forever (see [Archive](#archive)) |
 | `ismd.publication.iri-base` | `https://data.dia.gov.cz/zdroj/ismd/` | Base of the IRIs ISMD mints: `<base>diagramy/<iri_id>` and `<base>publikace/<file>` (see [Diagram IRI](#diagram-iri)) |
 | `ismd.publication.context-url` | `https://datagov-cz.github.io/ismd-tool-backend/ismd-otevřená-data/draft/kontext.jsonld` | Second context in both files' `@context`, a public `https://` URL (see [Context hosting](#context-hosting)). A blank value fails the run. |
+
+All four are set in `application.properties` and can be overridden per environment with `PUBLICATION_INCLUDE_DRAFTS`, `PUBLICATION_RETAIN_FILES`, `PUBLICATION_IRI_BASE` and `PUBLICATION_CONTEXT_URL`.
 
 ## Admin endpoints
 
@@ -408,6 +410,12 @@ The ISMD OD context is hosted in this repository and served by GitHub Pages:
 - **Headers.** JSON-LD processors fetch a remote context at run time; the URL must return
   `application/ld+json` (or `application/json`) and `Access-Control-Allow-Origin: *`. GitHub Pages
   serves both without configuration. `raw.githubusercontent.com` returns `text/plain` and is unsuitable.
+- **Until Pages is enabled.** The `dev`, `test` and `local` profiles set `context-url` to the same file
+  through jsDelivr, pinned to a commit: `https://cdn.jsdelivr.net/gh/datagov-cz/ismd-tool-backend@<commit>/pages/ismd-otevřená-data/draft/kontext.jsonld`.
+  jsDelivr answers with `application/ld+json` and `Access-Control-Allow-Origin: *`, and a commit-pinned
+  URL never changes. `PublicationPropertiesTest` checks that the pinned path is the `pages/` file.
+  Production keeps the Pages default. Files published with the jsDelivr URL keep it, which is acceptable
+  for testing only.
 - **Versioning.** Following OFN, a dated folder `pages/ismd-otevřená-data/<YYYY-MM-DD>/kontext.jsonld`
   never changes once published; `draft/` is the working, mutable version. Before production a dated
   version is frozen and `context-url` is switched to it. Changing terms means a new dated folder and a
@@ -464,7 +472,8 @@ There is no validation against the OFN JSON Schema: no schema validator is on th
 There is no `enabled` switch and nothing to hand off to infrastructure. Before production use:
 
 1. Enable GitHub Pages for the repository (Source: GitHub Actions; needs repository admin rights) and
-   verify that the draft context URL resolves with `application/ld+json`.
+   verify that the draft context URL resolves with `application/ld+json`. Then drop the jsDelivr
+   `context-url` from the `dev`, `test` and `local` profiles.
 2. Freeze a dated context version (`pages/ismd-otevřená-data/<YYYY-MM-DD>/`) and set `context-url` to
    it.
 3. An admin runs `POST /api/admin/publikace/run` and downloads both files via

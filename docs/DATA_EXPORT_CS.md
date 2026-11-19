@@ -49,9 +49,11 @@ a pravidla exportu uplatňuje na jednom místě.
 | Vlastnost | Výchozí | Význam |
 |---|---|---|
 | `ismd.publication.include-drafts` | `true` | Rozpracované slovníky se publikují. `false` vynechá rozpracované slovníky, rozpracované pojmy publikovaných slovníků a diagramy vynechaných slovníků (viz [Rozpracované slovníky](#rozpracované-slovníky)) |
-| `ismd.publication.retain-files` | `12` | Kolik nejnovějších uložených publikací si v PostgreSQL ponechá obsah souborů (nejméně 1); metadata se uchovávají navždy (viz [Archiv](#archiv)) |
+| `ismd.publication.retain-files` | `30` | Kolik nejnovějších uložených publikací si v PostgreSQL ponechá obsah souborů (nejméně 1); metadata se uchovávají navždy (viz [Archiv](#archiv)) |
 | `ismd.publication.iri-base` | `https://data.dia.gov.cz/zdroj/ismd/` | Základ IRI, která ISMD vytváří: `<základ>diagramy/<iri_id>` a `<základ>publikace/<soubor>` (viz [IRI diagramu](#iri-diagramu)) |
 | `ismd.publication.context-url` | `https://datagov-cz.github.io/ismd-tool-backend/ismd-otevřená-data/draft/kontext.jsonld` | Druhý kontext v `@context` obou souborů, veřejná URL `https://` (viz [Hostování kontextu](#hostování-kontextu)). Prázdná hodnota způsobí selhání běhu. |
+
+Všechny čtyři jsou nastavené v `application.properties` a v každém prostředí je lze přepsat proměnnými `PUBLICATION_INCLUDE_DRAFTS`, `PUBLICATION_RETAIN_FILES`, `PUBLICATION_IRI_BASE` a `PUBLICATION_CONTEXT_URL`.
 
 ## Administrátorské endpointy
 
@@ -403,6 +405,12 @@ Kontext ISMD OD je v tomto repozitáři a servíruje ho GitHub Pages:
 - **Hlavičky.** Procesory JSON-LD načítají vzdálený kontext za běhu; URL musí vracet
   `application/ld+json` (nebo `application/json`) a `Access-Control-Allow-Origin: *`. GitHub Pages
   vrací obojí bez konfigurace. `raw.githubusercontent.com` vrací `text/plain`, a proto nevyhovuje.
+- **Než se zapnou Pages.** Profily `dev`, `test` a `local` nastavují `context-url` na tentýž soubor
+  přes jsDelivr, připnutý ke commitu: `https://cdn.jsdelivr.net/gh/datagov-cz/ismd-tool-backend@<commit>/pages/ismd-otevřená-data/draft/kontext.jsonld`.
+  jsDelivr odpovídá `application/ld+json` a `Access-Control-Allow-Origin: *` a URL připnutá ke commitu
+  se nemění. `PublicationPropertiesTest` ověřuje, že připnutá cesta je soubor v `pages/`. Produkce
+  ponechává výchozí URL na Pages. Soubory publikované s URL jsDelivr si ji ponechají, což stačí jen pro
+  testování.
 - **Verzování.** Podle vzoru OFN se datovaná složka `pages/ismd-otevřená-data/<RRRR-MM-DD>/kontext.jsonld`
   po zveřejnění nemění; `draft/` je pracovní, měnitelná verze. Před produkcí se zmrazí datovaná verze
   a `context-url` se přepne na ni. Změna termínů = nová datovaná složka a nová `context-url`.
@@ -459,7 +467,8 @@ validátor schémat.
 Přepínač `enabled` neexistuje a nic se nepředává infrastruktuře. Před produkčním použitím:
 
 1. Zapnout GitHub Pages v repozitáři (Source: GitHub Actions; nutná administrátorská práva
-   k repozitáři) a ověřit, že URL pracovní verze kontextu vrací `application/ld+json`.
+   k repozitáři) a ověřit, že URL pracovní verze kontextu vrací `application/ld+json`. Poté odebrat
+   `context-url` přes jsDelivr z profilů `dev`, `test` a `local`.
 2. Zmrazit datovanou verzi kontextu (`pages/ismd-otevřená-data/<RRRR-MM-DD>/`) a nastavit na ni
    `context-url`.
 3. Administrátor spustí `POST /api/admin/publikace/run` a stáhne oba soubory přes
