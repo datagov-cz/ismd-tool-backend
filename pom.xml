@@ -28,7 +28,7 @@
     </scm>
     <properties>
         <java.version>17</java.version>
-        <jena.version>5.4.0</jena.version>
+        <jena.version>6.2.0</jena.version>
         <jacoco.version>0.8.16</jacoco.version>
         <!-- Same test class order on macOS and CI (the default follows the filesystem).
              Override with -Dsurefire.runOrder=random to look for state leaking between classes. -->
@@ -208,7 +208,7 @@
             <!-- Checks exported vocabularies against the bundled OFN slovníky JSON Schema (draft 2020-12) -->
             <groupId>com.networknt</groupId>
             <artifactId>json-schema-validator</artifactId>
-            <version>1.5.9</version>
+            <version>3.0.9</version>
         </dependency>
         <dependency>
             <groupId>org.jsoup</groupId>
