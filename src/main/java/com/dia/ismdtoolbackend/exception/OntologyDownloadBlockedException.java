@@ -12,9 +12,6 @@ import java.util.List;
  */
 public class OntologyDownloadBlockedException extends RuntimeException {
 
-    /** Stable error code the FE branches on (not the localized message). */
-    public static final String ERROR_CODE = "ONTOLOGY_DOWNLOAD_BLOCKED_BY_VALIDATION";
-
     /** Upper bound on errors listed in the response body; the rest are reported as a count. */
     public static final int MAX_LISTED_ERRORS = 20;
 

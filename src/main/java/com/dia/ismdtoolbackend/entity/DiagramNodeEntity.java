@@ -2,8 +2,8 @@ package com.dia.ismdtoolbackend.entity;
 
 import com.dia.ismdtoolbackend.models.diagram.DiagramJson;
 import com.dia.ismdtoolbackend.enums.DiagramNodeBacking;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.type.TypeReference;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -108,7 +108,7 @@ public class DiagramNodeEntity {
             parsedVisibleProperties = parsed;
             parsedFrom = visiblePropertiesJson;
             return parsed;
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             log.error("Failed to deserialize visible-properties JSON for diagram node id={}", id, e);
             return List.of();
         }
@@ -124,7 +124,7 @@ public class DiagramNodeEntity {
         }
         try {
             this.visiblePropertiesJson = DiagramJson.MAPPER.writeValueAsString(properties);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new IllegalArgumentException(
                     "Failed to serialize visible properties for diagram node id=" + id, e);
         }

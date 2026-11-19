@@ -18,10 +18,10 @@ import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 
-import static com.dia.constants.VocabularyConstants.NEVEREJNY_UDAJ_JSON_LD;
-import static com.dia.constants.VocabularyConstants.TOP_JSON_LD;
-import static com.dia.constants.VocabularyConstants.TSP_JSON_LD;
-import static com.dia.constants.VocabularyConstants.VEREJNY_UDAJ_JSON_LD;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.NEVEREJNY_UDAJ_JSON_LD;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TOP_JSON_LD;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TSP_JSON_LD;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VEREJNY_UDAJ_JSON_LD;
 
 /**
  * The field vocabulary for a working-copy sync: which deviation keys exist, which may be accepted, and

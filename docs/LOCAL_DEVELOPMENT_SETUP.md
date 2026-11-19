@@ -28,12 +28,9 @@ Before you begin, ensure you have the following installed:
 | **Docker Compose** | Latest (included with Docker Desktop) | -                                                         |
 | **Git**            | Latest                                | https://git-scm.com/downloads                             |
 
-> **Common Library (`com.dia:ismd-validator-common`)**: You do **not** need to clone or build this yourself.
-> It is consumed as a prebuilt artifact from **GitHub Packages** (the version is pinned in `pom.xml`,
-> currently `1.0.12`). All you need is GitHub Packages authentication configured in `~/.m2/settings.xml`
-> with a token that has the `read:packages` scope — see
-> [GitHub Packages authentication fails](#maven-issues) under Troubleshooting. `mvn clean install` then
-> downloads it automatically.
+> **No credentials needed**: every dependency comes from Maven Central, so no `~/.m2/settings.xml`
+> or GitHub token is required. The project is self-contained — it does not need the validator
+> repository to build; it only calls the validator's HTTP API at runtime (`VALIDATION_SERVICE_URL`).
 
 
 
@@ -141,8 +138,6 @@ This will:
 - Compile the project
 - Run tests
 - Build the JAR file
-
-**Note**: This downloads the prebuilt `com.dia:ismd-validator-common` artifact (version pinned in `pom.xml`) from GitHub Packages. It will fail with a `401`/`403` until you configure Maven authentication in `~/.m2/settings.xml` — see [GitHub Packages authentication fails](#maven-issues) for the exact `settings.xml` and required token scope (`read:packages`). You do not need to clone or build the common library locally.
 
 ---
 
@@ -557,6 +552,12 @@ mvn test jacoco:report
 
 Coverage report: `target/site/jacoco/index.html`
 
+### Tests That Pass Locally but Fail in CI
+
+CI runs on JDK 17 with 4 vCPUs and a different test-class order. See
+[TESTING_CI_PITFALLS.md](TESTING_CI_PITFALLS.md) for the known traps (common-pool starvation
+around HTTP clients, the shared Postgres container) and how to reproduce CI locally.
+
 ### Test Categories
 
 **Unit Tests:**
@@ -676,28 +677,6 @@ mvn dependency:purge-local-repository
 # Force update
 mvn clean install -U
 ```
-
-**Problem**: GitHub Packages authentication fails
-
-Configure `~/.m2/settings.xml`:
-
-```xml
-<settings>
-  <servers>
-    <server>
-      <id>github</id>
-      <username>YOUR_GITHUB_USERNAME</username>
-      <password>YOUR_GITHUB_TOKEN</password>
-    </server>
-  </servers>
-</settings>
-```
-
-Generate GitHub Personal Access Token:
-1. GitHub → Settings → Developer settings → Personal access tokens
-2. Generate new token (classic)
-3. Select scope: `read:packages`
-4. Copy token and use as password
 
 ---
 

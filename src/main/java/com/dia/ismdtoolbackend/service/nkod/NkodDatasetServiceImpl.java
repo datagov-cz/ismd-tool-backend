@@ -15,11 +15,16 @@ import com.dia.ismdtoolbackend.models.nkod.NkodDatasetRow;
 import com.dia.ismdtoolbackend.models.nkod.NkodDatasetSnapshot;
 import com.dia.ismdtoolbackend.models.nkod.NkodDistribution;
 import com.dia.ismdtoolbackend.service.impl.ReferencedConceptResolutionEngine;
+import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
+import com.dia.ismdtoolbackend.utility.sparql.SparqlSolutions;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.text.Collator;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 @Service
@@ -28,6 +33,14 @@ import java.util.Map;
 public class NkodDatasetServiceImpl implements NkodDatasetService {
 
     private static final String DEFAULT_LANG = "cs";
+
+    /**
+     * Czech collation, so {@code č} sorts after {@code c} rather than at the end of the
+     * alphabet. The list endpoint instead sorts on the snapshot's diacritic-folded key, which
+     * it needs anyway for accent-insensitive search; nothing is searched here.
+     */
+    private static final Comparator<String> CZECH_TITLE_ORDER =
+            Collator.getInstance(Locale.forLanguageTag("cs"))::compare;
 
     private final NkodDatasetSnapshotHolder snapshotHolder;
     private final NkodSparqlClient client;
@@ -74,6 +87,34 @@ public class NkodDatasetServiceImpl implements NkodDatasetService {
                 .conceptCount(concepts.size())
                 .distributions(toDistributions(detail.distributions()))
                 .build();
+    }
+
+    /**
+     * Queried live, not from the snapshot: the snapshot indexes titles and descriptions only,
+     * and carries no {@code týká-se-pojmu} annotations to filter on.
+     *
+     * <p>Not paged. A concept is annotated by a handful of datasets, so the whole result is
+     * returned and {@code totalCount} equals its size; the shared list envelope is reused.
+     */
+    @Override
+    public NkodDatasetListDto listDatasetsByConcept(String conceptIri) {
+        if (conceptIri == null || conceptIri.isBlank()) {
+            throw new IllegalArgumentException("IRI pojmu je povinné.");
+        }
+        if (!SparqlIriValidator.isSafeHttpIri(SparqlSolutions.toRawUtf8(conceptIri))) {
+            throw new IllegalArgumentException("Neplatné IRI pojmu: " + conceptIri);
+        }
+
+        List<NkodDatasetListItemDto> datasets = client.fetchDatasetsByConcept(conceptIri).stream()
+                .sorted(Comparator
+                        .comparing((NkodDatasetRow row) ->
+                                        NkodDatasetSnapshot.preferred(row.name(), DEFAULT_LANG),
+                                CZECH_TITLE_ORDER)
+                        .thenComparing(NkodDatasetRow::iri))
+                .map(this::toListItem)
+                .toList();
+
+        return new NkodDatasetListDto(datasets, datasets.size());
     }
 
     /**

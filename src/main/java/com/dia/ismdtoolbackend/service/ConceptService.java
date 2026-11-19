@@ -10,6 +10,8 @@ import java.util.List;
 
 public interface ConceptService {
     ConceptMetadataModel createConcept(ConceptCreateModel createModel, String userId);
+    /** Creates every concept or none: one failing item rolls the whole batch back. */
+    List<ConceptMetadataModel> createConcepts(List<? extends ConceptCreateModel> createModels, String userId);
     void deleteConcept(Long conceptId);
     ConceptMetadataModel editConcept(Long conceptId, ConceptEditModel conceptEditModel);
 
@@ -21,9 +23,10 @@ public interface ConceptService {
      * @param conceptId      the working copy ({@code is_published=true}, else 400)
      * @param fieldsToAccept deviation field keys (the {@code @JsonProperty} names on
      *                       {@code PublishedConceptDeviationModel}); unknown/non-deviating keys → 400
-     * @return the concept's fresh detail, reflecting the sync and any sever
+     * @return the concept's slug. The RDF delta reaches the store only after this transaction commits,
+     *         so the post-sync detail is read by the caller via {@link #getConceptDetail}
      */
-    GetConceptDto syncWorkingCopy(Long conceptId, List<String> fieldsToAccept);
+    String syncWorkingCopy(Long conceptId, List<String> fieldsToAccept);
     List<ConceptMetadataModel> getAll(String userId, Boolean isPublished);
     GetConceptDto getConceptDetail(String conceptSlug) throws OntologyException;
 }

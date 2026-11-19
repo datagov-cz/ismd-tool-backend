@@ -1,7 +1,9 @@
 name: Trigger Fuseki Deployment
 
 concurrency:
-  group: deploy-fuseki-${{ github.event.workflow_run.head_branch || github.event.inputs.environment }}
+  # Keyed on the target environment, so a manual and an automatic deploy to the same env queue
+  # instead of overlapping (automatic: main -> test, dev -> dev).
+  group: deploy-fuseki-${{ github.event_name == 'workflow_run' && (github.event.workflow_run.head_branch == 'main' && 'test' || 'dev') || github.event.inputs.environment }}
   cancel-in-progress: false
 
 on:
@@ -53,13 +55,24 @@ jobs:
 
       - name: Determine environment and version
         id: determine_params
+        env:
+          # Inputs through env, never ${{ }} inside the script
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_ENVIRONMENT: ${{ github.event.inputs.environment }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_HEAD_MESSAGE: ${{ github.event.workflow_run.head_commit.message }}
         run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            ENVIRONMENT="${{ github.event.inputs.environment }}"
-            ENVIRONMENT="${ENVIRONMENT^^}"
+          if [ "$EVENT_NAME" == "workflow_dispatch" ]; then
+            ENVIRONMENT="${INPUT_ENVIRONMENT^^}"
 
-            if [ -n "${{ github.event.inputs.version }}" ]; then
-              IMAGE_TAG="${{ github.event.inputs.version }}"
+            if [ -n "$INPUT_VERSION" ]; then
+              if ! [[ "$INPUT_VERSION" =~ ^[0-9A-Za-z._-]+$ ]]; then
+                echo "::error::Invalid version '$INPUT_VERSION' (allowed: letters, digits, '.', '_', '-')"
+                exit 1
+              fi
+              IMAGE_TAG="$INPUT_VERSION"
             else
               REPO_OWNER='${{ github.repository_owner }}'
               if [ "$ENVIRONMENT" = "DEV" ]; then
@@ -76,8 +89,14 @@ jobs:
               IMAGE_TAG="${IMAGE_TAG:-latest}"
             fi
           else
-            if [ "${{ github.event.workflow_run.head_branch }}" == "main" ]; then
+            if [ "$RUN_HEAD_BRANCH" == "main" ]; then
               ENVIRONMENT="TEST"
+              # main is release-only: deploy to TEST only from a release commit (same rule as
+              # push-to-main.yml). Other main builds still publish an image but deploy nothing.
+              if ! printf '%s\n' "$RUN_HEAD_MESSAGE" | grep -qE '^Release v[0-9]+\.[0-9]+\.[0-9]+'; then
+                echo "::notice::main build is not from a release commit; not deploying to TEST"
+                ENVIRONMENT="NONE"
+              fi
             else
               ENVIRONMENT="DEV"
             fi
@@ -97,8 +116,8 @@ jobs:
             IMAGE_TAG="${IMAGE_TAG:-latest}"
           fi
 
-          if [ "${{ github.event_name }}" = "workflow_run" ]; then
-            REF="${{ github.event.workflow_run.head_sha }}"
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            REF="$RUN_HEAD_SHA"
           else
             REF="${GITHUB_SHA}"
           fi

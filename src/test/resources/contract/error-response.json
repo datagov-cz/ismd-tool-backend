@@ -1,0 +1,6 @@
+{
+  "data": null,
+  "message": "Nepodporovaný typ souboru: slovnik.txt",
+  "success": false,
+  "errorCode": "UNSUPPORTED_FORMAT"
+}

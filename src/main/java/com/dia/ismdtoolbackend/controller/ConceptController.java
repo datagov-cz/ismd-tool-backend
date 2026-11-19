@@ -13,6 +13,8 @@ import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.service.ConceptService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -42,12 +44,35 @@ public class ConceptController {
             @PathVariable String slug,
             @AuthenticationPrincipal SecurityUser securityUser
     ) {
-        log.info("Ontology create requested, namespace: {}, name: {}, description: {}, userId: {}", conceptCreateModel.getNamespace(), conceptCreateModel.getNameModel(), conceptCreateModel.getDescriptionModel(), securityUser.getUserId());
+        log.info("Concept create requested, namespace: {}, name: {}, description: {}, userId: {}", conceptCreateModel.getNamespace(), conceptCreateModel.getNameModel(), conceptCreateModel.getDescriptionModel(), securityUser.getUserId());
 
         ConceptMetadataModel createdConcept = conceptService.createConcept(conceptCreateModel, securityUser.getUserId());
         log.info("Concept create successful: {}", createdConcept);
 
         return ResponseEntity.ok().body(ApiResponseDto.success(createdConcept, "Pojem úspěšně vytvořen: "));
+    }
+
+    @Operation(
+            summary = "Hromadné vytvoření nových pojmů",
+            description = "Vytvoří více nových pojmů (tříd, vlastností nebo vztahů) ve slovníku. "
+                    + "Každý pojem používá stejný model a validaci jako endpoint pro vytvoření jednoho pojmu. "
+                    + "Vyžaduje oprávnění vlastníka slovníku nebo administrátora."
+    )
+    @PostMapping("/{slug}/create/bulk")
+    @PreAuthorize("@ontologySecurityService.belongsToUserBySlug(#slug)")
+    public ResponseEntity<ApiResponseDto<List<ConceptMetadataModel>>> createConcepts(
+            @NotEmpty @RequestBody List<@NotNull @Valid ConceptCreateModel> conceptCreateModels,
+            @PathVariable String slug,
+            @AuthenticationPrincipal SecurityUser securityUser
+    ) {
+        log.info("Bulk concept create requested, count: {}, userId: {}",
+                conceptCreateModels.size(), securityUser.getUserId());
+
+        List<ConceptMetadataModel> createdConcepts =
+                conceptService.createConcepts(conceptCreateModels, securityUser.getUserId());
+        log.info("Bulk concept create successful, count: {}", createdConcepts.size());
+
+        return ResponseEntity.ok().body(ApiResponseDto.success(createdConcepts, "Pojmy úspěšně vytvořeny: "));
     }
 
     @Operation(
@@ -75,7 +100,7 @@ public class ConceptController {
     @PatchMapping("/{conceptId}/edit")
     @PreAuthorize("@ontologySecurityService.canModifyConcept(#conceptId)")
     public ResponseEntity<ApiResponseDto<ConceptMetadataModel>> editConcept(
-            @Valid @RequestBody ConceptEditModel conceptEditModel,
+            @RequestBody ConceptEditModel conceptEditModel,
             @AuthenticationPrincipal SecurityUser securityUser,
             @PathVariable Long conceptId
     ) {
@@ -149,7 +174,9 @@ public class ConceptController {
         log.info("Working-copy sync requested, conceptId: {}, fields: {}, userId: {}",
                 conceptId, request.getFieldsToAccept(), securityUser.getUserId());
 
-        GetConceptDto synced = conceptService.syncWorkingCopy(conceptId, request.getFieldsToAccept());
+        // Read after the sync transaction has committed and its RDF delta has been applied.
+        String slug = conceptService.syncWorkingCopy(conceptId, request.getFieldsToAccept());
+        GetConceptDto synced = conceptService.getConceptDetail(slug);
         return ResponseEntity.ok().body(ApiResponseDto.success(synced, "Pracovní kopie byla synchronizována."));
     }
 

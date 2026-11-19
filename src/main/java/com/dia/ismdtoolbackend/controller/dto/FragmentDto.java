@@ -17,9 +17,8 @@ public class FragmentDto {
     private String citation;
     private String order;
     /**
-     * Rendered HTML body (obsah) of this fragment. Populated only by the whole-version
-     * content endpoint ({@code /api/eli/law/content}); null on the lean fragment-tree
-     * endpoint ({@code /api/eli/law/fragments}) and for structural fragments with no text.
+     * Rendered HTML body (obsah) of this fragment, from the whole-version content endpoint
+     * ({@code /api/eli/law/content}); null for structural fragments with no text.
      */
     private String bodyHtml;
     /**

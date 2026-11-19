@@ -117,6 +117,36 @@ public final class NKODSPARQLDatasetQuery {
     }
 
     /**
+     * The datasets annotated with one concept via {@code týká-se-pojmu}, with their titles and
+     * descriptions — the reverse of {@link #buildDatasetDetailQuery}'s concept list.
+     *
+     * <p>Source-agnostic by design, the caller need not know which it holds.
+     *
+     * <p>{@code conceptIri} must already be in raw UTF-8 form — see
+     * {@link com.dia.ismdtoolbackend.utility.sparql.SparqlIris#toRawUtf8(String)}.
+     *
+     * <p>One row per dataset per title/description language; the caller collapses them.
+     */
+    public static String buildDatasetsByConceptQuery(String conceptIri, int maxRows) {
+        if (!SparqlIriValidator.isSafeHttpIri(conceptIri)) {
+            return null;
+        }
+        return PREFIXES + """
+                SELECT ?ds ?nazev ?nazevLang ?popis ?popisLang WHERE {
+                  GRAPH ?g {
+                    ?ds a dcat:Dataset .
+                    ?ds <%2$s> <%1$s> .
+                    OPTIONAL { ?ds dcterms:title ?nazev }
+                    OPTIONAL { ?ds dcterms:description ?popis }
+                  }
+                  BIND(LANG(?nazev) AS ?nazevLang)
+                  BIND(LANG(?popis) AS ?popisLang)
+                }
+                LIMIT %3$d
+                """.formatted(conceptIri, TYKA_SE_POJMU, maxRows);
+    }
+
+    /**
      * Existence probe, so a dataset with no optional fields is still distinguishable from one
      * that is absent — the detail query's OPTIONALs would otherwise make both look identical.
      */

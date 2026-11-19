@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.models.concept;
 
+import com.dia.ismdtoolbackend.utility.sparql.SparqlSolutions;
+import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import org.apache.jena.ontology.OntologyException;
 
 import java.util.List;
@@ -32,6 +34,21 @@ public final class ConceptValidationUtil {
         }
     }
 
+    /**
+     * Maps a stored governance code-list item IRI ({@code …/položky/<value>}) back to the
+     * allow-listed value it was written from. Anything else is returned unchanged.
+     */
+    public static String governanceValueOf(String stored) {
+        if (stored == null || !stored.contains("/položky/")) {
+            return stored;
+        }
+        String item = stored.substring(stored.lastIndexOf('/') + 1);
+        return ALLOWED_GOVERNANCE_VALUES.stream()
+                .filter(allowed -> UtilityMethods.sanitizeForIRI(allowed).equals(item))
+                .findFirst()
+                .orElse(stored);
+    }
+
     public static void validateGovernanceFields(List<String> sharingMethod,
                                                  String acquisitionMethod,
                                                  String contentType) {
@@ -48,8 +65,10 @@ public final class ConceptValidationUtil {
         }
     }
 
+    /** The NKOD dataset IRI, in raw UTF-8 or percent-encoded form. */
     public static void validateCodeListDataset(String codeListDataset) {
-        if (codeListDataset != null && !codeListDataset.trim().isEmpty() && !codeListDataset.matches(NKOD_DATASET_PATTERN)) {
+        if (codeListDataset != null && !codeListDataset.trim().isEmpty()
+                && !SparqlSolutions.toRawUtf8(codeListDataset).matches(NKOD_DATASET_PATTERN)) {
             throw new OntologyException("Neplatná URL datové sady v NKOD: " + codeListDataset);
         }
     }

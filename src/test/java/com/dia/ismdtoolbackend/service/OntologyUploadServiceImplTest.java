@@ -1,17 +1,23 @@
 package com.dia.ismdtoolbackend.service;
 
+import com.dia.ismdtoolbackend.controller.dto.RejectedConceptDto;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.ParameterizedTest;
 import com.dia.ismdtoolbackend.exception.EmptyFileException;
+import com.dia.ismdtoolbackend.exception.OntologyUploadConflictingTypesException;
 import com.dia.ismdtoolbackend.exception.OntologyUploadException;
 import com.dia.ismdtoolbackend.exception.UnsupportedRdfFormatException;
-import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
+import com.dia.ismdtoolbackend.enums.ConceptType;
+import com.dia.ismdtoolbackend.enums.ConceptSourceTag;
 import com.dia.ismdtoolbackend.enums.NormalizeMode;
 import com.dia.ismdtoolbackend.enums.OntologyValidationStatus;
-import com.dia.validation.ValidationReport;
+import com.dia.ismdtoolbackend.client.validation.ValidationReport;
 import com.dia.ismdtoolbackend.exception.InSchemeDecisionRequiredException;
-import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
+import com.dia.ismdtoolbackend.controller.dto.OntologyUploadResultDto;
 import com.dia.ismdtoolbackend.models.UserModel;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
@@ -19,6 +25,7 @@ import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.impl.OntologyUploadServiceImpl;
+import com.dia.ismdtoolbackend.service.impl.OntologyUploadServiceFixture;
 import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.riot.Lang;
@@ -26,74 +33,54 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.mockito.junit.jupiter.MockitoSettings;
-import org.mockito.quality.Strictness;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT)
 class OntologyUploadServiceImplTest {
-
-    @Mock
-    private OntologyMetadataMapper ontologyMetadataMapper;
-
-    @Mock
-    private OntologyMetadataRepository ontologyMetadataRepository;
-
-    @Mock
-    private ConceptMetadataRepository conceptMetadataRepository;
-
-    @Mock
-    private ValidationClient validationClient;
-
-    @Mock
-    private ValidationReportRepository validationReportRepository;
-
-    @Mock
-    private JenaTDB2Repository jenaTDB2Repository;
 
     @Mock
     private MultipartFile multipartFile;
 
-    @Mock
-    private NkdSparqlClient nkdSparqlClient;
-
-    @Mock
+    private OntologyUploadServiceFixture fixture;
+    private OntologyMetadataMapper ontologyMetadataMapper;
+    private OntologyMetadataRepository ontologyMetadataRepository;
+    private ConceptMetadataRepository conceptMetadataRepository;
+    private ValidationClient validationClient;
+    private ValidationReportRepository validationReportRepository;
+    private JenaTDB2Repository jenaTDB2Repository;
     private PublishedResourceUtil publishedResourceUtil;
 
-    @InjectMocks
     private OntologyUploadServiceImpl ontologyUploadService;
 
     @BeforeEach
     void setUp() {
-        ontologyUploadService = new OntologyUploadServiceImpl(
-                ontologyMetadataMapper,
-                ontologyMetadataRepository,
-                conceptMetadataRepository,
-                validationClient,
-                validationReportRepository,
-                jenaTDB2Repository,
-                publishedResourceUtil
-        );
-        // In production `self` is the Spring proxy (so @Transactional applies through the async
-        // lambda). In this unit test there is no proxy — point it at the instance itself so the
-        // delegation to saveValidationOutcome runs the real method directly.
-        ReflectionTestUtils.setField(ontologyUploadService, "self", ontologyUploadService);
-        ReflectionTestUtils.setField(ontologyUploadService, "maxFileSizeConfig", "10MB");
-        ReflectionTestUtils.setField(ontologyUploadService, "rdfParsingTimeoutSeconds", 60);
+        fixture = new OntologyUploadServiceFixture();
+        ontologyMetadataMapper = fixture.ontologyMetadataMapper();
+        ontologyMetadataRepository = fixture.ontologyMetadataRepository();
+        conceptMetadataRepository = fixture.conceptMetadataRepository();
+        validationClient = fixture.validationClient();
+        validationReportRepository = fixture.validationReportRepository();
+        jenaTDB2Repository = fixture.jenaTDB2Repository();
+        publishedResourceUtil = fixture.publishedResourceUtil();
+        ontologyUploadService = fixture.build();
     }
 
     @Test
@@ -108,12 +95,12 @@ class OntologyUploadServiceImplTest {
         when(report.getResults()).thenReturn(Collections.emptyList());
         when(validationClient.requestValidationLenient(anyString(), anyString())).thenReturn(Optional.of(report));
 
-        ontologyUploadService.requestAndSaveValidationReport("@prefix x: <x> .", "http://example.org/o");
+        fixture.runValidation("@prefix x: <x> .", "http://example.org/o");
 
         ArgumentCaptor<OntologyMetadataEntity> captor = ArgumentCaptor.forClass(OntologyMetadataEntity.class);
         verify(ontologyMetadataRepository).save(captor.capture());
-        assertEquals(OntologyValidationStatus.VALIDATED, captor.getValue().getLastValidationStatus());
-        assertNotNull(captor.getValue().getLastValidationAt());
+        assertThat(captor.getValue().getLastValidationStatus()).isEqualTo(OntologyValidationStatus.VALIDATED);
+        assertThat(captor.getValue().getLastValidationAt()).isNotNull();
     }
 
     @Test
@@ -126,12 +113,12 @@ class OntologyUploadServiceImplTest {
         // Lenient returns empty when the validator was unavailable — ingest proceeds, status flagged.
         when(validationClient.requestValidationLenient(anyString(), anyString())).thenReturn(Optional.empty());
 
-        ontologyUploadService.requestAndSaveValidationReport("@prefix x: <x> .", "http://example.org/o");
+        fixture.runValidation("@prefix x: <x> .", "http://example.org/o");
 
         ArgumentCaptor<OntologyMetadataEntity> captor = ArgumentCaptor.forClass(OntologyMetadataEntity.class);
         verify(ontologyMetadataRepository).save(captor.capture());
-        assertEquals(OntologyValidationStatus.SKIPPED_UNAVAILABLE, captor.getValue().getLastValidationStatus());
-        assertNotNull(captor.getValue().getLastValidationAt());
+        assertThat(captor.getValue().getLastValidationStatus()).isEqualTo(OntologyValidationStatus.SKIPPED_UNAVAILABLE);
+        assertThat(captor.getValue().getLastValidationAt()).isNotNull();
         verify(validationReportRepository, never()).save(any());
     }
 
@@ -141,7 +128,7 @@ class OntologyUploadServiceImplTest {
         
         Lang result = ontologyUploadService.determineRDFFormat(multipartFile);
         
-        assertEquals(Lang.TURTLE, result);
+        assertThat(result).isEqualTo(Lang.TURTLE);
     }
 
     @Test
@@ -150,7 +137,7 @@ class OntologyUploadServiceImplTest {
         
         Lang result = ontologyUploadService.determineRDFFormat(multipartFile);
         
-        assertEquals(Lang.TURTLE, result);
+        assertThat(result).isEqualTo(Lang.TURTLE);
     }
 
     @Test
@@ -159,7 +146,7 @@ class OntologyUploadServiceImplTest {
         
         Lang result = ontologyUploadService.determineRDFFormat(multipartFile);
         
-        assertEquals(Lang.JSONLD, result);
+        assertThat(result).isEqualTo(Lang.JSONLD);
     }
 
     @Test
@@ -168,7 +155,7 @@ class OntologyUploadServiceImplTest {
         
         Lang result = ontologyUploadService.determineRDFFormat(multipartFile);
         
-        assertEquals(Lang.JSONLD, result);
+        assertThat(result).isEqualTo(Lang.JSONLD);
     }
 
     @Test
@@ -178,7 +165,7 @@ class OntologyUploadServiceImplTest {
         
         Lang result = ontologyUploadService.determineRDFFormat(multipartFile);
         
-        assertEquals(Lang.TURTLE, result);
+        assertThat(result).isEqualTo(Lang.TURTLE);
     }
 
     @Test
@@ -188,7 +175,7 @@ class OntologyUploadServiceImplTest {
         
         Lang result = ontologyUploadService.determineRDFFormat(multipartFile);
         
-        assertEquals(Lang.JSONLD, result);
+        assertThat(result).isEqualTo(Lang.JSONLD);
     }
 
     @Test
@@ -198,7 +185,7 @@ class OntologyUploadServiceImplTest {
         
         Lang result = ontologyUploadService.determineRDFFormat(multipartFile);
         
-        assertNull(result);
+        assertThat(result).isNull();
     }
 
     @Test
@@ -208,23 +195,19 @@ class OntologyUploadServiceImplTest {
         
         Lang result = ontologyUploadService.determineRDFFormat(multipartFile);
         
-        assertEquals(Lang.TURTLE, result);
+        assertThat(result).isEqualTo(Lang.TURTLE);
     }
 
     @Test
     void testUploadFromFile_WithOntologyIRI() throws Exception {
         String userId = "user123";
         String ontologyIRI = "http://example.org/test-ontology";
-        byte[] fileContent = String.format("@prefix owl: <http://www.w3.org/2002/07/owl#> . <%s> a owl:Ontology .", ontologyIRI).getBytes();
+        byte[] fileContent = String.format("@prefix owl: <http://www.w3.org/2002/07/owl#> . <%s> a owl:Ontology, <http://www.w3.org/2004/02/skos/core#ConceptScheme>, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> .", ontologyIRI).getBytes();
 
         when(multipartFile.getBytes()).thenReturn(fileContent);
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
 
-        OntologyMetadataModel expectedDto = new OntologyMetadataModel();
-        expectedDto.setGraphName(ontologyIRI);
-        expectedDto.setUser(new UserModel(userId));
-        expectedDto.setId(1L);
 
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
         savedEntity.setGraphName(ontologyIRI);
@@ -232,22 +215,48 @@ class OntologyUploadServiceImplTest {
         savedEntity.setId(1L);
 
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
-        when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
-        when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);
         when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.of(savedEntity));
 
-        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(Collections.emptyList());
 
         doNothing().when(jenaTDB2Repository).putOntologyModel(eq(ontologyIRI), any(OntModel.class));
 
-        OntologyMetadataModel result = ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
+        OntologyUploadResultDto result = ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
 
-        assertNotNull(result);
-        assertEquals(ontologyIRI, result.getGraphName());
-        assertEquals(userId, result.getUser().getUserId());
+        assertThat(result).isNotNull();
+        assertThat(result.ontology().getGraphName()).isEqualTo(ontologyIRI);
+        assertThat(result.ontology().getId()).isEqualTo(1L);
 
         verify(jenaTDB2Repository).putOntologyModel(eq(ontologyIRI), any(OntModel.class));
+    }
+
+    @Test
+    void upload_runsValidationOnTheInjectedExecutor_notTheCommonPool() throws Exception {
+        String ontologyIRI = "http://example.org/test-ontology";
+        when(multipartFile.getBytes()).thenReturn(String.format(
+                "@prefix owl: <http://www.w3.org/2002/07/owl#> . <%s> a owl:Ontology, <http://www.w3.org/2004/02/skos/core#ConceptScheme>, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> .", ontologyIRI).getBytes());
+        when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
+
+        OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
+        savedEntity.setGraphName(ontologyIRI);
+        savedEntity.setId(1L);
+        when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
+        when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
+        when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.of(savedEntity));
+
+        AtomicReference<String> validationThread = new AtomicReference<>();
+        CountDownLatch validated = new CountDownLatch(1);
+        when(validationClient.requestValidationLenient(anyString(), eq(ontologyIRI))).thenAnswer(invocation -> {
+            validationThread.set(Thread.currentThread().getName());
+            validated.countDown();
+            return Optional.empty();
+        });
+
+        ontologyUploadService.uploadFromFile(multipartFile, "user123", NormalizeMode.NORMALIZE_ALL, null);
+
+        // The wiring passes a direct executor, so the validation runs on this thread.
+        assertThat(validated.await(5, TimeUnit.SECONDS)).as("validation was never started").isTrue();
+        assertThat(validationThread.get()).isEqualTo(Thread.currentThread().getName());
     }
 
     @Test
@@ -262,10 +271,10 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.getOriginalFilename()).thenReturn("test-ontology.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
 
-        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(Collections.emptyList());
 
-        assertThrows(OntologyUploadException.class, () ->
-                ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null));
+        assertThatThrownBy(() ->
+                ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null))
+                .isInstanceOf(OntologyUploadException.class);
 
         // Nothing persisted — fail-fast before any TDB2/metadata write.
         // (verifyNoInteractions rather than never().putOntologyModel(..) — the latter
@@ -286,10 +295,10 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.isEmpty()).thenReturn(false);
         when(multipartFile.getContentType()).thenReturn("text/turtle");
 
-        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(Collections.emptyList());
 
-        assertThrows(OntologyUploadException.class, () ->
-                ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null));
+        assertThatThrownBy(() ->
+                ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null))
+                .isInstanceOf(OntologyUploadException.class);
 
         verifyNoInteractions(jenaTDB2Repository);
         verify(ontologyMetadataRepository, never()).save(any());
@@ -307,11 +316,13 @@ class OntologyUploadServiceImplTest {
         String alienConcept = "https://slovník.gov.cz/128-2000/pojem/obec";
         String pojem = "https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/pojem";
 
+        // owl:Class on both: a bare slovníky:pojem declares no recognizable role and would be
+        // dropped by the concept-type guard before the ownership check under test is reached.
         String ttl = String.format(
                 "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
-                        + " <%s> a owl:Ontology ."
-                        + " <%s> a <%s> ."
-                        + " <%s> a <%s> .",
+                        + " <%s> a owl:Ontology, <http://www.w3.org/2004/02/skos/core#ConceptScheme>, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> ."
+                        + " <%s> a <%s>, <http://www.w3.org/2004/02/skos/core#Concept>, owl:Class ."
+                        + " <%s> a <%s>, <http://www.w3.org/2004/02/skos/core#Concept>, owl:Class .",
                 ontologyIRI, ownedConcept, pojem, alienConcept, pojem);
 
         when(multipartFile.getBytes()).thenReturn(ttl.getBytes());
@@ -322,17 +333,12 @@ class OntologyUploadServiceImplTest {
         savedEntity.setGraphName(ontologyIRI);
         savedEntity.setUserId(userId);
         savedEntity.setId(1L);
-        OntologyMetadataModel expectedDto = new OntologyMetadataModel();
-        expectedDto.setId(1L);
 
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
-        when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
-        when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);
         when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.of(savedEntity));
         when(conceptMetadataRepository.findByConceptIri(anyString())).thenReturn(Optional.empty());
         when(conceptMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
-        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(Collections.emptyList());
         doNothing().when(jenaTDB2Repository).putOntologyModel(anyString(), any(OntModel.class));
 
         ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
@@ -344,10 +350,10 @@ class OntologyUploadServiceImplTest {
                 .map(ConceptMetadataEntity::getConceptIri)
                 .toList();
 
-        assertTrue(savedIris.contains(ownedConcept),
-                "Owned concept under graphName must be saved as owned");
-        assertFalse(savedIris.contains(alienConcept),
-                "Alien concept outside graphName's namespace must NOT be claimed as owned");
+        assertThat(savedIris).as("Owned concept under graphName must be saved as owned").contains(ownedConcept);
+        assertThat(savedIris)
+                .as("Alien concept outside graphName's namespace must NOT be claimed as owned")
+                .doesNotContain(alienConcept);
     }
 
     // --- Missing-inScheme decision flow ---
@@ -359,32 +365,34 @@ class OntologyUploadServiceImplTest {
             "https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/pojem";
 
     /** Two owned concepts, both missing skos:inScheme. */
+    /**
+     * Both concepts carry {@code owl:Class} alongside {@code slovníky:pojem}: a bare pojem
+     * declares no role ISMD can act on and is dropped by the concept-type guard, which would
+     * mask what these tests actually cover (the inScheme decision flow and ownership).
+     */
     private byte[] twoMissingInSchemeTtl() {
         return String.format(
                 "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
-                        + " <%s> a owl:Ontology ."
-                        + " <%s> a <%s> ."
-                        + " <%s> a <%s> .",
+                        + " <%s> a owl:Ontology, <http://www.w3.org/2004/02/skos/core#ConceptScheme>, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> ."
+                        + " <%s> a <%s>, <http://www.w3.org/2004/02/skos/core#Concept>, owl:Class ."
+                        + " <%s> a <%s>, <http://www.w3.org/2004/02/skos/core#Concept>, owl:Class .",
                 DECISION_ONTOLOGY, DECISION_C1, DECISION_POJEM, DECISION_C2, DECISION_POJEM
         ).getBytes();
     }
 
-    private void stubPersistenceForDecisionFlow(String userId) {
+    /** The vocabulary row saves; with {@code conceptsOwned}, concept slugs and IRIs are free as well. */
+    private void stubPersistenceForDecisionFlow(String userId, boolean conceptsOwned) {
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
         savedEntity.setGraphName(DECISION_ONTOLOGY);
         savedEntity.setUserId(userId);
         savedEntity.setId(1L);
-        OntologyMetadataModel dto = new OntologyMetadataModel();
-        dto.setId(1L);
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
-        when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
-        when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(dto);
         when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.of(savedEntity));
-        when(conceptMetadataRepository.findByConceptIri(anyString())).thenReturn(Optional.empty());
-        when(conceptMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
-        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(Collections.emptyList());
-        doNothing().when(jenaTDB2Repository).putOntologyModel(anyString(), any(OntModel.class));
+        if (conceptsOwned) {
+            when(conceptMetadataRepository.findByConceptIri(anyString())).thenReturn(Optional.empty());
+            when(conceptMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
+        }
     }
 
     private List<String> capturedSavedConceptIris() {
@@ -401,19 +409,22 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
-        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(Collections.emptyList());
 
-        InSchemeDecisionRequiredException ex = assertThrows(InSchemeDecisionRequiredException.class, () ->
-                ontologyUploadService.uploadFromFile(multipartFile, userId, null, null));
+        InSchemeDecisionRequiredException ex = assertThatExceptionOfType(InSchemeDecisionRequiredException.class)
+                .isThrownBy(() ->
+                ontologyUploadService.uploadFromFile(multipartFile, userId, null, null))
+                .actual();
 
-        assertEquals(DECISION_ONTOLOGY, ex.getGraphName());
+        assertThat(ex.getGraphName()).isEqualTo(DECISION_ONTOLOGY);
         List<String> missingIris = ex.getConceptsMissingInScheme().stream()
                 .map(c -> c.conceptIri()).toList();
-        assertTrue(missingIris.contains(DECISION_C1) && missingIris.contains(DECISION_C2),
-                "Both missing concepts must be reported");
+        assertThat(missingIris.contains(DECISION_C1) && missingIris.contains(DECISION_C2))
+                .as("Both missing concepts must be reported")
+                .isTrue();
         ex.getConceptsMissingInScheme().forEach(c ->
-                assertEquals(DECISION_ONTOLOGY, c.proposedInScheme(),
-                        "Proposed inScheme must be the graphName"));
+                assertThat(c.proposedInScheme())
+                        .as("Proposed inScheme must be the graphName")
+                        .isEqualTo(DECISION_ONTOLOGY));
 
         // Nothing persisted.
         verifyNoInteractions(jenaTDB2Repository);
@@ -427,13 +438,12 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.getBytes()).thenReturn(twoMissingInSchemeTtl());
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
-        stubPersistenceForDecisionFlow(userId);
+        stubPersistenceForDecisionFlow(userId, false);
 
         ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.EXCLUDE_ALL, null);
 
-        // Both concepts excluded → no inScheme → no ownership rows. saveAll may be called
-        // with an empty list or not at all; either way neither concept is claimed.
-        verify(conceptMetadataRepository, atMost(1)).saveAll(anyList());
+        // Both concepts excluded → no inScheme → no ownership rows, so no concept row is written.
+        verify(conceptMetadataRepository, never()).saveAll(anyList());
         // TDB2 still persisted (triples kept as context).
         verify(jenaTDB2Repository).putOntologyModel(eq(DECISION_ONTOLOGY), any(OntModel.class));
     }
@@ -444,14 +454,14 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.getBytes()).thenReturn(twoMissingInSchemeTtl());
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
-        stubPersistenceForDecisionFlow(userId);
+        stubPersistenceForDecisionFlow(userId, true);
 
         ontologyUploadService.uploadFromFile(
                 multipartFile, userId, NormalizeMode.PER_CONCEPT, List.of(DECISION_C1));
 
         List<String> saved = capturedSavedConceptIris();
-        assertTrue(saved.contains(DECISION_C1), "Chosen concept must be normalized and owned");
-        assertFalse(saved.contains(DECISION_C2), "Unchosen concept must be excluded (no ownership row)");
+        assertThat(saved).as("Chosen concept must be normalized and owned").contains(DECISION_C1);
+        assertThat(saved).as("Unchosen concept must be excluded (no ownership row)").doesNotContain(DECISION_C2);
     }
 
     @Test
@@ -460,13 +470,14 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.getBytes()).thenReturn(twoMissingInSchemeTtl());
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
-        stubPersistenceForDecisionFlow(userId);
+        stubPersistenceForDecisionFlow(userId, true);
 
         ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
 
         List<String> saved = capturedSavedConceptIris();
-        assertTrue(saved.contains(DECISION_C1) && saved.contains(DECISION_C2),
-                "NORMALIZE_ALL must own both previously-missing concepts");
+        assertThat(saved.contains(DECISION_C1) && saved.contains(DECISION_C2))
+                .as("NORMALIZE_ALL must own both previously-missing concepts")
+                .isTrue();
     }
 
     @Test
@@ -479,7 +490,7 @@ class OntologyUploadServiceImplTest {
         byte[] ttl = String.format(
                 "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
                         + " @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> ."
-                        + " <%s> a owl:Ontology ."
+                        + " <%s> a owl:Ontology, <http://www.w3.org/2004/02/skos/core#ConceptScheme>, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> ."
                         + " <%s> a <%s> ; rdfs:subClassOf <%s> ."
                         + " <%s> a <%s> .",
                 DECISION_ONTOLOGY, DECISION_C1, DECISION_POJEM, DECISION_C2, DECISION_C2, DECISION_POJEM
@@ -488,7 +499,7 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.getBytes()).thenReturn(ttl);
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
-        stubPersistenceForDecisionFlow(userId);
+        stubPersistenceForDecisionFlow(userId, false);
 
         // Snapshot the model contents DURING the call — the service closes finalModel in
         // its finally block, so post-call inspection would hit a closed model.
@@ -509,12 +520,250 @@ class OntologyUploadServiceImplTest {
 
         ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.EXCLUDE_ALL, null);
 
-        assertFalse(c1Present[0],
-                "Unreferenced excluded concept C1 must be pruned from the model written to TDB2");
-        assertTrue(c2Present[0],
-                "Excluded concept C2 is referenced by C1 and must be KEPT as inert context");
-        assertFalse(edgeFromC1ToC2[0],
-                "C1's body (incl. its edge to C2) is gone because C1 itself was pruned");
+        assertThat(c1Present[0])
+                .as("Unreferenced excluded concept C1 must be pruned from the model written to TDB2")
+                .isFalse();
+        assertThat(c2Present[0])
+                .as("Excluded concept C2 is referenced by C1 and must be KEPT as inert context")
+                .isTrue();
+        assertThat(edgeFromC1ToC2[0])
+                .as("C1's body (incl. its edge to C2) is gone because C1 itself was pruned")
+                .isFalse();
+    }
+
+    // --- Concept-type guard -------------------------------------------------
+    //
+    // Role resolution must be total: every persisted row carries a real type, and a
+    // concept whose type cannot be resolved is dropped rather than saved as a null-typed
+    // row (which downstream consumers read as "absent" — a VZTAH imported that way once
+    // vanished from the diagram projector).
+
+    /** A concept carrying an ISMD role marker instead of its OWL kind. */
+    private byte[] ofnRoleTaggedTtl(String roleTag) {
+        return String.format(
+                "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
+                        + " @prefix skos: <http://www.w3.org/2004/02/skos/core#> ."
+                        + " <%s> a owl:Ontology, <http://www.w3.org/2004/02/skos/core#ConceptScheme>, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> ."
+                        + " <%s> a <%s>, <%s> ; skos:inScheme <%s> .",
+                DECISION_ONTOLOGY, DECISION_C1, DECISION_POJEM, roleTag, DECISION_ONTOLOGY
+        ).getBytes();
+    }
+
+    private List<ConceptMetadataEntity> capturedSavedConcepts() {
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ConceptMetadataEntity>> captor = ArgumentCaptor.forClass(List.class);
+        verify(conceptMetadataRepository).saveAll(captor.capture());
+        return captor.getValue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"vztah", "vlastnost", "třída"})
+    void testUploadFromFile_roleMarkerInsteadOfOwlKind_isRejected(String marker) throws Exception {
+        String userId = "user123";
+        when(multipartFile.getBytes()).thenReturn(
+                ofnRoleTaggedTtl("https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/" + marker));
+        when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
+        when(multipartFile.isEmpty()).thenReturn(false);
+        stubPersistenceForDecisionFlow(userId, false);
+
+        OntologyUploadResultDto result =
+                ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
+
+        assertThat(result.rejectedConcepts())
+                .as("A role marker is no OWL kind and no OFN type")
+                .extracting(RejectedConceptDto::iri)
+                .containsExactly(DECISION_C1);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"třída, owl:Class", "vlastnost, owl:DatatypeProperty", "vztah, owl:ObjectProperty"})
+    void testUploadFromFile_roleMarkerNextToItsOwlKind_isRejectedAsNonOfn(String marker, String owlKind)
+            throws Exception {
+        String userId = "user123";
+        when(multipartFile.getBytes()).thenReturn(String.format(
+                "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
+                        + " @prefix skos: <http://www.w3.org/2004/02/skos/core#> ."
+                        + " <%1$s> a owl:Ontology, skos:ConceptScheme, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> ."
+                        + " <%2$s> a <%3$s>, skos:Concept, %4$s, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/%5$s> ;"
+                        + " skos:prefLabel \"C1\"@cs ; skos:inScheme <%1$s> .",
+                DECISION_ONTOLOGY, DECISION_C1, DECISION_POJEM, owlKind, marker).getBytes());
+        when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
+        when(multipartFile.isEmpty()).thenReturn(false);
+        stubPersistenceForDecisionFlow(userId, false);
+
+        OntologyUploadResultDto result =
+                ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
+
+        assertThat(result.rejectedConcepts())
+                .as("ISMD role markers are not OFN types")
+                .singleElement()
+                .satisfies(rejected -> {
+                    assertThat(rejected.iri()).isEqualTo(DECISION_C1);
+                    assertThat(rejected.reason()).contains("není definován v kontextu OFN");
+                });
+    }
+
+    /** A plain OWL resource (no Pojem/Koncept, no inScheme) is reported and pruned, not stored silently. */
+    @Test
+    void testUploadFromFile_owlKindWithoutConceptTypeOrScheme_isRejectedAndPruned() throws Exception {
+        String userId = "user123";
+        when(multipartFile.getBytes()).thenReturn(String.format(
+                "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
+                        + " @prefix skos: <http://www.w3.org/2004/02/skos/core#> ."
+                        + " @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> ."
+                        + " <%1$s> a owl:Ontology, skos:ConceptScheme, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> ."
+                        + " <%2$s> a owl:DatatypeProperty ; rdfs:label \"Jméno\"@cs .",
+                DECISION_ONTOLOGY, DECISION_C1).getBytes());
+        when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
+        when(multipartFile.isEmpty()).thenReturn(false);
+        stubPersistenceForDecisionFlow(userId, false);
+        boolean[] stored = {true};
+        doAnswer(invocation -> {
+            OntModel model = invocation.getArgument(1);
+            stored[0] = model.listStatements(model.createResource(DECISION_C1), null,
+                    (org.apache.jena.rdf.model.RDFNode) null).hasNext();
+            return null;
+        }).when(jenaTDB2Repository).putOntologyModel(eq(DECISION_ONTOLOGY), any(OntModel.class));
+
+        OntologyUploadResultDto result =
+                ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
+
+        assertThat(result.rejectedConcepts()).singleElement().satisfies(rejected -> {
+            assertThat(rejected.iri()).isEqualTo(DECISION_C1);
+            assertThat(rejected.reason()).contains("chybí typ Pojem/Koncept");
+        });
+        assertThat(stored[0]).as("nothing references it, so it is pruned").isFalse();
+    }
+
+    @Test
+    void testUploadFromFile_bothObjectAndDatatypeProperty_failsTheWholeUpload() throws Exception {
+        String userId = "user123";
+        // Contradictory input: C1 is both a vlastnost and a vztah. The upload fails as a whole and
+        // names C1; the well-typed C2 in the same file is not imported either.
+        String ttl = String.format(
+                "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
+                        + " @prefix skos: <http://www.w3.org/2004/02/skos/core#> ."
+                        + " <%s> a owl:Ontology, <http://www.w3.org/2004/02/skos/core#ConceptScheme>, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> ."
+                        + " <%s> a <%s>, owl:ObjectProperty, owl:DatatypeProperty ;"
+                        + " skos:inScheme <%s> ."
+                        + " <%s> a <%s>, <http://www.w3.org/2004/02/skos/core#Concept>, owl:Class ; skos:inScheme <%s> .",
+                DECISION_ONTOLOGY,
+                DECISION_C1, DECISION_POJEM, DECISION_ONTOLOGY,
+                DECISION_C2, DECISION_POJEM, DECISION_ONTOLOGY);
+        when(multipartFile.getBytes()).thenReturn(ttl.getBytes());
+        when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
+        when(multipartFile.isEmpty()).thenReturn(false);
+
+        OntologyUploadConflictingTypesException ex = assertThatExceptionOfType(OntologyUploadConflictingTypesException.class)
+                .isThrownBy(() -> ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null))
+                .actual();
+
+        assertThat(ex.getConceptIris()).isEqualTo(List.of(DECISION_C1));
+        verify(jenaTDB2Repository, never()).putOntologyModel(anyString(), any(OntModel.class));
+        verify(ontologyMetadataRepository, never()).save(any());
+        verify(conceptMetadataRepository, never()).saveAll(any());
+    }
+
+    @Test
+    void resolveRole_reasonsNameTheActualDefect() {
+        OntModel model = org.apache.jena.rdf.model.ModelFactory.createOntologyModel();
+
+        org.apache.jena.rdf.model.Resource bare = model.createResource(DECISION_C1);
+        bare.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(DECISION_POJEM));
+        assertThat(OntologyUploadServiceFixture.roleRejectionReason(bare))
+                .as("A concept declaring no role must say so plainly")
+                .isEqualTo("no recognized type");
+
+        org.apache.jena.rdf.model.Resource both = model.createResource(DECISION_C2);
+        both.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(DECISION_POJEM));
+        both.addProperty(org.apache.jena.vocabulary.RDF.type, org.apache.jena.vocabulary.OWL2.ObjectProperty);
+        both.addProperty(org.apache.jena.vocabulary.RDF.type, org.apache.jena.vocabulary.OWL2.DatatypeProperty);
+        assertThat(OntologyUploadServiceFixture.roleRejectionReason(both))
+                .as("A contradiction must name both roles it declared, so the file's author can fix it")
+                .isEqualTo("conflicting types: VLASTNOST + VZTAH");
+    }
+
+    @Test
+    void testUploadFromFile_unrecognizedType_conceptDroppedNotPersistedAsNull() throws Exception {
+        String userId = "user123";
+        // A concept already carrying skos:inScheme (so the decision gate leaves it alone) but no
+        // class/property/relationship signal: it is rejected, never saved untyped.
+        String ttl = String.format(
+                "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
+                        + " @prefix skos: <http://www.w3.org/2004/02/skos/core#> ."
+                        + " <%s> a owl:Ontology, <http://www.w3.org/2004/02/skos/core#ConceptScheme>, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> ."
+                        + " <%s> a <%s> ; skos:inScheme <%s> ."
+                        + " <%s> a <%s>, <http://www.w3.org/2004/02/skos/core#Concept>, owl:Class ; skos:inScheme <%s> .",
+                DECISION_ONTOLOGY,
+                DECISION_C1, DECISION_POJEM, DECISION_ONTOLOGY,
+                DECISION_C2, DECISION_POJEM, DECISION_ONTOLOGY);
+        when(multipartFile.getBytes()).thenReturn(ttl.getBytes());
+        when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
+        when(multipartFile.isEmpty()).thenReturn(false);
+        stubPersistenceForDecisionFlow(userId, true);
+
+        ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
+
+        List<ConceptMetadataEntity> saved = capturedSavedConcepts();
+        assertThat(saved.stream().noneMatch(c -> c.getConceptType() == null))
+                .as("No concept may be persisted with a null concept_type")
+                .isTrue();
+        assertThat(saved.stream().anyMatch(c -> DECISION_C2.equals(c.getConceptIri())))
+                .as("The well-typed concept in the same upload must still be imported (warn-and-drop, "
+                        + "not reject-the-whole-upload)")
+                .isTrue();
+    }
+
+    /**
+     * The guard's own unit: extraction must never emit a null-typed row for a resource with no
+     * OWL kind. Drives the role resolver directly.
+     */
+    @Test
+    void resolveConceptType_noRecognizableType_returnsNullSoCallerDrops() {
+        OntModel model = org.apache.jena.rdf.model.ModelFactory.createOntologyModel();
+        org.apache.jena.rdf.model.Resource bare = model.createResource(DECISION_C1);
+        bare.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(DECISION_POJEM));
+
+        ConceptType resolved = OntologyUploadServiceFixture.resolveConceptType(bare);
+
+        assertThat(resolved)
+                .as("A concept with no class/property/relationship signal must resolve to "
+                + "null so extractAndSaveConceptMetadata drops it instead of saving a null type")
+                .isNull();
+    }
+
+    /**
+     * skos:Concept is the base type (OFN koncept), not a role. Treating it as TRIDA would silently
+     * type every otherwise-untyped concept as a class — and make the untyped guard unreachable.
+     */
+    @Test
+    void resolveConceptType_skosConceptAlone_isNotATrida() {
+        OntModel model = org.apache.jena.rdf.model.ModelFactory.createOntologyModel();
+        org.apache.jena.rdf.model.Resource base = model.createResource(DECISION_C1);
+        base.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(DECISION_POJEM));
+        base.addProperty(org.apache.jena.vocabulary.RDF.type, org.apache.jena.vocabulary.SKOS.Concept);
+
+        ConceptType resolved = OntologyUploadServiceFixture.resolveConceptType(base);
+
+        assertThat(resolved)
+                .as("skos:Concept is the base type every concept carries — it must not "
+                + "claim the TRIDA role on its own")
+                .isNull();
+    }
+
+    @Test
+    void resolveConceptType_owlClass_isTrida() {
+        OntModel model = org.apache.jena.rdf.model.ModelFactory.createOntologyModel();
+        org.apache.jena.rdf.model.Resource cls = model.createResource(DECISION_C2);
+        cls.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(DECISION_POJEM));
+        cls.addProperty(org.apache.jena.vocabulary.RDF.type, org.apache.jena.vocabulary.SKOS.Concept);
+        cls.addProperty(org.apache.jena.vocabulary.RDF.type, org.apache.jena.vocabulary.OWL2.Class);
+
+        ConceptType resolved = OntologyUploadServiceFixture.resolveConceptType(cls);
+
+        assertThat(resolved)
+                .as("owl:Class is the real class signal and must still resolve to TRIDA")
+                .isEqualTo(ConceptType.TRIDA);
     }
 
     @Test
@@ -526,8 +775,9 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.getBytes()).thenThrow(new RuntimeException("File read error"));
 
         // The implementation catches IOException and wraps it, but RuntimeException propagates directly
-        assertThrows(RuntimeException.class, () ->
-            ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null));
+        assertThatThrownBy(() ->
+            ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null))
+                .isInstanceOf(RuntimeException.class);
 
         verify(ontologyMetadataRepository, never()).save(any());
     }
@@ -538,8 +788,9 @@ class OntologyUploadServiceImplTest {
 
         when(multipartFile.isEmpty()).thenReturn(true);
 
-        assertThrows(EmptyFileException.class, () ->
-            ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null));
+        assertThatThrownBy(() ->
+            ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null))
+                .isInstanceOf(EmptyFileException.class);
 
         verify(ontologyMetadataRepository, never()).save(any());
     }
@@ -552,68 +803,104 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.getOriginalFilename()).thenReturn("test.unknown");
         when(multipartFile.getContentType()).thenReturn("application/unknown");
 
-        assertThrows(UnsupportedRdfFormatException.class, () ->
-                ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null));
+        assertThatThrownBy(() ->
+                ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null))
+                .isInstanceOf(UnsupportedRdfFormatException.class);
 
         verify(ontologyMetadataRepository, never()).save(any());
     }
 
     @Test
-    void testUploadFromFile_NKDCheckBeforeMetadataCreation() throws IOException {
+    void upload_conceptsPublishedInNkd_areSavedAsPublished() throws IOException {
         String graphName = "http://example.org/test-ontology";
-        String userId = "user123";
-        byte[] fileContent = String.format("@prefix owl: <http://www.w3.org/2002/07/owl#> . <%s> a owl:Ontology .", graphName).getBytes();
-
-        when(multipartFile.getBytes()).thenReturn(fileContent);
+        String published = graphName + "/pojem/published";
+        String draft = graphName + "/pojem/draft";
+        when(multipartFile.getBytes()).thenReturn(("""
+                @prefix owl: <http://www.w3.org/2002/07/owl#> .
+                @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+                @prefix ofn: <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/> .
+                <%1$s> a owl:Ontology, skos:ConceptScheme, ofn:slovník .
+                <%2$s> a ofn:pojem, skos:Concept, owl:Class ; skos:inScheme <%1$s> .
+                <%3$s> a ofn:pojem, skos:Concept, owl:Class ; skos:inScheme <%1$s> .
+                """.formatted(graphName, published, draft)).getBytes());
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
-
-        // NKD check returns some published concepts
-        List<String> publishedConcepts = List.of("http://example.org/concept1", "http://example.org/concept2");
-        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(publishedConcepts);
+        when(publishedResourceUtil.checkPublishedResourcesInNKD(any(), any())).thenReturn(List.of(published));
 
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
         savedEntity.setGraphName(graphName);
-        savedEntity.setUserId(userId);
         savedEntity.setId(1L);
-
-        OntologyMetadataModel expectedDto = new OntologyMetadataModel();
-        expectedDto.setId(1L);
-
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
-        when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
-        when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);
         when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.of(savedEntity));
 
-        doNothing().when(jenaTDB2Repository).putOntologyModel(anyString(), any(OntModel.class));
+        ontologyUploadService.uploadFromFile(multipartFile, "user123", NormalizeMode.NORMALIZE_ALL, null);
 
-        ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ConceptMetadataEntity>> saved = ArgumentCaptor.forClass(List.class);
+        verify(conceptMetadataRepository).saveAll(saved.capture());
+        Map<String, Boolean> publishedByIri = new HashMap<>();
+        saved.getValue().forEach(c -> publishedByIri.put(c.getConceptIri(), c.getIsPublished()));
+        assertThat(publishedByIri).isEqualTo(Map.of(published, true, draft, false));
+    }
 
-        // Verify metadata save happens
-        verify(ontologyMetadataRepository).save(any(OntologyMetadataEntity.class));
+    /** A vocabulary published in NKD is reported as the working copy it was stored as, with its concept count. */
+    @Test
+    void upload_vocabularyPublishedInNkd_reportsAWorkingCopy() throws IOException {
+        String graphName = "http://example.org/test-ontology";
+        when(multipartFile.getBytes()).thenReturn(("""
+                @prefix owl: <http://www.w3.org/2002/07/owl#> .
+                @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+                @prefix ofn: <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/> .
+                <%1$s> a owl:Ontology, skos:ConceptScheme, ofn:slovník .
+                <%1$s/pojem/a> a ofn:pojem, skos:Concept, owl:Class ; skos:prefLabel "A"@cs ; skos:inScheme <%1$s> .
+                """.formatted(graphName)).getBytes());
+        when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
+        when(publishedResourceUtil.checkPublishedResourcesInNKD(any(), any())).thenReturn(List.of(graphName));
+
+        OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
+        savedEntity.setGraphName(graphName);
+        savedEntity.setId(1L);
+        when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
+        when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenAnswer(i -> {
+            // A separate instance from the one the concept step flips, as a re-fetch would return.
+            OntologyMetadataEntity row = new OntologyMetadataEntity();
+            row.setId(1L);
+            row.setGraphName(graphName);
+            row.setIsPublished(false);
+            return row;
+        });
+        when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.of(savedEntity));
+        when(conceptMetadataRepository.countByGraphName(graphName)).thenReturn(1L);
+
+        OntologyUploadResultDto result =
+                ontologyUploadService.uploadFromFile(multipartFile, "user123", NormalizeMode.NORMALIZE_ALL, null);
+
+        assertThat(result.ontology().getIsPublished()).isTrue();
+        assertThat(result.ontology().getSourceTag()).isEqualTo(ConceptSourceTag.WORKING_COPY);
+        assertThat(result.ontology().getConceptCount()).isEqualTo(1);
+        assertThat(result.rejectedConcepts()).isEmpty();
     }
 
     @Test
     void testUploadFromFile_RollbackOnTDB2Failure() throws IOException {
         String ontologyIRI = "http://example.org/test-ontology";
         String userId = "user123";
-        byte[] fileContent = String.format("@prefix owl: <http://www.w3.org/2002/07/owl#> . <%s> a owl:Ontology .", ontologyIRI).getBytes();
+        byte[] fileContent = String.format("@prefix owl: <http://www.w3.org/2002/07/owl#> . <%s> a owl:Ontology, <http://www.w3.org/2004/02/skos/core#ConceptScheme>, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> .", ontologyIRI).getBytes();
 
         when(multipartFile.getBytes()).thenReturn(fileContent);
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
 
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
 
-        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(Collections.emptyList());
 
         // Simulate TDB2 failure
         doThrow(new RuntimeException("TDB2 connection failed"))
             .when(jenaTDB2Repository).putOntologyModel(anyString(), any(OntModel.class));
 
         // Expect exception to be thrown
-        assertThrows(OntologyUploadException.class, () ->
-            ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null)
-        );
+        assertThatThrownBy(() ->
+            ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null))
+                .isInstanceOf(OntologyUploadException.class);
 
         // TDB2 save fails before any metadata is created — no cleanup needed
         verify(ontologyMetadataRepository, never()).save(any());
@@ -625,7 +912,7 @@ class OntologyUploadServiceImplTest {
     void testUploadFromFile_RollbackOnConceptMetadataExtractionFailure() throws IOException {
         String ontologyIRI = "http://example.org/test-ontology";
         String userId = "user123";
-        byte[] fileContent = String.format("@prefix owl: <http://www.w3.org/2002/07/owl#> . <%s> a owl:Ontology .", ontologyIRI).getBytes();
+        byte[] fileContent = String.format("@prefix owl: <http://www.w3.org/2002/07/owl#> . <%s> a owl:Ontology, <http://www.w3.org/2004/02/skos/core#ConceptScheme>, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> .", ontologyIRI).getBytes();
 
         when(multipartFile.getBytes()).thenReturn(fileContent);
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
@@ -635,15 +922,10 @@ class OntologyUploadServiceImplTest {
         savedEntity.setUserId(userId);
         savedEntity.setId(1L);
 
-        OntologyMetadataModel expectedDto = new OntologyMetadataModel();
-        expectedDto.setId(1L);
 
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
-        when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
-        when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);
 
-        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(Collections.emptyList());
 
         doNothing().when(jenaTDB2Repository).putOntologyModel(anyString(), any(OntModel.class));
 
@@ -651,9 +933,9 @@ class OntologyUploadServiceImplTest {
         when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.empty());
 
         // Expect exception to be thrown
-        assertThrows(Exception.class, () ->
-            ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null)
-        );
+        assertThatThrownBy(() ->
+            ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null))
+                .isInstanceOf(Exception.class);
 
         // PostgreSQL rollback is handled by @Transactional — no manual deleteById
         verify(ontologyMetadataRepository, never()).deleteById(anyLong());

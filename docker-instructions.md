@@ -29,9 +29,8 @@ Run everything in Docker — no JDK required.
    Required for the Keycloak login flow:
    - `KEYCLOAK_CLIENT_SECRET` — client secret from the local Keycloak admin UI (`http://localhost:8080`, realm `ismd`, client `ismd-backend`, Credentials tab)
 
-   Required **only if you build the backend image locally** (see below):
-   - `GITHUB_TOKEN` — GitHub PAT with `read:packages` scope (generate at https://github.com/settings/tokens)
-   - `GITHUB_ACTOR` — your GitHub username
+   Building the backend image locally needs no credentials — all Maven
+   dependencies are public.
 
 2. **By default, all images are pulled from GHCR** (backend, fuseki, etc.).
    First run pulls ~a few hundred MB; subsequent runs are instant.
@@ -67,9 +66,7 @@ docker compose -f docker-compose.yml \
 ```
 
 Builds the backend, pulls everything else (postgres, keycloak, fuseki).
-The `GITHUB_TOKEN` is passed to the build via a BuildKit secret mount — it
-will not appear in the build log or image history. The Maven dependency
-cache is persisted across builds via a BuildKit cache mount, so the second
+The Maven dependency cache is persisted across builds via a BuildKit cache mount, so the second
 build is much faster than the first.
 
 #### Rebuild fuseki from local source (rare)

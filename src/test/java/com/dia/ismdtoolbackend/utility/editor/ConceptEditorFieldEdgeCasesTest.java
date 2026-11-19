@@ -1,5 +1,8 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
+import com.dia.ismdtoolbackend.ofn.OfnIris;
+import com.dia.ismdtoolbackend.testsupport.rdf.Ttl;
+import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.PropertyConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.RelationshipConceptEditModel;
@@ -14,9 +17,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import org.apache.jena.vocabulary.OWL2;
 
-import static com.dia.constants.VocabularyConstants.*;
-import static org.junit.jupiter.api.Assertions.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Granular branch coverage for the per-field updaters in ConceptFieldUpdaters,
@@ -59,14 +64,14 @@ class ConceptEditorFieldEdgeCasesTest {
     private Resource seedClass(String iri) {
         Resource r = model.createResource(iri);
         r.addProperty(SKOS.prefLabel, model.createLiteral("Třída", "cs"));
-        r.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
+        r.addProperty(RDF.type, OWL2.Class);
         return r;
     }
 
     private Resource seedProperty(String iri) {
         Resource r = model.createResource(iri);
         r.addProperty(SKOS.prefLabel, model.createLiteral("Vlastnost", "cs"));
-        r.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + VLASTNOST));
+        r.addProperty(RDF.type, OWL2.DatatypeProperty);
         return r;
     }
 
@@ -81,37 +86,39 @@ class ConceptEditorFieldEdgeCasesTest {
 
         editor.editConcept(iri, m, model, null);
 
-        assertTrue(model.getResource(iri).hasProperty(RDF.type, model.getResource(OFN_NAMESPACE + TSP)));
+        assertThat(model.getResource(iri).hasProperty(RDF.type, model.getResource(OfnIris.TYP_SUBJEKTU_PRAVA))).isTrue();
     }
 
     @Test
     void classType_removesTSP_whenNoLongerSubjekt() {
         String iri = DEFAULT_NS + "ct-remove-tsp";
         Resource r = seedClass(iri);
-        r.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TSP));
+        r.addProperty(RDF.type, model.getResource(OfnIris.TYP_SUBJEKTU_PRAVA));
         ClassConceptEditModel m = classModel();
         m.setType("Typ objektu práva");   // objekt, not subjekt
 
         editor.editConcept(iri, m, model, null);
 
         Resource updated = model.getResource(iri);
-        assertFalse(updated.hasProperty(RDF.type, model.getResource(OFN_NAMESPACE + TSP)),
-                "TSP should be removed when no longer subjekt");
-        assertTrue(updated.hasProperty(RDF.type, model.getResource(OFN_NAMESPACE + TOP)),
-                "TOP should be added for objekt");
+        assertThat(updated.hasProperty(RDF.type, model.getResource(OfnIris.TYP_SUBJEKTU_PRAVA)))
+                .as("TSP should be removed when no longer subjekt")
+                .isFalse();
+        assertThat(updated.hasProperty(RDF.type, model.getResource(OfnIris.TYP_OBJEKTU_PRAVA)))
+                .as("TOP should be added for objekt")
+                .isTrue();
     }
 
     @Test
     void classType_noChange_whenStillSubjekt() {
         String iri = DEFAULT_NS + "ct-noop";
         Resource r = seedClass(iri);
-        r.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TSP));
+        r.addProperty(RDF.type, model.getResource(OfnIris.TYP_SUBJEKTU_PRAVA));
         ClassConceptEditModel m = classModel();
         m.setType("Typ subjektu práva");   // still subjekt
 
         editor.editConcept(iri, m, model, null);
 
-        assertTrue(model.getResource(iri).hasProperty(RDF.type, model.getResource(OFN_NAMESPACE + TSP)));
+        assertThat(model.getResource(iri).hasProperty(RDF.type, model.getResource(OfnIris.TYP_SUBJEKTU_PRAVA))).isTrue();
     }
 
     @Test
@@ -123,7 +130,7 @@ class ConceptEditorFieldEdgeCasesTest {
         m.setType(null);
 
         editor.editConcept(iri, m, model, null);
-        assertEquals(before, model.size());
+        assertThat(model.size()).isEqualTo(before);
     }
 
     // ---- updateDomainRange: clear / no-op / URI passthrough ----
@@ -137,7 +144,7 @@ class ConceptEditorFieldEdgeCasesTest {
         m.setDomain("");   // blank → clear
 
         editor.editConcept(iri, m, model, null);
-        assertFalse(model.getResource(iri).hasProperty(RDFS.domain));
+        assertThat(model.getResource(iri).hasProperty(RDFS.domain)).isFalse();
     }
 
     @Test
@@ -151,7 +158,7 @@ class ConceptEditorFieldEdgeCasesTest {
         m.setDomain(domainIri);   // same URI
 
         editor.editConcept(iri, m, model, null);
-        assertEquals(before, model.size(), "unchanged domain must not restage");
+        assertThat(model.size()).as("unchanged domain must not restage").isEqualTo(before);
     }
 
     @Test
@@ -163,13 +170,13 @@ class ConceptEditorFieldEdgeCasesTest {
         m.setDomain("   ");
 
         editor.editConcept(iri, m, model, null);
-        assertEquals(before, model.size());
+        assertThat(model.size()).isEqualTo(before);
     }
 
     // ---- updateDataTypeRange: clear / change ----
 
     @Test
-    void dataType_clearedWhenBlank() {
+    void dataType_blankBecomesLiteral() {
         String iri = DEFAULT_NS + "dt-clear";
         Resource r = seedProperty(iri);
         r.addProperty(RDFS.range, model.createResource("http://www.w3.org/2001/XMLSchema#string"));
@@ -177,7 +184,7 @@ class ConceptEditorFieldEdgeCasesTest {
         m.setDataType("");
 
         editor.editConcept(iri, m, model, null);
-        assertFalse(model.getResource(iri).hasProperty(RDFS.range));
+        assertThat(Ttl.iris(model, iri, RDFS.range)).containsExactly(RDFS.Literal.getURI());
     }
 
     // ---- updateBroaderConceptList: clear when emptied ----
@@ -191,7 +198,7 @@ class ConceptEditorFieldEdgeCasesTest {
         m.setBroaderConcept(List.of());   // empty → clear
 
         editor.editConcept(iri, m, model, null);
-        assertFalse(model.getResource(iri).hasProperty(RDFS.subClassOf));
+        assertThat(model.getResource(iri).hasProperty(RDFS.subClassOf)).isFalse();
     }
 
     @Test
@@ -205,7 +212,7 @@ class ConceptEditorFieldEdgeCasesTest {
 
         long before = model.size();
         editor.editConcept(iri, m, model, null);
-        assertEquals(before, model.size());
+        assertThat(model.size()).isEqualTo(before);
     }
 
     // ---- updateAgenda / updateAIS: blank clears ----
@@ -220,7 +227,7 @@ class ConceptEditorFieldEdgeCasesTest {
         m.setAgendaCode("");
 
         editor.editConcept(iri, m, model, null);
-        assertFalse(model.getResource(iri).hasProperty(agendaProp));
+        assertThat(model.getResource(iri).hasProperty(agendaProp)).isFalse();
     }
 
     // ---- updateAgenda / updateAIS: valid value writes the property ----
@@ -235,8 +242,7 @@ class ConceptEditorFieldEdgeCasesTest {
 
         editor.editConcept(iri, m, model, null);
 
-        assertTrue(model.getResource(iri).hasProperty(agendaProp),
-                "a valid agenda code must be written");
+        assertThat(model.getResource(iri).hasProperty(agendaProp)).as("a valid agenda code must be written").isTrue();
     }
 
     @Test
@@ -249,8 +255,7 @@ class ConceptEditorFieldEdgeCasesTest {
 
         editor.editConcept(iri, m, model, null);
 
-        assertTrue(model.getResource(iri).hasProperty(aisProp),
-                "a valid AIS code must be written");
+        assertThat(model.getResource(iri).hasProperty(aisProp)).as("a valid AIS code must be written").isTrue();
     }
 
     // ---- updateCodeListDataset: create / clear blank-node structure ----
@@ -267,12 +272,13 @@ class ConceptEditorFieldEdgeCasesTest {
         editor.editConcept(iri, m, model, null);
 
         Resource updated = model.getResource(iri);
-        assertTrue(updated.hasProperty(instanceDefinedBy), "code-list link must be created");
+        assertThat(updated.hasProperty(instanceDefinedBy)).as("code-list link must be created").isTrue();
         Resource blankNode = updated.getProperty(instanceDefinedBy).getObject().asResource();
         Property datasetProp = model.createProperty(OFN_NAMESPACE_LEGAL + MA_V_NKOD_ZASTRESUJICI_DATOVOU_SADU);
-        assertTrue(blankNode.hasProperty(datasetProp), "blank node must carry the dataset URL");
-        assertTrue(blankNode.hasProperty(RDF.type, model.getResource(OFN_NAMESPACE_LEGAL + CISELNIK)),
-                "blank node must be typed as číselník");
+        assertThat(blankNode.hasProperty(datasetProp)).as("blank node must carry the dataset URL").isTrue();
+        assertThat(blankNode.hasProperty(RDF.type, model.getResource(OFN_NAMESPACE_LEGAL + CISELNIK)))
+                .as("blank node must be typed as číselník")
+                .isTrue();
     }
 
     @Test
@@ -292,9 +298,10 @@ class ConceptEditorFieldEdgeCasesTest {
 
         editor.editConcept(iri, m, model, null);
 
-        assertFalse(model.getResource(iri).hasProperty(instanceDefinedBy),
-                "code-list link must be removed");
-        assertFalse(bn.hasProperty(datasetProp), "blank node statements must be removed");
+        assertThat(model.getResource(iri).hasProperty(instanceDefinedBy))
+                .as("code-list link must be removed")
+                .isFalse();
+        assertThat(bn.hasProperty(datasetProp)).as("blank node statements must be removed").isFalse();
     }
 
     @Test
@@ -306,7 +313,7 @@ class ConceptEditorFieldEdgeCasesTest {
         m.setCodeListDataset(null);
 
         editor.editConcept(iri, m, model, null);
-        assertEquals(before, model.size());
+        assertThat(model.size()).isEqualTo(before);
     }
 
     // ---- named číselník: rewrite must leave no stale subject behind ----
@@ -333,13 +340,80 @@ class ConceptEditorFieldEdgeCasesTest {
 
         // The old číselník carries no skos:inScheme, so a leaked subject would be invisible
         // to the reconciler and could never be repaired — it must be gone entirely.
-        assertFalse(model.containsResource(model.createResource(oldCodeList)),
-                "old číselník subject must leave no triples behind");
+        assertThat(model.containsResource(model.createResource(oldCodeList)))
+                .as("old číselník subject must leave no triples behind")
+                .isFalse();
 
         Resource updated = model.getResource(iri);
         Resource linked = updated.getProperty(instanceDefinedBy).getObject().asResource();
-        assertEquals(newCodeList, linked.getURI(), "concept must link to the new číselník");
-        assertTrue(linked.hasProperty(datasetProp), "new číselník must carry its dataset");
+        assertThat(linked.getURI()).as("concept must link to the new číselník").isEqualTo(newCodeList);
+        assertThat(linked.hasProperty(datasetProp)).as("new číselník must carry its dataset").isTrue();
+    }
+
+    // ---- the FE's codelist actions: "" / "" deletes, null / null keeps ----
+
+    private Resource seedNamedCodeList(Resource concept, String codeListIri, String datasetIri) {
+        Resource node = model.createResource(codeListIri);
+        node.addProperty(RDF.type, model.getResource(OFN_NAMESPACE_LEGAL + CISELNIK));
+        node.addProperty(model.createProperty(OFN_NAMESPACE_LEGAL + MA_V_NKOD_ZASTRESUJICI_DATOVOU_SADU),
+                model.createResource(datasetIri));
+        concept.addProperty(model.createProperty(OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM), node);
+        return node;
+    }
+
+    @Test
+    void codeList_bothBlank_deletesTheLinkAndTheCiselnikNode() {
+        String iri = DEFAULT_NS + "codelist-delete";
+        String codeList = "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/číselníky/151/2024-01-01";
+        seedNamedCodeList(seedClass(iri), codeList, "https://data.gov.cz/zdroj/datové-sady/17651921/5ccc4289");
+
+        ClassConceptEditModel m = classModel();
+        m.setCodeListIri("");
+        m.setCodeListDataset("");
+
+        editor.editConcept(iri, m, model, null);
+
+        Property instanceDefinedBy = model.createProperty(OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM);
+        assertThat(model.getResource(iri).hasProperty(instanceDefinedBy))
+                .as("code-list link must be removed")
+                .isFalse();
+        assertThat(model.containsResource(model.createResource(codeList)))
+                .as("číselník subject must leave no triples behind")
+                .isFalse();
+    }
+
+    @Test
+    void codeList_bothNull_keepsTheStoredCodeList() {
+        String iri = DEFAULT_NS + "codelist-keep";
+        String codeList = "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/číselníky/151/2024-01-01";
+        String dataset = "https://data.gov.cz/zdroj/datové-sady/17651921/5ccc4289";
+        seedNamedCodeList(seedClass(iri), codeList, dataset);
+
+        editor.editConcept(iri, classModel(), model, null);
+
+        Property instanceDefinedBy = model.createProperty(OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM);
+        Property datasetProp = model.createProperty(OFN_NAMESPACE_LEGAL + MA_V_NKOD_ZASTRESUJICI_DATOVOU_SADU);
+        Resource linked = model.getResource(iri).getProperty(instanceDefinedBy).getObject().asResource();
+        assertThat(linked.getURI()).as("stored číselník must stay linked").isEqualTo(codeList);
+        assertThat(linked.getProperty(datasetProp).getObject().asResource().getURI()).isEqualTo(dataset);
+        assertThat(linked.hasProperty(RDF.type, model.getResource(OFN_NAMESPACE_LEGAL + CISELNIK))).isTrue();
+    }
+
+    @Test
+    void codeList_percentEncodedDataset_isAcceptedAndStoredAsRawUtf8() {
+        String iri = DEFAULT_NS + "codelist-encoded";
+        seedClass(iri);
+        ClassConceptEditModel m = classModel();
+        m.setCodeListIri("https://data.mvcr.gov.cz/zdroj/číselníky/ciselnik-1");
+        m.setCodeListDataset("https://data.gov.cz/zdroj/datov%C3%A9-sady/17651921/5ccc4289");
+
+        editor.editConcept(iri, m, model, null);
+
+        Property instanceDefinedBy = model.createProperty(OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM);
+        Property datasetProp = model.createProperty(OFN_NAMESPACE_LEGAL + MA_V_NKOD_ZASTRESUJICI_DATOVOU_SADU);
+        Resource linked = model.getResource(iri).getProperty(instanceDefinedBy).getObject().asResource();
+        assertThat(linked.getProperty(datasetProp).getObject().asResource().getURI())
+                .isEqualTo("https://data.gov.cz/zdroj/datové-sady/17651921/5ccc4289");
     }
 
     // ---- code-list completeness: both IRIs are mandatory together (class only) ----
@@ -351,8 +425,9 @@ class ConceptEditorFieldEdgeCasesTest {
         ClassConceptEditModel m = classModel();
         m.setCodeListDataset("https://data.gov.cz/zdroj/datové-sady/ciselnik-2");
 
-        assertThrows(RuntimeException.class, () -> editor.editConcept(iri, m, model, null),
-                "dataset without a číselník IRI must be rejected");
+        assertThatThrownBy(() -> editor.editConcept(iri, m, model, null))
+                .isExactlyInstanceOf(ConceptValidationException.class)
+                .hasMessage("Neplatné hodnoty v úpravě pojmu: Je uvedena datová sada v NKOD, ale chybí IRI číselníku");
     }
 
     @Test
@@ -362,8 +437,10 @@ class ConceptEditorFieldEdgeCasesTest {
         ClassConceptEditModel m = classModel();
         m.setCodeListIri("https://data.mvcr.gov.cz/zdroj/číselníky/ciselnik-2");
 
-        assertThrows(RuntimeException.class, () -> editor.editConcept(iri, m, model, null),
-                "číselník IRI without a dataset must be rejected");
+        assertThatThrownBy(() -> editor.editConcept(iri, m, model, null))
+                .isExactlyInstanceOf(ConceptValidationException.class)
+                .hasMessage("Neplatné hodnoty v úpravě pojmu: "
+                        + "Je uvedeno IRI číselníku, ale chybí IRI zastřešující datové sady v NKOD");
     }
 
     @Test
@@ -374,8 +451,9 @@ class ConceptEditorFieldEdgeCasesTest {
         m.setCodeListIri("nikoliv-iri");
         m.setCodeListDataset("https://data.gov.cz/zdroj/datové-sady/ciselnik-3");
 
-        assertThrows(RuntimeException.class, () -> editor.editConcept(iri, m, model, null),
-                "a non-absolute číselník IRI must be rejected");
+        assertThatThrownBy(() -> editor.editConcept(iri, m, model, null))
+                .isExactlyInstanceOf(ConceptValidationException.class)
+                .hasMessage("Neplatné hodnoty v úpravě pojmu: Neplatné IRI číselníku: nikoliv-iri");
     }
 
     // ---- updateSuperPropertyList (relationship superRelation): clear ----
@@ -385,12 +463,12 @@ class ConceptEditorFieldEdgeCasesTest {
         String iri = DEFAULT_NS + "super-clear";
         Resource r = model.createResource(iri);
         r.addProperty(SKOS.prefLabel, model.createLiteral("Vztah", "cs"));
-        r.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + VZTAH));
+        r.addProperty(RDF.type, OWL2.ObjectProperty);
         r.addProperty(RDFS.subPropertyOf, model.createResource(DEFAULT_NS + "super"));
         RelationshipConceptEditModel m = relationshipModel();
         m.setSuperRelation(List.of());
 
         editor.editConcept(iri, m, model, null);
-        assertFalse(model.getResource(iri).hasProperty(RDFS.subPropertyOf));
+        assertThat(model.getResource(iri).hasProperty(RDFS.subPropertyOf)).isFalse();
     }
 }

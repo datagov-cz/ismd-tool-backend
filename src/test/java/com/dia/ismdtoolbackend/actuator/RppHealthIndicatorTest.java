@@ -17,7 +17,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -35,8 +35,8 @@ class RppHealthIndicatorTest {
 
         Health health = new RppHealthIndicator(holder, FIXED).health();
 
-        assertEquals(Status.UNKNOWN, health.getStatus());
-        assertEquals("not-yet-loaded", health.getDetails().get("reason"));
+        assertThat(health.getStatus()).isEqualTo(Status.UNKNOWN);
+        assertThat(health.getDetails().get("reason")).isEqualTo("not-yet-loaded");
     }
 
     @Test
@@ -49,12 +49,12 @@ class RppHealthIndicatorTest {
 
         Health health = new RppHealthIndicator(holder, FIXED).health();
 
-        assertEquals(Status.UP, health.getStatus());
+        assertThat(health.getStatus()).isEqualTo(Status.UP);
         Map<String, Object> details = health.getDetails();
-        assertEquals(loadedAt.toString(), details.get("loadedAt"));
-        assertEquals(600L, details.get("ageSeconds"));
-        assertEquals(1, details.get("agendaCount"));
-        assertEquals(1, details.get("isvsCount"));
+        assertThat(details.get("loadedAt")).isEqualTo(loadedAt.toString());
+        assertThat(details.get("ageSeconds")).isEqualTo(600L);
+        assertThat(details.get("agendaCount")).isEqualTo(1);
+        assertThat(details.get("isvsCount")).isEqualTo(1);
     }
 
     @Test
@@ -66,7 +66,7 @@ class RppHealthIndicatorTest {
 
         Health health = new RppHealthIndicator(holder, FIXED).health();
 
-        assertEquals(Status.UP, health.getStatus());
-        assertEquals(7 * 24 * 3600L, health.getDetails().get("ageSeconds"));
+        assertThat(health.getStatus()).isEqualTo(Status.UP);
+        assertThat(health.getDetails().get("ageSeconds")).isEqualTo(7 * 24 * 3600L);
     }
 }

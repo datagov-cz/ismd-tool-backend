@@ -10,22 +10,22 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 import static com.dia.ismdtoolbackend.utility.exporter.RdfTestModelFactory.*;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
-@DisplayName("ConceptProcessor - Code List Dataset (Datová sada v NKOD)")
+@DisplayName("ConceptJsonMapper - Code List Dataset (Datová sada v NKOD)")
 class ConceptCodeListDatasetTest {
 
     private static final String NKOD_DATASET_URL = "https://data.gov.cz/zdroj/datové-sady/test-dataset-123";
     private static final String CODE_LIST_IRI =
             "https://data.mvcr.gov.cz/zdroj/číselníky/typy-turistických-cílů";
 
-    private ConceptProcessor processor;
+    private ConceptJsonMapper processor;
 
     @BeforeEach
     void setUp() {
-        processor = new ConceptProcessor();
+        processor = new ConceptJsonMapper();
     }
 
     /** Writes the code-list structure the class write paths produce: a named číselník subject. */
@@ -55,12 +55,12 @@ class ConceptCodeListDatasetTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertTrue(result.containsKey(INSTANCE_DEFINOVANY_CISELNIKEM));
+        assertThat(result).containsKey(INSTANCE_DEFINOVANY_CISELNIKEM);
         @SuppressWarnings("unchecked")
         Map<String, Object> codeListObj = (Map<String, Object>) result.get(INSTANCE_DEFINOVANY_CISELNIKEM);
-        assertEquals(CODE_LIST_IRI, codeListObj.get(JSON_IRI));
-        assertEquals(CISELNIK_JSON_LD, codeListObj.get("typ"));
-        assertEquals(NKOD_DATASET_URL, codeListObj.get(DATOVA_SADA_V_NKOD));
+        assertThat(codeListObj.get(JSON_IRI)).isEqualTo(CODE_LIST_IRI);
+        assertThat(codeListObj.get("typ")).isEqualTo(CISELNIK_JSON_LD);
+        assertThat(codeListObj.get(DATOVA_SADA_V_NKOD)).isEqualTo(NKOD_DATASET_URL);
     }
 
     @Test
@@ -72,7 +72,7 @@ class ConceptCodeListDatasetTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertFalse(result.containsKey(INSTANCE_DEFINOVANY_CISELNIKEM));
+        assertThat(result).doesNotContainKey(INSTANCE_DEFINOVANY_CISELNIKEM);
     }
 
     @Test
@@ -94,6 +94,6 @@ class ConceptCodeListDatasetTest {
         ModelStructure structure = createModelStructure(model);
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertFalse(result.containsKey(INSTANCE_DEFINOVANY_CISELNIKEM));
+        assertThat(result).doesNotContainKey(INSTANCE_DEFINOVANY_CISELNIKEM);
     }
 }

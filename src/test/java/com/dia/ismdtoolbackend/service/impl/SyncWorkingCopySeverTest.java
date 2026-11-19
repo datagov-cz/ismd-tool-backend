@@ -6,7 +6,6 @@ import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
-import com.dia.ismdtoolbackend.outbox.OutboxConfig;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.utility.published.WorkingCopySyncFields;
@@ -15,28 +14,26 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.mockito.junit.jupiter.MockitoSettings;
-import org.mockito.quality.Strictness;
 
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doReturn;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -49,7 +46,6 @@ import static org.mockito.Mockito.when;
  * the arithmetic runs against the true field vocabulary.
  */
 @ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT)
 class SyncWorkingCopySeverTest {
 
     private static final Long CONCEPT_ID = 7L;
@@ -61,11 +57,14 @@ class SyncWorkingCopySeverTest {
     @Mock
     private NkdSparqlClient nkdSparqlClient;
     @Mock
-    private OutboxConfig outboxConfig;
-    @Mock
     private JenaTDB2Repository jenaTDB2Repository;
 
-    private ConceptServiceImpl service;
+    @Mock
+    private ConceptEditOperation editOperation;
+    @Mock
+    private ConceptDetailReader detailReader;
+
+    private WorkingCopySyncOperation service;
     private ConceptMetadataEntity metadata;
 
     @BeforeEach
@@ -78,51 +77,18 @@ class SyncWorkingCopySeverTest {
         metadata.setGraphName("https://slovník.gov.cz/test-slovnik");
         metadata.setIsPublished(true);
 
-        // Field injection rather than positional constructor args: ConceptServiceImpl has 20
-        // @RequiredArgsConstructor dependencies and this test needs only four of them.
-        service = spy(newServiceWith(Map.of(
-                "conceptMetadataRepository", conceptMetadataRepository,
-                "nkdSparqlClient", nkdSparqlClient,
-                "outboxConfig", outboxConfig,
-                "jenaTDB2Repository", jenaTDB2Repository,
-                "syncFields", new WorkingCopySyncFields(),
-                "deviationComparator", new ConceptDeviationComparator())));
+        service = new WorkingCopySyncOperation(conceptMetadataRepository, jenaTDB2Repository, nkdSparqlClient,
+                new ConceptDeviationComparator(), new WorkingCopySyncFields(),
+                new ConceptAccessGuard(conceptMetadataRepository), editOperation, detailReader);
 
+        // Working baseline, lenient because the tests that sync nothing stop before these reads.
         // The data-classification carry-through reads the concept's current RDF; an empty graph means
         // "nothing recorded", which is a valid state and keeps these tests focused on the sever.
-        when(jenaTDB2Repository.fetchGraph(anyString()))
+        lenient().when(jenaTDB2Repository.fetchGraph(anyString()))
                 .thenReturn(ModelFactory.createDefaultModel());
-
-        when(outboxConfig.isEnabled()).thenReturn(true);
-        // outbox enabled → the service takes the locking read; the post-edit re-read is unlocked.
+        // The service takes the locking read; the post-edit re-read is unlocked.
         when(conceptMetadataRepository.findWithLockById(CONCEPT_ID)).thenReturn(Optional.of(metadata));
-        when(conceptMetadataRepository.findById(CONCEPT_ID)).thenReturn(Optional.of(metadata));
-        when(nkdSparqlClient.fetchPublishedConcept(anyString()))
-                .thenReturn(Optional.of(OntologyDetailModel.ConceptDetailModel.builder()
-                        .name(Map.of("cs", "Publikovaná obec"))
-                        .description(Map.of("cs", "Publikovaný popis"))
-                        .build()));
-        // syncWorkingCopy calls the 3-arg overload (severWorkingCopyOnRename=false); stub that seam so the
-        // real edit — which would hit an empty graph — never runs.
-        doReturn(null).when(service).editConcept(anyLong(), any(), anyBoolean());
-    }
-
-    /** Builds the service with only the dependencies these tests exercise; the rest stay null. */
-    private static ConceptServiceImpl newServiceWith(Map<String, Object> deps) {
-        try {
-            Constructor<?> ctor = ConceptServiceImpl.class.getDeclaredConstructors()[0];
-            ctor.setAccessible(true);
-            ConceptServiceImpl instance =
-                    (ConceptServiceImpl) ctor.newInstance(new Object[ctor.getParameterCount()]);
-            for (Map.Entry<String, Object> dep : deps.entrySet()) {
-                Field f = ConceptServiceImpl.class.getDeclaredField(dep.getKey());
-                f.setAccessible(true);
-                f.set(instance, dep.getValue());
-            }
-            return instance;
-        } catch (ReflectiveOperationException e) {
-            throw new IllegalStateException("could not build ConceptServiceImpl for test", e);
-        }
+        lenient().when(conceptMetadataRepository.findById(CONCEPT_ID)).thenReturn(Optional.of(metadata));
     }
 
     /**
@@ -144,7 +110,7 @@ class SyncWorkingCopySeverTest {
 
         GetConceptDto dto = new GetConceptDto();
         dto.setConceptDetail(local);
-        doReturn(dto).when(service).getConceptDetail(SLUG);
+        when(detailReader.getConceptDetail(SLUG)).thenReturn(dto);
         when(nkdSparqlClient.fetchPublishedConcept(anyString())).thenReturn(Optional.of(published));
     }
 
@@ -160,9 +126,26 @@ class SyncWorkingCopySeverTest {
     private void noDeviation() {
         GetConceptDto dto = new GetConceptDto();
         dto.setConceptDetail(detail("Popis", "Definice"));
-        doReturn(dto).when(service).getConceptDetail(SLUG);
+        when(detailReader.getConceptDetail(SLUG)).thenReturn(dto);
         when(nkdSparqlClient.fetchPublishedConcept(anyString()))
                 .thenReturn(Optional.of(detail("Popis", "Definice")));
+    }
+
+    /**
+     * The edit only enqueues its RDF delta, so a detail read inside the sync would return the pre-sync
+     * graph. The detail is read once, before the edit, and the slug is handed back for the caller to read.
+     */
+    @Test
+    void readsTheDetailOnlyBeforeTheEdit_andReturnsTheSlug() {
+        deviatingOn("definice");
+
+        String slug = service.syncWorkingCopy(CONCEPT_ID, List.of("definice"));
+
+        assertThat(slug).isEqualTo(SLUG);
+        InOrder inOrder = inOrder(detailReader, editOperation);
+        inOrder.verify(detailReader).getConceptDetail(SLUG);
+        inOrder.verify(editOperation).editConcept(eq(CONCEPT_ID), any(), eq(false));
+        inOrder.verifyNoMoreInteractions();
     }
 
     @Test
@@ -172,7 +155,7 @@ class SyncWorkingCopySeverTest {
         service.syncWorkingCopy(CONCEPT_ID, List.of("popis", "definice"));
 
         verify(conceptMetadataRepository, never()).save(any());
-        assertTrue(metadata.getIsPublished(), "accepting everything must not sever");
+        assertThat(metadata.getIsPublished()).as("accepting everything must not sever").isTrue();
     }
 
     @Test
@@ -183,8 +166,9 @@ class SyncWorkingCopySeverTest {
 
         ArgumentCaptor<ConceptMetadataEntity> saved = ArgumentCaptor.forClass(ConceptMetadataEntity.class);
         verify(conceptMetadataRepository).save(saved.capture());
-        assertEquals(Boolean.FALSE, saved.getValue().getIsPublished(),
-                "accepting a strict subset must sever the working copy");
+        assertThat(saved.getValue().getIsPublished())
+                .as("accepting a strict subset must sever the working copy")
+                .isFalse();
     }
 
     /** The boundary: one deviating field, accepted. Sizes are equal, so this must NOT sever. */
@@ -206,18 +190,20 @@ class SyncWorkingCopySeverTest {
 
         ArgumentCaptor<ConceptMetadataEntity> saved = ArgumentCaptor.forClass(ConceptMetadataEntity.class);
         verify(conceptMetadataRepository).save(saved.capture());
-        assertEquals(Boolean.FALSE, saved.getValue().getIsPublished(),
-                "two copies of one key cover one of two deviating fields — still a strict subset");
+        assertThat(saved.getValue().getIsPublished())
+                .as("two copies of one key cover one of two deviating fields — still a strict subset")
+                .isFalse();
     }
 
     @Test
     void notAWorkingCopy_isRejected() {
         metadata.setIsPublished(false);
 
-        OntologyValidationException e = assertThrows(OntologyValidationException.class,
-                () -> service.syncWorkingCopy(CONCEPT_ID, List.of("definice")));
+        OntologyValidationException e = assertThatExceptionOfType(OntologyValidationException.class)
+                .isThrownBy(() -> service.syncWorkingCopy(CONCEPT_ID, List.of("definice")))
+                .actual();
 
-        assertTrue(e.getMessage().contains("není pracovní kopií"));
+        assertThat(e).hasMessageContaining("není pracovní kopií");
         verify(conceptMetadataRepository, never()).save(any());
     }
 
@@ -225,18 +211,19 @@ class SyncWorkingCopySeverTest {
     void noDeviation_isRejected() {
         noDeviation();
 
-        OntologyValidationException e = assertThrows(OntologyValidationException.class,
-                () -> service.syncWorkingCopy(CONCEPT_ID, List.of("definice")));
+        OntologyValidationException e = assertThatExceptionOfType(OntologyValidationException.class)
+                .isThrownBy(() -> service.syncWorkingCopy(CONCEPT_ID, List.of("definice")))
+                .actual();
 
-        assertTrue(e.getMessage().contains("neliší"));
+        assertThat(e).hasMessageContaining("neliší");
     }
 
     @Test
     void nonSyncableKey_isRejected_andNothingIsSevered() {
         deviatingOn("definice");
 
-        assertThrows(OntologyValidationException.class,
-                () -> service.syncWorkingCopy(CONCEPT_ID, List.of(WorkingCopySyncFields.TYPE_KEY)));
+        assertThatThrownBy(() -> service.syncWorkingCopy(CONCEPT_ID, List.of(WorkingCopySyncFields.TYPE_KEY)))
+                .isInstanceOf(OntologyValidationException.class);
 
         verify(conceptMetadataRepository, never()).save(any());
     }
@@ -245,19 +232,19 @@ class SyncWorkingCopySeverTest {
     void unknownKey_isRejected_andNothingIsSevered() {
         deviatingOn("definice");
 
-        assertThrows(OntologyValidationException.class,
-                () -> service.syncWorkingCopy(CONCEPT_ID, List.of("neexistující-pole")));
+        assertThatThrownBy(() -> service.syncWorkingCopy(CONCEPT_ID, List.of("neexistující-pole")))
+                .isInstanceOf(OntologyValidationException.class);
 
         verify(conceptMetadataRepository, never()).save(any());
     }
 
     @Test
     void nkdConceptGoneAtApplyTime_isRejected_andNothingIsSevered() {
-        deviatingOn("definice");
+        // Rejected on the NKD read, before the local detail is consulted.
         when(nkdSparqlClient.fetchPublishedConcept(anyString())).thenReturn(Optional.empty());
 
-        assertThrows(OntologyValidationException.class,
-                () -> service.syncWorkingCopy(CONCEPT_ID, List.of("definice")));
+        assertThatThrownBy(() -> service.syncWorkingCopy(CONCEPT_ID, List.of("definice")))
+                .isInstanceOf(OntologyValidationException.class);
 
         verify(conceptMetadataRepository, never()).save(any());
     }
@@ -274,7 +261,7 @@ class SyncWorkingCopySeverTest {
 
         GetConceptDto dto = new GetConceptDto();
         dto.setConceptDetail(local);
-        doReturn(dto).when(service).getConceptDetail(SLUG);
+        when(detailReader.getConceptDetail(SLUG)).thenReturn(dto);
         when(nkdSparqlClient.fetchPublishedConcept(anyString())).thenReturn(Optional.of(published));
     }
 
@@ -282,11 +269,12 @@ class SyncWorkingCopySeverTest {
     void syncToPrivate_withoutValidProvisionInNkd_isRejected400() {
         publicLocal_privateNkd(List.of());   // private twin but NO provision — invalid shape
 
-        OntologyValidationException e = assertThrows(OntologyValidationException.class,
-                () -> service.syncWorkingCopy(CONCEPT_ID, List.of(WorkingCopySyncFields.IS_PUBLIC_KEY)));
+        OntologyValidationException e = assertThatExceptionOfType(OntologyValidationException.class)
+                .isThrownBy(() -> service.syncWorkingCopy(CONCEPT_ID, List.of(WorkingCopySyncFields.IS_PUBLIC_KEY)))
+                .actual();
 
-        assertTrue(e.getMessage().contains("neveřejnost"));
-        verify(service, never()).editConcept(anyLong(), any(), anyBoolean());
+        assertThat(e).hasMessageContaining("neveřejnost");
+        verify(editOperation, never()).editConcept(anyLong(), any(), anyBoolean());
     }
 
     @Test
@@ -297,11 +285,12 @@ class SyncWorkingCopySeverTest {
 
         ArgumentCaptor<com.dia.ismdtoolbackend.models.concept.ConceptEditModel> edit =
                 ArgumentCaptor.forClass(com.dia.ismdtoolbackend.models.concept.ConceptEditModel.class);
-        verify(service).editConcept(anyLong(), edit.capture(), anyBoolean());
+        verify(editOperation).editConcept(anyLong(), edit.capture(), anyBoolean());
         var klass = (com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel) edit.getValue();
-        assertEquals(Boolean.FALSE, klass.getIsPublic());
-        assertEquals(List.of("https://provision/§1"), klass.getPrivacyProvisions(),
-                "the twin's provision is co-synced so the private classification is valid");
+        assertThat(klass.getIsPublic()).isFalse();
+        assertThat(klass.getPrivacyProvisions())
+                .as("the twin's provision is co-synced so the private classification is valid")
+                .isEqualTo(List.of("https://provision/§1"));
     }
 
     @Test
@@ -312,7 +301,7 @@ class SyncWorkingCopySeverTest {
 
         service.syncWorkingCopy(CONCEPT_ID, List.of(WorkingCopySyncFields.IS_PUBLIC_KEY));
 
-        assertTrue(metadata.getIsPublished(), "coupled provision counts as accepted → must not sever");
+        assertThat(metadata.getIsPublished()).as("coupled provision counts as accepted → must not sever").isTrue();
         verify(conceptMetadataRepository, never()).save(any());
     }
 }

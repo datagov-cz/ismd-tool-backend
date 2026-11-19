@@ -22,7 +22,7 @@ import java.util.List;
  * Postgres: no outbox, no RDF write, no reconciler.
  *
  * <p>The {@code version} column backs an optimistic lock on the layout save, compared in
- * {@code DiagramServiceImpl.requireCurrentVersion} against the version the client sends, not by JPA.
+ * {@code DiagramLayoutOperation.requireCurrentVersion} against the version the client sends, not by JPA.
  *
  * <p><strong>Save-path obligation.</strong> {@code @Version} bumps only when a column of the
  * {@code diagrams} row itself changes, while node and edge edits touch child tables. A save that mutates

@@ -7,9 +7,6 @@ package com.dia.ismdtoolbackend.exception;
  */
 public class DiagramNameConflictException extends RuntimeException {
 
-    /** Stable error code the FE branches on, rather than the localized message. */
-    public static final String ERROR_CODE = "DIAGRAM_NAME_CONFLICT";
-
     public DiagramNameConflictException(String name) {
         super("Diagram s názvem \"" + name + "\" v tomto slovníku již existuje.");
     }

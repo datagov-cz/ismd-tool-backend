@@ -17,7 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
+import static com.dia.ismdtoolbackend.constants.ExportConstants.Common.DEFAULT_LANG;
 
 /**
  * Resolves ontology {@code skos:prefLabel} language maps, keyed by graph IRI.
@@ -67,11 +67,7 @@ public class OntologyLabelLookup {
 
         Map<String, Map<String, String>> out = new LinkedHashMap<>();
         for (String graphName : distinct) {
-            Resource ontology = metadata.getResource(graphName);
-            if (ontology == null) {
-                continue;
-            }
-            Map<String, String> labels = extractMultilingualValue(ontology);
+            Map<String, String> labels = extractMultilingualValue(metadata.getResource(graphName));
             if (!labels.isEmpty()) {
                 out.put(graphName, labels);
             }
@@ -84,14 +80,13 @@ public class OntologyLabelLookup {
         if (graphName == null || graphName.isEmpty()) {
             return null;
         }
-        Map<String, Map<String, String>> labels = labelsByGraph(List.of(graphName));
-        return labels == null ? null : labels.get(graphName);
+        return labelsByGraph(List.of(graphName)).get(graphName);
     }
 
     /**
      * Language→value map for the resource's {@code skos:prefLabel}s. An untagged literal is keyed
-     * under {@link com.dia.constants.ExportConstants.Common#DEFAULT_LANG}, and the first value per
-     * language wins — matching {@code OntologyServiceImpl.extractMultilingualValue}.
+     * under {@link com.dia.ismdtoolbackend.constants.ExportConstants.Common#DEFAULT_LANG}, and the first value per
+     * language wins — matching {@code OntologyMetadataEnricher.extractMultilingualValue}.
      */
     private Map<String, String> extractMultilingualValue(Resource resource) {
         Map<String, String> valuesByLang = new LinkedHashMap<>();
@@ -104,12 +99,13 @@ public class OntologyLabelLookup {
                     continue;
                 }
                 Literal literal = object.asLiteral();
+                // Jena returns "" (never null) for a missing lexical form or language tag.
                 String value = literal.getString();
-                if (value == null || value.trim().isEmpty()) {
+                if (value.trim().isEmpty()) {
                     continue;
                 }
                 String lang = literal.getLanguage();
-                valuesByLang.putIfAbsent((lang != null && !lang.isEmpty()) ? lang : DEFAULT_LANG, value);
+                valuesByLang.putIfAbsent(lang.isEmpty() ? DEFAULT_LANG : lang, value);
             }
         } finally {
             iter.close();

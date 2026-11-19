@@ -1,16 +1,15 @@
 package com.dia.ismdtoolbackend.utility.published;
 
+import com.dia.ismdtoolbackend.models.OntologyRef;
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.controller.dto.NkdConceptRefDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.enums.SnapshotOrigin;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
-import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.models.PublishedOntologyDeviationModel;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
 import com.dia.ismdtoolbackend.service.impl.OntologyDeviationComparator;
 import com.dia.ismdtoolbackend.service.WorkingCopyDeviationService;
-import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntModel;
@@ -29,7 +28,6 @@ import java.util.*;
 public class PublishedResourceUtil {
 
     private final NkdSparqlClient nkdSparqlClient;
-    private final OntologyDetailExtractor detailExtractor;
     private final OntologyDeviationComparator ontologyDeviationComparator;
     private final WorkingCopyDeviationService workingCopyDeviationService;
 
@@ -41,13 +39,13 @@ public class PublishedResourceUtil {
      *                      re-deriving it here would duplicate that whole pass.
      */
     public PublishedOntologyDeviationModel checkOntologyDeviation(OntologyDetailModel localOntology,
-                                                                  OntologyMetadataModel ontologyMetadata) {
-        if (Boolean.FALSE.equals(ontologyMetadata.getIsPublished())) {
-            log.debug("Ontology {} is not published, skipping deviation check", ontologyMetadata.getGraphName());
+                                                                  OntologyRef ontologyMetadata) {
+        if (Boolean.FALSE.equals(ontologyMetadata.isPublished())) {
+            log.debug("Ontology {} is not published, skipping deviation check", ontologyMetadata.graphName());
             return null;
         }
 
-        String ontologyIri = ontologyMetadata.getGraphName();
+        String ontologyIri = ontologyMetadata.graphName();
         log.info("Checking ontology deviation for: {}", ontologyIri);
 
         try {
@@ -143,6 +141,13 @@ public class PublishedResourceUtil {
     }
 
     public List<String> checkPublishedResourcesInNKD(OntModel model) {
+        return checkPublishedResourcesInNKD(model, List.of());
+    }
+
+    /**
+     * Checks the model's vocabulary and concepts plus {@code additionalIris} in one NKD query.
+     */
+    public List<String> checkPublishedResourcesInNKD(OntModel model, Collection<String> additionalIris) {
         List<String> resourceIris = new ArrayList<>();
 
         ResIterator ontologyIterator = model.listResourcesWithProperty(RDF.type, OWL2.Ontology);
@@ -166,6 +171,8 @@ public class PublishedResourceUtil {
                 resourceIris.add(conceptIri);
             }
         }
+
+        additionalIris.stream().filter(iri -> !resourceIris.contains(iri)).forEach(resourceIris::add);
 
         log.debug("Extracted {} resource IRIs from model for NKD verification", resourceIris.size());
 

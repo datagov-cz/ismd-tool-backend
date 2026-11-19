@@ -69,4 +69,25 @@ public class NkodDatasetController {
         return ResponseEntity.ok()
                 .body(ApiResponseDto.success(dto, "Detail datové sady byl úspěšně načten."));
     }
+
+    @Operation(
+            summary = "Datové sady propojené s pojmem",
+            description = "Vrací datové sady z NKOD, které jsou anotovány daným pojmem "
+                    + "(vazba týká-se-pojmu), seřazené abecedně podle názvu. Parametr iri "
+                    + "přijímá jak pojmy z místního slovníku (ISMD), tak publikované pojmy "
+                    + "z NKD. Pojem bez anotací vrací prázdný seznam. "
+                    + "Veřejný endpoint."
+    )
+    @GetMapping("/concept/datasets")
+    public ResponseEntity<ApiResponseDto<NkodDatasetListDto>> listDatasetsByConcept(
+            @Parameter(description = "IRI pojmu (ISMD nebo NKD)", required = true)
+            @RequestParam String iri
+    ) {
+        log.info("NKOD datasets by concept requested, iri: {}", iri);
+
+        NkodDatasetListDto dto = nkodDatasetService.listDatasetsByConcept(iri);
+
+        return ResponseEntity.ok()
+                .body(ApiResponseDto.success(dto, "Datové sady propojené s pojmem byly úspěšně načteny."));
+    }
 }

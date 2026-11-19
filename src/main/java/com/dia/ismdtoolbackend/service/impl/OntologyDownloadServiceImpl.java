@@ -1,33 +1,25 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.exceptions.JsonExportException;
+import com.dia.ismdtoolbackend.ofn.OfnDates;
+import com.dia.ismdtoolbackend.ofn.OfnVocabularyExporter;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.exception.EmptyDataException;
 import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
-import com.dia.ismdtoolbackend.utility.exporter.json.JsonExporter;
-import com.dia.ismdtoolbackend.utility.exporter.turtle.TurtleFilterUtil;
-import com.dia.ismdtoolbackend.utility.exporter.turtle.TurtleFormatterUtil;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.ontology.OntologyException;
+import org.apache.jena.atlas.web.HttpException;
 import org.apache.jena.rdf.model.Model;
-import org.apache.jena.rdf.model.Property;
-import org.apache.jena.rdf.model.Resource;
-import org.apache.jena.rdf.model.StmtIterator;
+import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdfconnection.RDFConnection;
 import org.apache.jena.rdfconnection.RDFConnectionRemote;
-import org.apache.jena.vocabulary.RDF;
 import org.springframework.stereotype.Service;
 
-import java.io.StringWriter;
 import java.net.http.HttpClient;
 import java.util.Optional;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
-
-import static com.dia.constants.VocabularyConstants.SLOVNIKY_NS;
 
 @Service
 @RequiredArgsConstructor
@@ -37,7 +29,7 @@ public class OntologyDownloadServiceImpl implements OntologyDownloadService {
     private final String fusekiEndpoint;
     private final HttpClient fusekiHttpClient;
     private final OntologyMetadataRepository ontologyMetadataRepository;
-    private final JsonExporter jsonExporter;
+    private final OfnVocabularyExporter exporter;
     private final Semaphore fusekiSemaphore;
     private final int fusekiSemaphoreTimeout;
 
@@ -49,7 +41,9 @@ public class OntologyDownloadServiceImpl implements OntologyDownloadService {
             throw new OntologyNotFoundException("Metadata slovníku nebyla nalezena");
         }
 
-        String graphName = ontologyMetadataOpt.get().getGraphName();
+        OntologyMetadataEntity metadata = ontologyMetadataOpt.get();
+        String graphName = metadata.getGraphName();
+        OfnVocabularyExporter.Format ofnFormat = OfnVocabularyExporter.Format.of(format);
 
         boolean acquired;
         try {
@@ -67,85 +61,33 @@ public class OntologyDownloadServiceImpl implements OntologyDownloadService {
                 .gspEndpoint("data")
                 .httpClient(fusekiHttpClient)
                 .build()) {
-            Model model = conn.fetch(graphName);
-            Model processedModel = null;
+            Model model = fetchGraph(conn, graphName);
             try {
                 if (model.isEmpty()) {
                     log.error("Ontology model is empty.");
                     throw new EmptyDataException("Slovník je prázdný, nebo nebyl nalezen.");
                 }
-
-                processedModel = applyAllOFNTransformations(model);
-                model.close();
-                model = null;
-
-                validateNoDuplicateTransformations(processedModel);
-
-                String result;
-                if ("json-ld".equalsIgnoreCase(format)) {
-                    result = exportToOFNJson(processedModel);
-                } else if ("ttl".equalsIgnoreCase(format)) {
-                    StringWriter writer = new StringWriter();
-                    processedModel.write(writer, "TTL");
-                    result = writer.toString();
-                } else {
-                    log.error("Output format {} not supported.", format);
-                    throw new IllegalArgumentException("Nepodporovaný formát: " + format);
-                }
-
-                return result;
+                // aktualizováno is the metadata's last change, not a stored or uploaded value
+                OfnDates.replaceLastChange(model, graphName, metadata.getUpdatedAt());
+                return exporter.export(model, graphName, ofnFormat);
             } finally {
-                if (model != null) model.close();
-                if (processedModel != null) processedModel.close();
+                model.close();
             }
         } finally {
             fusekiSemaphore.release();
         }
     }
 
-    private Model applyAllOFNTransformations(Model rawModel) {
-        log.debug("Applying consolidated OFN transformations");
-
-        Model filteredModel = TurtleFilterUtil.createFilteredModel(rawModel);
+    /** An unknown graph (GSP 404) reads as an empty model. */
+    private Model fetchGraph(RDFConnection conn, String graphName) {
         try {
-            Model ofnFormattedModel = TurtleFormatterUtil.transformToOFNFormat(filteredModel);
-
-            log.debug("OFN transformation complete: {} -> {} -> {} statements",
-                    rawModel.size(), filteredModel.size(), ofnFormattedModel.size());
-
-            return ofnFormattedModel;
-        } finally {
-            filteredModel.close();
-        }
-    }
-
-    private void validateNoDuplicateTransformations(Model model) {
-        Property slovnikyPojem = model.getProperty(SLOVNIKY_NS + "pojem");
-
-        StmtIterator iter = model.listStatements(null, RDF.type, slovnikyPojem);
-        while (iter.hasNext()) {
-            Resource subject = iter.next().getSubject();
-
-            int count = 0;
-            StmtIterator typeIter = model.listStatements(subject, RDF.type, slovnikyPojem);
-            while (typeIter.hasNext()) {
-                typeIter.next();
-                count++;
+            return conn.fetch(graphName);
+        } catch (HttpException e) {
+            if (e.getStatusCode() == 404) {
+                log.error("Graph {} not found in Fuseki", graphName);
+                return ModelFactory.createDefaultModel();
             }
-
-            if (count > 1) {
-                log.warn("Duplicate type assertion detected for {}: {} times",
-                        subject.getURI(), count);
-            }
-        }
-    }
-
-    private String exportToOFNJson(Model processedModel) {
-        try {
-            return jsonExporter.exportToJson(processedModel);
-        } catch (Exception e) {
-            log.error("Error exporting to OFN JSON format: {}", e.getMessage(), e);
-            throw new JsonExportException("Chyba při exportu do JSON formátu: " + e.getMessage(), e);
+            throw e;
         }
     }
 }

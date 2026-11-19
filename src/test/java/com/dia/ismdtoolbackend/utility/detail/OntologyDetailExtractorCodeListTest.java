@@ -15,7 +15,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -99,13 +99,13 @@ class OntologyDetailExtractorCodeListTest {
 
         Resource clazz = model.createResource(CLASS_IRI);
         clazz.addProperty(RDF.type, OWL2.Class);
-        clazz.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + TRIDA));
+        clazz.addProperty(RDF.type, OWL2.Class);
         clazz.addProperty(SKOS.prefLabel, model.createLiteral("Typ turistického cíle", "cs"));
         clazz.addProperty(SKOS.inScheme, ontology);
 
         Resource plain = model.createResource(PLAIN_CLASS_IRI);
         plain.addProperty(RDF.type, OWL2.Class);
-        plain.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + TRIDA));
+        plain.addProperty(RDF.type, OWL2.Class);
         plain.addProperty(SKOS.prefLabel, model.createLiteral("Osoba", "cs"));
         plain.addProperty(SKOS.inScheme, ontology);
 

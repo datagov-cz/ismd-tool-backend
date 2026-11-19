@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.enums;
 
-import com.dia.constants.DataTypeConstants;
+import com.dia.ismdtoolbackend.constants.DataTypeConstants;
 import com.dia.ismdtoolbackend.controller.dto.DataTypeDto;
 import org.junit.jupiter.api.Test;
 
@@ -115,5 +115,26 @@ class PropertyDataTypeTest {
                     .as("code lookup for %s", type)
                     .contains(type);
         }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({
+            "boolean, http://www.w3.org/2001/XMLSchema#boolean",
+            "xsd:date, http://www.w3.org/2001/XMLSchema#date",
+            "http://www.w3.org/2001/XMLSchema#integer, http://www.w3.org/2001/XMLSchema#integer",
+            "rdfs:Literal, http://www.w3.org/2000/01/rdf-schema#Literal",
+            "Datum a čas, http://www.w3.org/2001/XMLSchema#dateTimeStamp",
+            "' anyURI ', http://www.w3.org/2001/XMLSchema#anyURI",
+            "xsd:decimal, http://www.w3.org/2000/01/rdf-schema#Literal",
+            "http://example.org/custom, http://www.w3.org/2000/01/rdf-schema#Literal",
+            "'  ', http://www.w3.org/2000/01/rdf-schema#Literal"
+    })
+    void rangeIriResolvesEveryFormAndFallsBackToLiteral(String raw, String expected) {
+        assertThat(PropertyDataType.rangeIri(raw)).isEqualTo(expected);
+    }
+
+    @Test
+    void rangeIriOfNullIsLiteral() {
+        assertThat(PropertyDataType.rangeIri(null)).isEqualTo(PropertyDataType.LITERAL.iri());
     }
 }

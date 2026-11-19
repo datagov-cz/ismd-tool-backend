@@ -9,8 +9,7 @@ import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * {@link SparqlSolutions#literalBool} must tolerate a numeric rendering of a boolean —
@@ -30,30 +29,34 @@ class SparqlSolutionsBoolTest {
 
     @Test
     void readsXsdBooleanTrue() {
-        assertTrue(SparqlSolutions.literalBool(solutionOf("\"true\"^^<http://www.w3.org/2001/XMLSchema#boolean>"), "flag"));
+        assertThat(SparqlSolutions.literalBool(solutionOf("\"true\"^^<http://www.w3.org/2001/XMLSchema#boolean>"), "flag"))
+                .isTrue();
     }
 
     @Test
     void readsXsdBooleanFalse() {
-        assertFalse(SparqlSolutions.literalBool(solutionOf("\"false\"^^<http://www.w3.org/2001/XMLSchema#boolean>"), "flag"));
+        assertThat(SparqlSolutions.literalBool(solutionOf("\"false\"^^<http://www.w3.org/2001/XMLSchema#boolean>"), "flag"))
+                .isFalse();
     }
 
     @Test
     void readsVirtuosoIntegerOneAsTrue() {
         // The real e-Sbírka shape — this is what silently broke isLatest.
-        assertTrue(SparqlSolutions.literalBool(solutionOf("\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>"), "flag"));
+        assertThat(SparqlSolutions.literalBool(solutionOf("\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>"), "flag"))
+                .isTrue();
     }
 
     @Test
     void readsVirtuosoIntegerZeroAsFalse() {
-        assertFalse(SparqlSolutions.literalBool(solutionOf("\"0\"^^<http://www.w3.org/2001/XMLSchema#integer>"), "flag"));
+        assertThat(SparqlSolutions.literalBool(solutionOf("\"0\"^^<http://www.w3.org/2001/XMLSchema#integer>"), "flag"))
+                .isFalse();
     }
 
     @Test
     void readsPlainStringForms() {
-        assertTrue(SparqlSolutions.literalBool(solutionOf("\"true\""), "flag"));
-        assertTrue(SparqlSolutions.literalBool(solutionOf("\"1\""), "flag"));
-        assertFalse(SparqlSolutions.literalBool(solutionOf("\"nonsense\""), "flag"));
+        assertThat(SparqlSolutions.literalBool(solutionOf("\"true\""), "flag")).isTrue();
+        assertThat(SparqlSolutions.literalBool(solutionOf("\"1\""), "flag")).isTrue();
+        assertThat(SparqlSolutions.literalBool(solutionOf("\"nonsense\""), "flag")).isFalse();
     }
 
     @Test
@@ -62,7 +65,7 @@ class SparqlSolutionsBoolTest {
         try (QueryExecution qe = QueryExecutionFactory.create(
                 QueryFactory.create("SELECT ?missing WHERE { }"), m)) {
             QuerySolution sol = qe.execSelect().next();
-            assertFalse(SparqlSolutions.literalBool(sol, "missing"));
+            assertThat(SparqlSolutions.literalBool(sol, "missing")).isFalse();
         }
     }
 }

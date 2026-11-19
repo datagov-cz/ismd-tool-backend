@@ -13,7 +13,7 @@ import java.util.Objects;
 
 /**
  * Converts JWT token from Keycloak to Spring Security Authentication with SecurityUser.
- * Extracts userId from "preferred_username" (with fallback to "sub") and roles from "realm_access.roles".
+ * Extracts userId from "sub", the display name from "preferred_username" and roles from "realm_access.roles".
  */
 @Slf4j
 @Component
@@ -29,8 +29,8 @@ public class JwtAuthenticationConverter implements Converter<Jwt, AbstractAuthen
         String userId = StringUtils.trim(jwt.getClaimAsString(CLAIM_SUB));
 
         if (StringUtils.isEmpty(userId)) {
-            log.error("JWT missing both 'preferred_username' and 'sub' claims");
-            throw new IllegalArgumentException("JWT must contain 'preferred_username' or 'sub' claim with user ID");
+            log.error("JWT missing 'sub' claim");
+            throw new IllegalArgumentException("JWT must contain 'sub' claim with user ID");
         }
 
         // Extract username for display purposes

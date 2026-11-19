@@ -9,9 +9,14 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
 
+import java.util.Arrays;
+import java.util.List;
+
 @Configuration
 @Slf4j
 public class CorsConfig {
+
+    private static final String ALLOWED_ORIGINS_PROPERTY = "cors.allowed-origins";
 
     private final Environment env;
 
@@ -39,10 +44,17 @@ public class CorsConfig {
     }
 
     private CorsConfigurationSource productionCorsConfigurationSource() {
-        var config = new CorsConfigUtil().createProductionCorsConfiguration();
+        var config = new CorsConfigUtil().createProductionCorsConfiguration(productionAllowedOrigins());
         var source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
         return source;
+    }
+
+    private List<String> productionAllowedOrigins() {
+        return Arrays.stream(env.getProperty(ALLOWED_ORIGINS_PROPERTY, "").split(","))
+                .map(String::trim)
+                .filter(origin -> !origin.isEmpty())
+                .toList();
     }
 
     private CorsConfigurationSource testCorsConfigurationSource() {

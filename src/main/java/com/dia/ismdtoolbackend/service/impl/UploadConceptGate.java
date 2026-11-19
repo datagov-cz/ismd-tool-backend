@@ -1,0 +1,211 @@
+package com.dia.ismdtoolbackend.service.impl;
+
+import com.dia.ismdtoolbackend.utility.upload.OwnedConcepts;
+import com.dia.ismdtoolbackend.controller.dto.RejectedConceptDto;
+import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
+import com.dia.ismdtoolbackend.enums.ConceptType;
+import com.dia.ismdtoolbackend.exception.OfnConformanceException;
+import com.dia.ismdtoolbackend.models.OntologyDetailModel;
+import com.dia.ismdtoolbackend.ofn.ConformanceIssue;
+import com.dia.ismdtoolbackend.ofn.OfnWriteGate;
+import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
+import com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector;
+import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
+import com.dia.ismdtoolbackend.utility.validation.ConceptInputValidator;
+import com.dia.ismdtoolbackend.utility.validation.ConceptInputView;
+import com.dia.ismdtoolbackend.utility.UtilityMethods;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.RDFNode;
+import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.rdf.model.Statement;
+import org.apache.jena.vocabulary.RDF;
+import org.springframework.stereotype.Component;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
+
+/**
+ * Applies the create/edit concept rules and the OFN gate to the concepts of an uploaded vocabulary,
+ * so an upload cannot import a concept in a state the edit path rejects or OFN does not allow.
+ *
+ * <p>Three rule sets: {@link ConceptInputValidator} over the values the detail read returns for
+ * the concept, the edit path's ban on a domain/range that points at a concept published in NKD, and
+ * the OFN shape and concept-kind tiers ({@link OfnWriteGate}). Completeness never rejects: an
+ * incomplete concept is stored as a draft.
+ */
+@Component
+@RequiredArgsConstructor
+@Slf4j
+class UploadConceptGate {
+
+    static final String WITHOUT_CONCEPT_TYPE = "OFN: chybí typ Pojem/Koncept (skos:Concept, slovníky:pojem)";
+
+    private final OntologyDetailExtractor detailExtractor;
+    private final NkdLinkDetector nkdLinkDetector;
+    private final ConceptMetadataRepository conceptMetadataRepository;
+    private final OfnWriteGate ofnWriteGate;
+
+    /**
+     * The domain/range targets outside the vocabulary that must not be published in NKD.
+     * Targets owned locally are left out: a working copy is published, but it is ours.
+     *
+     * @param concepts the upload's owned concepts and their resolved types
+     * @return concept IRI → its candidate targets; concepts without any are absent
+     */
+    public Map<String, List<String>> foreignDomainRangeTargets(Model model, String graphName,
+                                                               Map<String, ConceptType> concepts) {
+        Map<String, List<String>> targets = new LinkedHashMap<>();
+        concepts.forEach((iri, type) -> {
+            List<String> found = nkdLinkDetector.forbiddenDomainRangeTargets(iri, type, graphName, model);
+            if (!found.isEmpty()) targets.put(iri, found);
+        });
+        if (targets.isEmpty()) {
+            return targets;
+        }
+
+        Set<String> all = targets.values().stream().flatMap(List::stream).collect(Collectors.toSet());
+        Set<String> locallyOwned = conceptMetadataRepository.findByConceptIriIn(new ArrayList<>(all)).stream()
+                .map(ConceptMetadataEntity::getConceptIri)
+                .collect(Collectors.toSet());
+        targets.replaceAll((iri, found) -> found.stream().filter(t -> !locallyOwned.contains(t)).toList());
+        targets.values().removeIf(List::isEmpty);
+        return targets;
+    }
+
+    /**
+     * @param concepts        the upload's owned concepts and their resolved types
+     * @param domainRangeTargets the result of {@link #foreignDomainRangeTargets}
+     * @param publishedInNkd  the IRIs NKD reported as published
+     * @return one entry per concept that breaks a rule, listing every broken rule
+     */
+    public List<RejectedConceptDto> findInvalid(Model model, Map<String, ConceptType> concepts,
+                                                Map<String, List<String>> domainRangeTargets,
+                                                Collection<String> publishedInNkd) {
+        if (concepts.isEmpty()) {
+            return List.of();
+        }
+        Map<String, OntologyDetailModel.ConceptDetailModel> details = readDetails(model);
+
+        List<RejectedConceptDto> rejected = new ArrayList<>();
+        concepts.forEach((iri, type) -> {
+            List<String> problems = new ArrayList<>();
+
+            OntologyDetailModel.ConceptDetailModel detail = details.get(iri);
+            if (detail != null) {
+                Resource concept = model.getResource(iri);
+                ConceptInputView view = ConceptInputView.of(
+                        detail, type, privacyProvisions(concept), isPublic(concept));
+                ConceptInputValidator.validate(view).forEach(problem -> problems.add(problem.toString()));
+            }
+
+            List<String> published = domainRangeTargets.getOrDefault(iri, List.of()).stream()
+                    .filter(publishedInNkd::contains)
+                    .toList();
+            if (!published.isEmpty()) {
+                problems.add("definiční obor / obor hodnot odkazuje na publikovaný pojem v NKD: " + published);
+            }
+
+            if (!problems.isEmpty()) {
+                rejected.add(new RejectedConceptDto(iri, String.join("; ", problems)));
+            }
+        });
+        return rejected;
+    }
+
+    /**
+     * The OFN check of the upload as it will be stored. A vocabulary-level shape issue rejects the whole
+     * upload; a concept with a shape or concept-kind issue is rejected with every reason.
+     *
+     * @throws OfnConformanceException when the vocabulary itself does not conform
+     */
+    public List<RejectedConceptDto> findNonConformant(Model model, String graphName) {
+        List<ConformanceIssue> blocking = OfnWriteGate.blocking(ofnWriteGate.checkVocabulary(model, graphName));
+        List<ConformanceIssue> vocabulary = blocking.stream().filter(issue -> issue.conceptIri() == null).toList();
+        if (!vocabulary.isEmpty()) {
+            throw new OfnConformanceException(OfnConformanceException.Context.UPLOAD, graphName, vocabulary);
+        }
+        Map<String, List<String>> reasons = new LinkedHashMap<>();
+        for (ConformanceIssue issue : blocking) {
+            reasons.computeIfAbsent(issue.conceptIri(), iri -> new ArrayList<>()).add(reason(issue));
+        }
+        return reasons.entrySet().stream()
+                .map(entry -> new RejectedConceptDto(entry.getKey(), "OFN: " + String.join("; ", entry.getValue())))
+                .toList();
+    }
+
+    /**
+     * Owned resources with only an OWL kind and no {@code skos:inScheme}: neither the inScheme decision nor the
+     * OFN check sees them, so they are reported here and pruned like any rejected concept.
+     */
+    static List<RejectedConceptDto> findWithoutConceptType(Model model, String graphName) {
+        return OwnedConcepts.withOnlyAnOwlKind(model, graphName).stream()
+                .map(resource -> new RejectedConceptDto(resource.getURI(), WITHOUT_CONCEPT_TYPE))
+                .toList();
+    }
+
+    /** One entry per concept, its reasons joined in the order found. */
+    public static List<RejectedConceptDto> mergeByConcept(List<RejectedConceptDto> rejected) {
+        Map<String, List<String>> reasons = new LinkedHashMap<>();
+        rejected.forEach(dto -> reasons.computeIfAbsent(dto.iri(), iri -> new ArrayList<>()).add(dto.reason()));
+        return reasons.entrySet().stream()
+                .map(entry -> new RejectedConceptDto(entry.getKey(), String.join("; ", entry.getValue())))
+                .toList();
+    }
+
+    /** "field: message", the field being the path below the concept (e.g. {@code je-sdílen-v-ppdf}). */
+    private static String reason(ConformanceIssue issue) {
+        String location = issue.location() == null ? "" : issue.location();
+        int conceptEnd = location.indexOf("]/");
+        String field = location.startsWith("pojmy[") && conceptEnd > 0 ? location.substring(conceptEnd + 2) : "";
+        return field.isEmpty() ? issue.message() : field + ": " + issue.message();
+    }
+
+    private Map<String, OntologyDetailModel.ConceptDetailModel> readDetails(Model model) {
+        Model ofnModel = detailExtractor.applyOFNTransformationsForUpload(model);
+        try {
+            return detailExtractor.extractOntologyDetail(ofnModel, iri -> null).getConcepts().stream()
+                    .filter(detail -> detail.getIri() != null)
+                    .collect(Collectors.toMap(OntologyDetailModel.ConceptDetailModel::getIri,
+                            Function.identity(), (first, second) -> first));
+        } finally {
+            ofnModel.close();
+        }
+    }
+
+    /** Provisions under either predicate the writers and the OFN export use, in any namespace. */
+    private static List<String> privacyProvisions(Resource concept) {
+        Set<String> provisions = new LinkedHashSet<>();
+        for (Statement stmt : concept.listProperties().toList()) {
+            String localName = UtilityMethods.extractNameFromIRI(stmt.getPredicate().getURI());
+            if (USTANOVENI_NEVEREJNOST.equals(localName) || USTANOVENI_LONG.equals(localName)) {
+                RDFNode object = stmt.getObject();
+                provisions.add(object.isURIResource() ? object.asResource().getURI()
+                        : object.isLiteral() ? object.asLiteral().getLexicalForm() : object.toString());
+            }
+        }
+        return new ArrayList<>(provisions);
+    }
+
+    /** True/false from the veřejný/neveřejný-údaj type; null when the concept carries neither. */
+    private static Boolean isPublic(Resource concept) {
+        Model model = concept.getModel();
+        if (concept.hasProperty(RDF.type, model.createResource(OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ))) {
+            return Boolean.TRUE;
+        }
+        if (concept.hasProperty(RDF.type, model.createResource(OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ))) {
+            return Boolean.FALSE;
+        }
+        return null;
+    }
+}

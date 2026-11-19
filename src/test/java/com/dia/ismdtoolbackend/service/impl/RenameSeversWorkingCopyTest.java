@@ -6,11 +6,8 @@ import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
 import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
 import org.junit.jupiter.api.Test;
 
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Method;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * A working copy is tracked by shared identity with its NKD twin — its {@code conceptIri} IS the twin's
@@ -36,16 +33,9 @@ class RenameSeversWorkingCopyTest {
 
     private void invokeUpdate(ConceptMetadataEntity metadata, ConceptEditModel edit,
                               ConceptEditor.EditResult editResult, boolean severOnRename) throws Exception {
-        Constructor<?> ctor = ConceptServiceImpl.class.getDeclaredConstructors()[0];
-        ctor.setAccessible(true);
-        ConceptServiceImpl service =
-                (ConceptServiceImpl) ctor.newInstance(new Object[ctor.getParameterCount()]);
-
-        Method m = ConceptServiceImpl.class.getDeclaredMethod("updateMetadataFromEditResult",
-                ConceptMetadataEntity.class, ConceptEditModel.class,
-                ConceptEditor.EditResult.class, boolean.class);
-        m.setAccessible(true);
-        m.invoke(service, metadata, edit, editResult, severOnRename);
+        ConceptEditOperation editOperation =
+                new ConceptEditOperation(null, null, null, null, null, null, null, null, null, null, null);
+        editOperation.updateMetadataFromEditResult(metadata, edit, editResult, severOnRename);
     }
 
     @Test
@@ -55,8 +45,8 @@ class RenameSeversWorkingCopyTest {
 
         invokeUpdate(metadata, new ClassConceptEditModel(), renamed, true);
 
-        assertEquals(NEW_IRI, metadata.getConceptIri(), "IRI must relocate");
-        assertEquals(Boolean.FALSE, metadata.getIsPublished(), "rename must sever the working copy");
+        assertThat(metadata.getConceptIri()).as("IRI must relocate").isEqualTo(NEW_IRI);
+        assertThat(metadata.getIsPublished()).as("rename must sever the working copy").isFalse();
     }
 
     @Test
@@ -66,8 +56,10 @@ class RenameSeversWorkingCopyTest {
 
         invokeUpdate(metadata, new ClassConceptEditModel(), noRename, true);
 
-        assertEquals(OLD_IRI, metadata.getConceptIri());
-        assertTrue(metadata.getIsPublished(), "an edit that does not relocate the IRI keeps the working copy");
+        assertThat(metadata.getConceptIri()).isEqualTo(OLD_IRI);
+        assertThat(metadata.getIsPublished())
+                .as("an edit that does not relocate the IRI keeps the working copy")
+                .isTrue();
     }
 
     @Test
@@ -79,8 +71,8 @@ class RenameSeversWorkingCopyTest {
 
         invokeUpdate(metadata, new ClassConceptEditModel(), renamed, false);
 
-        assertEquals(NEW_IRI, metadata.getConceptIri(), "IRI still relocates on the sync path");
-        assertTrue(metadata.getIsPublished(), "sync opts out of the generic sever");
+        assertThat(metadata.getConceptIri()).as("IRI still relocates on the sync path").isEqualTo(NEW_IRI);
+        assertThat(metadata.getIsPublished()).as("sync opts out of the generic sever").isTrue();
     }
 
     @Test
@@ -92,6 +84,6 @@ class RenameSeversWorkingCopyTest {
 
         invokeUpdate(draft, new ClassConceptEditModel(), renamed, true);
 
-        assertEquals(Boolean.FALSE, draft.getIsPublished(), "a plain draft has nothing to sever");
+        assertThat(draft.getIsPublished()).as("a plain draft has nothing to sever").isFalse();
     }
 }

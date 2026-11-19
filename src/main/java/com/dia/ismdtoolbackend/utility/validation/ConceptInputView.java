@@ -1,9 +1,14 @@
 package com.dia.ismdtoolbackend.utility.validation;
 
+import com.dia.ismdtoolbackend.controller.dto.CodeListDto;
+import com.dia.ismdtoolbackend.controller.dto.NonLegalSourceDto;
+import com.dia.ismdtoolbackend.enums.ConceptType;
+import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
+import com.dia.ismdtoolbackend.models.concept.ConceptValidationUtil;
 import com.dia.ismdtoolbackend.models.concept.DigitalObjectModel;
 import com.dia.ismdtoolbackend.models.concept.PropertyConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.PropertyConceptModel;
@@ -62,6 +67,42 @@ public record ConceptInputView(
                     r.getContentType(), null, null, "Vztah", "ý");
         }
         return null;
+    }
+
+    /**
+     * Adapts a concept read from stored or uploaded RDF — the values the detail read returns
+     * and an edit would send back.
+     *
+     * @param privacyProvisions read from the graph by the caller; the detail read does not carry them
+     * @param isPublic          from the veřejný/neveřejný-údaj type; null when the concept has neither
+     */
+    public static ConceptInputView of(OntologyDetailModel.ConceptDetailModel d, ConceptType type,
+                                      List<String> privacyProvisions, Boolean isPublic) {
+        boolean isClass = type == ConceptType.TRIDA;
+        CodeListDto codeList = isClass ? d.getCodeList() : null;
+        return new ConceptInputView(
+                d.getDefiningLegalSources(), d.getRelatedLegalSources(),
+                digitalObjects(d.getDefiningNonLegalSources()), digitalObjects(d.getRelatedNonLegalSources()),
+                d.getExactMatches(), privacyProvisions, isPublic,
+                d.getAgenda(), d.getAis(),
+                d.getSharingMethods() == null ? null
+                        : d.getSharingMethods().stream().map(ConceptValidationUtil::governanceValueOf).toList(),
+                ConceptValidationUtil.governanceValueOf(d.getAcquisitionMethod()),
+                ConceptValidationUtil.governanceValueOf(d.getContentType()),
+                codeList == null ? null : codeList.getIri(),
+                codeList == null ? null : codeList.getDatovaSadaVNkod(),
+                isClass ? "Třída" : type == ConceptType.VZTAH ? "Vztah" : "Vlastnost",
+                type == ConceptType.VZTAH ? "ý" : "á");
+    }
+
+    /** A stored digital object may have no URL; only a URL that is present is validated. */
+    private static List<DigitalObjectModel> digitalObjects(List<NonLegalSourceDto> sources) {
+        if (sources == null) return null;
+        return sources.stream().filter(source -> source.getUrl() != null && !source.getUrl().isBlank()).map(source -> {
+            DigitalObjectModel model = new DigitalObjectModel();
+            model.setUrl(source.getUrl());
+            return model;
+        }).toList();
     }
 
     /** Adapts an edit payload; returns null when the concrete type is unrecognized. */

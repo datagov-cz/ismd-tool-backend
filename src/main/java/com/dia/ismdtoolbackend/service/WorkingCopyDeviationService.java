@@ -55,15 +55,14 @@ public interface WorkingCopyDeviationService {
     Map<String, ConceptDetailModel> canonicalLocalConcepts(Model processedModel, List<String> conceptIris);
 
     /**
-     * The one canonical local read used for deviation comparison (cached per {@code conceptIri}). Exposed
-     * on the interface so the self-proxy call from {@link #deviationFor} honours the cache. Returns
+     * The one canonical local read used for deviation comparison (cached per {@code conceptIri}). Returns
      * {@code null} when the concept has no metadata row or its graph is empty.
      */
     ConceptDetailModel canonicalLocalConcept(String conceptIri);
 
     /**
      * {@link #canonicalLocalConcept} derived from a graph the caller already holds, sharing the same
-     * cache entry. Exposed on the interface so the self-proxy call honours that cache.
+     * cache entry.
      *
      * @param rawModel the concept's own graph, untransformed
      */

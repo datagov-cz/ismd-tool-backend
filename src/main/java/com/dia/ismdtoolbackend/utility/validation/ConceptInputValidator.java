@@ -6,7 +6,7 @@ import com.dia.ismdtoolbackend.models.concept.ConceptValidationUtil;
 import com.dia.ismdtoolbackend.models.concept.DigitalObjectModel;
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
-import com.dia.utility.UtilityMethods;
+import com.dia.ismdtoolbackend.utility.UtilityMethods;
 
 import java.util.List;
 
@@ -34,7 +34,8 @@ public final class ConceptInputValidator {
     public record InvalidInput(String field, String value, String reason) {
         @Override
         public String toString() {
-            return field + "='" + value + "' (" + reason + ")";
+            // A rule over several fields has no single offending value; its reason stands alone.
+            return value == null ? reason : field + "='" + value + "' (" + reason + ")";
         }
     }
 

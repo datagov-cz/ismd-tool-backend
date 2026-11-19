@@ -32,7 +32,7 @@ import java.util.List;
  * The diagram layer's REST surface. Paths nest the diagram under its ontology
  * ({@code /{ontologySlug}/{diagramId}/…}) so every write authorizes the slug through
  * {@code belongsToUserBySlug}. That check does not constrain the diagram id beside it, so the service also
- * asserts the diagram belongs to the named ontology — see {@code DiagramServiceImpl.requireDiagramOf}.
+ * asserts the diagram belongs to the named ontology — see {@code DiagramScopeReader.requireDiagramOf}.
  */
 @RestController
 @RequestMapping("/api/diagram")

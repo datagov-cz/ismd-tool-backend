@@ -8,7 +8,6 @@ import java.util.List;
 
 public interface CommentRepository extends JpaRepository<CommentEntity, Long> {
     List<CommentEntity> findByOntologyMetadataId(Long ontologyMetadataId);
-    List<CommentEntity> findByOntologyMetadataIdIn(List<Long> ontologyMetadataIds);
 
     /**
      * Join-fetches both owners: {@code ConceptMetadataMapper.commentEntityToModel} reads

@@ -1,24 +1,14 @@
 package com.dia.ismdtoolbackend.outbox;
 
+import com.dia.ismdtoolbackend.testsupport.pg.OutboxFlowIT;
+import com.dia.ismdtoolbackend.testsupport.pg.OutboxFlowTestBase;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.Statement;
-import org.apache.jena.sys.JenaSystem;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.persistence.autoconfigure.EntityScan;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.context.annotation.Import;
-import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
@@ -35,17 +25,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *
  * <p>The whole class is {@code NOT_SUPPORTED} (no ambient @DataJpaTest transaction) so every test
  * drives its own transaction boundary via {@link TransactionTemplate} and commits real rows —
- * which is what makes the rollback assertion meaningful. Committed rows outlive the test, so the
- * table is emptied both before and after each one.
+ * which is what makes the rollback assertion meaningful.
  */
-@DataJpaTest
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@ActiveProfiles("junit")
-@Import({TransactionTemplateConfig.class, OutboxWriter.class})
-@EntityScan(basePackageClasses = OutboxEntry.class)
-@EnableJpaRepositories(basePackageClasses = OutboxEntryRepository.class)
-@Transactional(propagation = Propagation.NOT_SUPPORTED)
-class OutboxWriterTest extends PostgresIntegrationTestBase {
+@OutboxFlowIT
+class OutboxWriterTest extends OutboxFlowTestBase {
 
     private static final String GRAPH = "https://slovnik.gov.cz/g";
     private static final String IRI = "https://slovnik.gov.cz/g/pojem/a";
@@ -61,31 +44,6 @@ class OutboxWriterTest extends PostgresIntegrationTestBase {
 
     @Autowired
     private TransactionTemplate txTemplate;
-
-    @BeforeAll
-    static void initJena() {
-        // Force Jena's static system init before any vocabulary/Model use, so the Spring test
-        // classloader can't trigger a partial vocabulary init (NodeFactory/SKOS NoClassDefFound).
-        JenaSystem.init();
-    }
-
-    /**
-     * Clean BEFORE as well as after. The assertions here count rows table-wide
-     * ({@code repository.count()}), and {@link PostgresIntegrationTestBase} shares ONE container
-     * across every subclass for the life of the JVM — so an {@code @AfterEach} alone leaves the
-     * first test in the class asserting against whatever an earlier class left behind. Surefire
-     * class order is unpinned and differs between platforms, which is what makes that a
-     * passes-locally-fails-in-CI failure rather than a consistent one.
-     */
-    @BeforeEach
-    void startFromEmpty() {
-        txTemplate.executeWithoutResult(tx -> repository.deleteAll());
-    }
-
-    @AfterEach
-    void cleanUp() {
-        txTemplate.executeWithoutResult(tx -> repository.deleteAll());
-    }
 
     /** A standalone triple (its own throwaway model) with a literal object. */
     private Statement literalTriple(String predicateIri, String literal) {

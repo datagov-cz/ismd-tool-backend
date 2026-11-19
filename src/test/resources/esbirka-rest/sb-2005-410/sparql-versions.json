@@ -1,0 +1,44 @@
+[
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2005/410/2022-10-11",
+  "ucinnostOd": "2022-10-11",
+  "ucinnostDo": "2024-06-30",
+  "typ": "https://opendata.eselpoint.gov.cz/esel-esb/cis-esb-typ-znění/položka/KONSOL",
+  "isLatest": "1"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2005/410/2017-01-14",
+  "ucinnostOd": "2017-01-14",
+  "ucinnostDo": "2022-10-10",
+  "typ": "https://opendata.eselpoint.gov.cz/esel-esb/cis-esb-typ-znění/položka/KONSOL",
+  "isLatest": "0"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2005/410/2009-10-23",
+  "ucinnostOd": "2009-10-23",
+  "ucinnostDo": "2017-01-13",
+  "typ": "https://opendata.eselpoint.gov.cz/esel-esb/cis-esb-typ-znění/položka/KONSOL",
+  "isLatest": "0"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2005/410/2005-11-16",
+  "ucinnostOd": "2005-11-16",
+  "ucinnostDo": "2009-10-22",
+  "typ": "https://opendata.eselpoint.gov.cz/esel-esb/cis-esb-typ-znění/položka/KONSOL",
+  "isLatest": "0"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2005/410/2005-10-17",
+  "ucinnostOd": "2005-10-17",
+  "ucinnostDo": "2005-11-15",
+  "typ": "https://opendata.eselpoint.gov.cz/esel-esb/cis-esb-typ-znění/položka/KONSOL",
+  "isLatest": "0"
+ },
+ {
+  "iri": "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2005/410/0000-00-00",
+  "ucinnostOd": "2005-10-17",
+  "ucinnostDo": null,
+  "typ": "https://opendata.eselpoint.gov.cz/esel-esb/cis-esb-typ-znění/položka/VYHLZNE",
+  "isLatest": "0"
+ }
+]

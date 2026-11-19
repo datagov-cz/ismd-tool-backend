@@ -5,8 +5,10 @@ import com.dia.ismdtoolbackend.models.eli.FragmentModel;
 import com.dia.ismdtoolbackend.models.eli.FragmentResolutionModel;
 import com.dia.ismdtoolbackend.models.eli.LawModel;
 import com.dia.ismdtoolbackend.models.eli.LawNumberGroupModel;
+import com.dia.ismdtoolbackend.models.eli.LawNumberSearchModel;
 import com.dia.ismdtoolbackend.models.eli.LawVersionModel;
 import com.dia.ismdtoolbackend.query.EsbirkaSPARQLQuery;
+import com.dia.ismdtoolbackend.utility.eli.EsbirkaFragmentKind;
 import com.dia.ismdtoolbackend.utility.sparql.HttpSparqlExecutor;
 import com.dia.ismdtoolbackend.utility.sparql.SparqlCircuitBreaker;
 import com.dia.ismdtoolbackend.utility.sparql.SparqlSolutions;
@@ -15,6 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.query.QuerySolution;
 import org.apache.jena.query.ResultSet;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.net.http.HttpClient;
@@ -26,13 +29,11 @@ import java.util.function.Function;
 
 @Component
 @Slf4j
-public class EsbirkaSparqlClient {
+@ConditionalOnProperty(name = "esbirka.provider", havingValue = "sparql", matchIfMissing = true)
+public class EsbirkaSparqlClient implements EsbirkaClient {
 
-    /**
-     * Endpoint label used for {@link com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException} so the
-     * global handler can render a per-endpoint Czech message.
-     */
-    public static final String ESBIRKA_LABEL = "e-Sbírka";
+    /** Row cap on the act fetch behind {@link #searchLawsByNumber}; group size itself is unbounded. */
+    public static final int GROUPED_ROW_LIMIT = 600;
 
     private final HttpSparqlExecutor executor;
 
@@ -64,10 +65,20 @@ public class EsbirkaSparqlClient {
         }
     }
 
-    public List<LawModel> searchLaws(String q, int limit) {
-        return executeSelect("law search",
-                EsbirkaSPARQLQuery.buildLawSearchQuery(q, limit),
-                this::mapLawRows);
+    /**
+     * Two queries: the {@code groupLimit} best čísla with dataset-wide counts, then the acts of
+     * exactly those čísla (capped at {@code GROUPED_ROW_LIMIT} rows). Filling the group cap is
+     * reported as {@code moreGroups}.
+     */
+    @Override
+    public LawNumberSearchModel searchLawsByNumber(String cisloPrefix, String rokPrefix, int groupLimit) {
+        List<LawNumberGroupModel> groups = searchLawNumberGroups(cisloPrefix, rokPrefix, groupLimit);
+        if (groups.isEmpty()) {
+            return LawNumberSearchModel.empty();
+        }
+        List<String> cisla = groups.stream().map(LawNumberGroupModel::cislo).toList();
+        return new LawNumberSearchModel(groups, fetchLawsByNumbers(cisla, rokPrefix, GROUPED_ROW_LIMIT),
+                groups.size() >= groupLimit);
     }
 
     /**
@@ -95,10 +106,21 @@ public class EsbirkaSparqlClient {
                 this::mapLawRows);
     }
 
+    /** The SPARQL dataset has no name index; name search is REST-only. */
+    @Override
+    public List<LawModel> searchLawsByName(String q, int limit) {
+        return List.of();
+    }
+
     /**
-     * Exact law lookup by predpis number + year. Returns empty Optional when no law
-     * matches (e.g. the number/year combination does not exist in the dataset).
+     * Exact law lookup by predpis number + year, in any collection: the dataset's {@code LIMIT 1}
+     * picks one when a číslo/rok exists in several. Returns empty Optional when no law matches.
      */
+    @Override
+    public Optional<LawModel> findLaw(String sbirka, String number, int year) {
+        return findLawByNumberYear(number, year);
+    }
+
     public Optional<LawModel> findLawByNumberYear(String number, int year) {
         List<LawModel> rows = executeSelect("law by number/year",
                 EsbirkaSPARQLQuery.buildLawByNumberYearQuery(number, year),
@@ -106,23 +128,19 @@ public class EsbirkaSparqlClient {
         return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
     }
 
+    @Override
     public List<LawVersionModel> fetchVersions(String lawIri) {
         return executeSelect("version list",
                 EsbirkaSPARQLQuery.buildVersionListQuery(lawIri),
                 this::mapVersionRows);
     }
 
-    public List<FragmentModel> fetchFragments(String versionIri) {
-        return executeSelect("fragment tree",
-                EsbirkaSPARQLQuery.buildFragmentTreeQuery(versionIri),
-                this::mapFragmentRows);
-    }
-
     /**
      * Whole-version content: every fragment with its rendered HTML body (obsah) in one
-     * round-trip. Same shape as {@link #fetchFragments} plus a (nullable) {@code bodyHtml}
-     * per row — structural fragments carry no body.
+     * round-trip, with a (nullable) {@code bodyHtml} per row — structural fragments carry
+     * no body.
      */
+    @Override
     public List<FragmentModel> fetchVersionContent(String versionIri) {
         return executeSelect("version content",
                 EsbirkaSPARQLQuery.buildVersionContentQuery(versionIri),
@@ -136,6 +154,7 @@ public class EsbirkaSparqlClient {
      * {@link com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException}
      * on connection failures via the executor.
      */
+    @Override
     public Optional<FragmentResolutionModel> resolveFragment(String fragmentIri, String versionIri, String lawIri) {
         List<FragmentResolutionModel> rows = executeSelect("fragment resolution",
                 EsbirkaSPARQLQuery.buildResolveFragmentQuery(fragmentIri, versionIri, lawIri),
@@ -197,27 +216,9 @@ public class EsbirkaSparqlClient {
         return out;
     }
 
-    private List<FragmentModel> mapFragmentRows(ResultSet rs) {
-        List<FragmentModel> out = new ArrayList<>();
-        while (rs.hasNext()) {
-            QuerySolution sol = rs.next();
-            String iri = SparqlSolutions.resourceUri(sol, "fragment");
-            String parent = SparqlSolutions.resourceUri(sol, "parent");
-            String citation = SparqlSolutions.literalString(sol, "citace");
-            String order = SparqlSolutions.literalString(sol, "order");
-            if (iri == null) {
-                log.warn("Fragment row missing iri; skipping.");
-                continue;
-            }
-            String kind = parseKindFromIri(iri);
-            out.add(new FragmentModel(iri, parent, citation, kind, order));
-        }
-        return out;
-    }
-
     /**
-     * Like {@link #mapFragmentRows} but also reads the OPTIONAL {@code obsah} HTML body.
-     * A null body is expected and valid for structural fragments (Část/Hlava/…).
+     * Fragment rows with the OPTIONAL {@code obsah} HTML body. A null body is expected and
+     * valid for structural fragments (Část/Hlava/…).
      */
     private List<FragmentModel> mapFragmentContentRows(ResultSet rs) {
         List<FragmentModel> out = new ArrayList<>();
@@ -232,7 +233,7 @@ public class EsbirkaSparqlClient {
                 log.warn("Fragment content row missing iri; skipping.");
                 continue;
             }
-            String kind = parseKindFromIri(iri);
+            String kind = EsbirkaFragmentKind.fromIri(iri);
             out.add(new FragmentModel(iri, parent, citation, kind, order, bodyHtml));
         }
         return out;
@@ -249,17 +250,5 @@ public class EsbirkaSparqlClient {
             out.add(new FragmentResolutionModel(citation, validUntil, isLatest, bodyHtml));
         }
         return out;
-    }
-
-    /**
-     * Parse the fragment kind from the last IRI segment, e.g.
-     * ".../par_122/odst_4/pism_g" → "pism". Returns "unknown" if no underscore segment found.
-     */
-    private static String parseKindFromIri(String iri) {
-        int slash = iri.lastIndexOf('/');
-        if (slash < 0 || slash >= iri.length() - 1) return "unknown";
-        String last = iri.substring(slash + 1);
-        int underscore = last.indexOf('_');
-        return underscore > 0 ? last.substring(0, underscore) : last;
     }
 }

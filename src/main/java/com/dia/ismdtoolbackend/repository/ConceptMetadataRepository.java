@@ -17,11 +17,11 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
     /**
      * Fetch a concept's metadata row with a {@code SELECT … FOR UPDATE} row lock.
      * <p>
-     * Used on the outbox edit/delete path to serialize concurrent writes to the SAME concept:
+     * Used on the edit/delete path to serialize concurrent writes to the SAME concept:
      * the relay's per-aggregate ordering is correct only if two outbox rows for one aggregate are
      * never enqueued concurrently (a lower {@code seq} could otherwise commit after a higher one,
      * inverting their apply order — the relay's gate query is an unlocked SELECT and can't see a
-     * concurrent drain's in-flight row). Locking this row at the top of an outbox-path edit/delete
+     * concurrent drain's in-flight row). Locking this row at the top of an edit/delete
      * makes a second concurrent edit of the same concept block until the first commits, so their
      * outbox rows are enqueued (and ordered) strictly one after the other. This converts the
      * "single-threaded edit-per-concept" assumption into a structural guarantee.
@@ -112,7 +112,7 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
 
     /**
      * Concept counts grouped by graph_name, restricted to a fixed set of graphs.
-     * Used by search to populate {@code conceptCount} on ontology results — one
+     * Used by search and the vocabulary list to populate {@code conceptCount} — one
      * batched query per page instead of N round-trips.
      * <p>
      * Returns {@code Object[]} pairs {@code [graphName, count]} so callers can
@@ -129,6 +129,8 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
             GROUP BY c.graph_name
             """, nativeQuery = true)
     List<Object[]> countByGraphNameIn(@Param("graphNames") List<String> graphNames);
+
+    long countByGraphName(String graphName);
 
     Optional<ConceptMetadataEntity> findByConceptIri(String conceptIri);
 

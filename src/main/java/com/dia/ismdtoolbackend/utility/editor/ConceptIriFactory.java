@@ -1,10 +1,10 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
-import com.dia.utility.DataTypeConverter;
-import com.dia.utility.URIGenerator;
-import com.dia.utility.UtilityMethods;
+import com.dia.ismdtoolbackend.utility.DataTypeConverter;
+import com.dia.ismdtoolbackend.utility.URIGenerator;
+import com.dia.ismdtoolbackend.utility.UtilityMethods;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 
 /**
  * Owns all IRI / namespace generation for the concept editor.
@@ -25,7 +25,7 @@ class ConceptIriFactory {
 
     /**
      * Resolves and sets the effective namespace for the current edit. Falls back
-     * to {@link com.dia.constants.VocabularyConstants#DEFAULT_NS} when the supplied
+     * to {@link com.dia.ismdtoolbackend.constants.VocabularyConstants#DEFAULT_NS} when the supplied
      * namespace is blank or not a valid IRI.
      */
     void useEffectiveNamespace(String namespace) {

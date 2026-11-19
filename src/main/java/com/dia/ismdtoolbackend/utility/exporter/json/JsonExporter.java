@@ -10,17 +10,17 @@ import org.apache.jena.rdf.model.*;
 public class JsonExporter {
 
     private final ModelAnalyzer modelAnalyzer;
-    private final ConceptProcessor conceptProcessor;
+    private final ConceptJsonMapper conceptJsonMapper;
     private final JsonFormatter jsonFormatter;
 
-    public JsonExporter(ModelAnalyzer modelAnalyzer, ConceptProcessor conceptProcessor, JsonFormatter jsonFormatter) {
+    public JsonExporter(ModelAnalyzer modelAnalyzer, ConceptJsonMapper conceptJsonMapper, JsonFormatter jsonFormatter) {
         this.modelAnalyzer = modelAnalyzer;
-        this.conceptProcessor = conceptProcessor;
+        this.conceptJsonMapper = conceptJsonMapper;
         this.jsonFormatter = jsonFormatter;
     }
 
     public JsonExporter() {
-        this(new ModelAnalyzer(), new ConceptProcessor(), new JsonFormatter());
+        this(new ModelAnalyzer(), new ConceptJsonMapper(), new JsonFormatter());
     }
 
     public String exportToJson(Model model) {
@@ -31,7 +31,7 @@ public class JsonExporter {
 
             ModelStructure structure = modelAnalyzer.analyzeModel(model);
 
-            ConceptData conceptData = conceptProcessor.processAllConcepts(ontModel, structure);
+            ConceptData conceptData = conceptJsonMapper.processAllConcepts(ontModel, structure);
 
             String jsonResult = jsonFormatter.formatAsJson(structure, conceptData);
 

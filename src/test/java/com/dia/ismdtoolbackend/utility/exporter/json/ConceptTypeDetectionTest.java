@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.utility.exporter.json;
 
+import com.dia.ismdtoolbackend.exception.ModelProcessingException;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.vocabulary.OWL2;
@@ -10,30 +11,30 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 import static com.dia.ismdtoolbackend.utility.exporter.RdfTestModelFactory.*;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
-@DisplayName("ConceptProcessor - Type Detection & Mapping")
+@DisplayName("ConceptJsonMapper - Type Detection & Mapping")
 class ConceptTypeDetectionTest {
 
-    private ConceptProcessor processor;
+    private ConceptJsonMapper processor;
 
     @BeforeEach
     void setUp() {
-        processor = new ConceptProcessor();
+        processor = new ConceptJsonMapper();
     }
 
     static Stream<Arguments> ofnTypeProvider() {
         return Stream.of(
-                Arguments.of(TRIDA, TRIDA_JSON_LD, "třída"),
-                Arguments.of(VZTAH, VZTAH_JSON_LD, "vztah"),
-                Arguments.of(VLASTNOST, VLASTNOST_JSON_LD, "vlastnost"),
                 Arguments.of(TSP, TSP_JSON_LD, "typ-subjektu-práva"),
                 Arguments.of(TOP, TOP_JSON_LD, "typ-objektu-práva")
         );
@@ -51,10 +52,45 @@ class ConceptTypeDetectionTest {
 
         @SuppressWarnings("unchecked")
         List<String> types = (List<String>) result.get("typ");
-        assertNotNull(types);
-        assertTrue(types.contains(POJEM_JSON_LD), "Should always contain Pojem");
-        assertTrue(types.contains("Koncept"), "Should always contain Koncept");
-        assertTrue(types.contains(expectedJsonLd), "Should contain " + expectedJsonLd);
+        assertThat(types).isNotNull();
+        assertThat(types).as("Should always contain Pojem").contains(POJEM_JSON_LD);
+        assertThat(types).as("Should always contain Koncept").contains("Koncept");
+        assertThat(types).as("Should contain " + expectedJsonLd).contains(expectedJsonLd);
+    }
+
+    static Stream<Arguments> vsgovTypeProvider() {
+        return Stream.of(
+                Arguments.of(com.dia.ismdtoolbackend.ofn.OfnIris.TYP_SUBJEKTU_PRAVA, TSP_JSON_LD),
+                Arguments.of(com.dia.ismdtoolbackend.ofn.OfnIris.TYP_OBJEKTU_PRAVA, TOP_JSON_LD)
+        );
+    }
+
+    @ParameterizedTest(name = "OFN vsgov type {0} maps to {1}")
+    @MethodSource("vsgovTypeProvider")
+    @DisplayName("Typ subjektu/objektu práva in the OFN vsgov: namespace is detected")
+    void vsgovType_mapsToJsonLdType(String typeIri, String expectedJsonLd) {
+        OntModel model = createDefaultModel();
+        Resource concept = addSkosConcept(model, "test-vsgov", "Test");
+        concept.addProperty(RDF.type, OWL2.Class);
+        concept.addProperty(RDF.type, model.createResource(typeIri));
+        ModelStructure structure = createModelStructure(model);
+
+        Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
+
+        @SuppressWarnings("unchecked")
+        List<String> types = (List<String>) result.get("typ");
+        assertThat(types).containsOnlyOnce(expectedJsonLd);
+    }
+
+    @Test
+    @DisplayName("A concept typed only with the OFN vsgov: type is a concept")
+    void vsgovOnlyConceptIsDetected() {
+        OntModel model = createDefaultModel();
+        Resource concept = model.createResource("https://example.org/pojem/osoba");
+        concept.addProperty(RDF.type, model.createResource(com.dia.ismdtoolbackend.ofn.OfnIris.TYP_SUBJEKTU_PRAVA));
+
+        assertThat(new ConceptTypeJsonMapper().isConceptResource(concept,
+                new ConceptTypeJsonMapper().getConceptTypes(model))).isTrue();
     }
 
     static Stream<Arguments> legalTypeProvider() {
@@ -76,7 +112,7 @@ class ConceptTypeDetectionTest {
 
         @SuppressWarnings("unchecked")
         List<String> types = (List<String>) result.get("typ");
-        assertTrue(types.contains(expectedJsonLd));
+        assertThat(types).contains(expectedJsonLd);
     }
 
     @Test
@@ -91,7 +127,7 @@ class ConceptTypeDetectionTest {
 
         @SuppressWarnings("unchecked")
         List<String> types = (List<String>) result.get("typ");
-        assertTrue(types.contains(TRIDA_JSON_LD));
+        assertThat(types).contains(TRIDA_JSON_LD);
     }
 
     @Test
@@ -106,7 +142,7 @@ class ConceptTypeDetectionTest {
 
         @SuppressWarnings("unchecked")
         List<String> types = (List<String>) result.get("typ");
-        assertTrue(types.contains(VZTAH_JSON_LD));
+        assertThat(types).contains(VZTAH_JSON_LD);
     }
 
     @Test
@@ -121,15 +157,15 @@ class ConceptTypeDetectionTest {
 
         @SuppressWarnings("unchecked")
         List<String> types = (List<String>) result.get("typ");
-        assertTrue(types.contains(VLASTNOST_JSON_LD));
+        assertThat(types).contains(VLASTNOST_JSON_LD);
     }
 
     @Test
-    @DisplayName("Multiple OFN types on same concept are all detected")
+    @DisplayName("Multiple types on same concept are all detected")
     void multipleTypes_allDetected() {
         OntModel model = createDefaultModel();
         Resource concept = addSkosConcept(model, "multi", "Multi");
-        concept.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + TRIDA));
+        concept.addProperty(RDF.type, OWL2.Class);
         concept.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + TSP));
         ModelStructure structure = createModelStructure(model);
 
@@ -137,42 +173,35 @@ class ConceptTypeDetectionTest {
 
         @SuppressWarnings("unchecked")
         List<String> types = (List<String>) result.get("typ");
-        assertTrue(types.contains(TRIDA_JSON_LD));
-        assertTrue(types.contains(TSP_JSON_LD));
+        assertThat(types).contains(TRIDA_JSON_LD);
+        assertThat(types).contains(TSP_JSON_LD);
     }
 
-    @Test
-    @DisplayName("Vlastnost type suppressed when concept is also a Vztah")
-    void vlastnostSuppressedWhenVztah() {
-        OntModel model = createDefaultModel();
-        Resource concept = addSkosConcept(model, "vztah-vlastnost", "Both");
-        concept.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + VZTAH));
-        concept.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + VLASTNOST));
-        ModelStructure structure = createModelStructure(model);
-
-        Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
-
-        @SuppressWarnings("unchecked")
-        List<String> types = (List<String>) result.get("typ");
-        assertTrue(types.contains(VZTAH_JSON_LD));
-        assertFalse(types.contains(VLASTNOST_JSON_LD),
-                "Vlastnost should be suppressed when Vztah is present");
+    static Stream<Arguments> mixedPropertyRelationshipSignals() {
+        return Stream.of(
+                Arguments.of(OWL2.DatatypeProperty.getURI(), OWL2.ObjectProperty.getURI())
+        );
     }
 
-    @Test
-    @DisplayName("DatatypeProperty type suppressed when concept is also a Vztah")
-    void datatypePropertySuppressedWhenVztah() {
+    @ParameterizedTest(name = "{0} + {1} is rejected")
+    @MethodSource("mixedPropertyRelationshipSignals")
+    @DisplayName("A concept typed as both a property and a relationship is rejected")
+    void mixedPropertyAndRelationshipSignals_throw(String firstType, String secondType) {
         OntModel model = createDefaultModel();
-        Resource concept = addSkosConcept(model, "vztah-dp", "Vztah+DP");
-        concept.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + VZTAH));
-        concept.addProperty(RDF.type, OWL2.DatatypeProperty);
+        Resource concept = addSkosConcept(model, "mixed", "Mixed");
+        concept.addProperty(RDF.type, model.createResource(firstType));
+        concept.addProperty(RDF.type, model.createResource(secondType));
         ModelStructure structure = createModelStructure(model);
 
-        Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
+        ModelProcessingException single = assertThatExceptionOfType(ModelProcessingException.class)
+                .isThrownBy(() -> processor.processConceptByIri(model, structure, concept.getURI()))
+                .actual();
+        assertThat(single).hasMessageContaining(concept.getURI());
 
-        @SuppressWarnings("unchecked")
-        List<String> types = (List<String>) result.get("typ");
-        assertTrue(types.contains(VZTAH_JSON_LD));
-        assertFalse(types.contains(VLASTNOST_JSON_LD));
+        // The whole-vocabulary path must fail too, not drop the concept and carry on.
+        ModelProcessingException all = assertThatExceptionOfType(ModelProcessingException.class)
+                .isThrownBy(() -> processor.processAllConcepts(model, structure))
+                .actual();
+        assertThat(all).hasMessageContaining(concept.getURI());
     }
 }

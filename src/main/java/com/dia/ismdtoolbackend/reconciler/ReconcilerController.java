@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.reconciler;
 
 import com.dia.ismdtoolbackend.config.security.SecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
+import com.dia.ismdtoolbackend.enums.ErrorCode;
 import com.dia.ismdtoolbackend.reconciler.dto.ReconciliationReportDto;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
@@ -41,6 +42,7 @@ public class ReconcilerController {
             // A scheduled or another manual run holds the guard. Do NOT return a stale/empty
             // report (reads as "all clear") — signal the conflict and point at GET /report.
             return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponseDto.error(
+                    ErrorCode.RECONCILIATION_IN_PROGRESS,
                     "A reconciliation run is already in progress. Try GET /api/admin/reconciler/report."));
         }
         return ResponseEntity.ok(ApiResponseDto.success(

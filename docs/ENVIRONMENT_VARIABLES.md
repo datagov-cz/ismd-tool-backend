@@ -80,6 +80,21 @@ While Keycloak is primarily configured via `application-*.properties`, you can o
 - **Description**: Database password
 - **Example**: `secure_password_here`
 
+## Fuseki Authentication (Optional)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FUSEKI_USERNAME` | empty | Basic-auth user for Fuseki. |
+| `FUSEKI_PASSWORD` | empty | Its password. Set both or neither; one without the other fails startup. |
+
+Both empty sends no credentials, which is what the open local Fuseki expects. When set, the
+credentials answer Fuseki's 401 challenge, so they can be configured before Fuseki starts enforcing
+them. Deployed values come from Key Vault through Terraform. Only the Fuseki client uses them;
+NKD, RPP and e-Sbírka don't.
+
+A wrong or missing password doesn't stop startup: Fuseki calls fail with
+`Fuseki HTTP error (status 401)` in the log, and monitoring alerts on that line.
+
 ## PG ↔ TDB2 Consistency: Outbox & Reconciler
 
 Two opt-in mechanisms keep the Postgres metadata and the TDB2/Fuseki RDF in sync. Both are
@@ -91,7 +106,6 @@ documentation: [`docs/pg-tdb2-consistency.md`](PG_TDB2_CONSISTENCY) (Czech:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OUTBOX_ENABLED` | `false` | Master switch. `false` keeps the legacy direct TDB2 write (no behavior change). |
 | `OUTBOX_RELAY_CRON` | `*/10 * * * * *` | Backstop relay drain schedule (Spring 6-field cron). |
 | `OUTBOX_MAX_ATTEMPTS` | `10` | Apply attempts before a row is marked FAILED. |
 | `OUTBOX_BATCH_SIZE` | `100` | Max rows claimed per relay drain pass. |
@@ -102,7 +116,7 @@ documentation: [`docs/pg-tdb2-consistency.md`](PG_TDB2_CONSISTENCY) (Czech:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `RECONCILER_ENABLED` | `false` | Master switch for the **scheduled** run. The admin endpoint works regardless. |
+| `RECONCILER_ENABLED` | `true` (`false` in the local profile) | Master switch for the **scheduled** run. The admin endpoint works regardless. |
 | `RECONCILER_CRON` | `0 0 3 * * *` | Scheduled-run schedule (Spring 6-field cron). |
 | `RECONCILER_MAX_CONCEPTS` | `200000` | Safety cap: abort a run rather than OOM if PG concept rows exceed this. `0` = unlimited. |
 

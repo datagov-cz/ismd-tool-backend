@@ -32,8 +32,6 @@ class RelationshipConceptTypeEditor implements ConceptTypeEditor {
                 m.getAgendaSystemCode(), m.getSharingMethod(), m.getAcquisitionMethod(),
                 m.getContentType(), context.oldConcept, model, toRemove, toAdd);
 
-        // Privacy provisions must be staged BEFORE data classification, which reads
-        // the staged provisions from toAdd to decide the public/private rdf:type.
         fields.updatePrivacyProvisionsList(context.newConcept, m.getPrivacyProvisions(), context.oldConcept, model, toRemove, toAdd);
 
         fields.updateDataClassification(context.newConcept, m.getIsPublic(), m.getPrivacyProvisions(),

@@ -23,4 +23,11 @@ public interface NkodDatasetService {
      *         when the dataset is not in the catalogue
      */
     GetNkodDatasetDto getDatasetDetail(String iri);
+
+    /**
+     * The datasets annotated with one concept via {@code týká-se-pojmu}.
+     *
+     * @param conceptIri IRI of the concept, percent-encoded or raw
+     */
+    NkodDatasetListDto listDatasetsByConcept(String conceptIri);
 }

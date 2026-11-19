@@ -15,6 +15,7 @@ public class NkodConfig {
     private Sparql sparql = new Sparql();
     private Snapshot snapshot = new Snapshot();
     private Search search = new Search();
+    private Codelist codelist = new Codelist();
 
     @Data
     public static class Sparql {
@@ -41,5 +42,24 @@ public class NkodConfig {
     public static class Search {
         private int maxLimit = 100;
         private int defaultLimit = 20;
+    }
+
+    /** Codelist picker (issue #126). */
+    @Data
+    public static class Codelist {
+        /** How long the codelist snapshot is served before it is considered stale. */
+        private long ttlHours = 24;
+
+        /** Background refresh cadence; fires inside {@code ttlHours}. */
+        private String refreshCron = "0 15 */12 * * *";
+
+        /** Bytes read from a distribution file before giving up. */
+        private int maxDistributionBytes = 2 * 1024 * 1024;
+
+        /** Per-file HTTP timeout when streaming a distribution. */
+        private int distributionTimeoutMs = 10000;
+
+        /** Distribution files fetched in parallel during a refresh. */
+        private int distributionConcurrency = 8;
     }
 }

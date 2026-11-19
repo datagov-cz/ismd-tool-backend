@@ -10,19 +10,20 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import org.apache.jena.vocabulary.OWL2;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 import static com.dia.ismdtoolbackend.utility.exporter.RdfTestModelFactory.*;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
-@DisplayName("ConceptProcessor - Multilingual Properties (prefLabel, definition, description)")
+@DisplayName("ConceptJsonMapper - Multilingual Properties (prefLabel, definition, description)")
 class ConceptMultilingualPropertyTest {
 
-    private ConceptProcessor processor;
+    private ConceptJsonMapper processor;
 
     @BeforeEach
     void setUp() {
-        processor = new ConceptProcessor();
+        processor = new ConceptJsonMapper();
     }
 
     @Test
@@ -36,8 +37,8 @@ class ConceptMultilingualPropertyTest {
 
         @SuppressWarnings("unchecked")
         Map<String, Object> nazev = (Map<String, Object>) result.get(NAZEV);
-        assertNotNull(nazev);
-        assertEquals("Osoba", nazev.get("cs"));
+        assertThat(nazev).isNotNull();
+        assertThat(nazev.get("cs")).isEqualTo("Osoba");
     }
 
     @Test
@@ -45,7 +46,7 @@ class ConceptMultilingualPropertyTest {
     void multiLanguagePrefLabel() {
         OntModel model = createDefaultModel();
         Resource concept = addSkosConcept(model, "osoba", "Osoba");
-        concept.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + TRIDA));
+        concept.addProperty(RDF.type, OWL2.Class);
         addMultilingualLabel(concept, SKOS.prefLabel, Map.of("en", "Person"), model);
         ModelStructure structure = createModelStructure(model);
 
@@ -53,9 +54,9 @@ class ConceptMultilingualPropertyTest {
 
         @SuppressWarnings("unchecked")
         Map<String, Object> nazev = (Map<String, Object>) result.get(NAZEV);
-        assertNotNull(nazev);
-        assertEquals("Osoba", nazev.get("cs"));
-        assertEquals("Person", nazev.get("en"));
+        assertThat(nazev).isNotNull();
+        assertThat(nazev.get("cs")).isEqualTo("Osoba");
+        assertThat(nazev.get("en")).isEqualTo("Person");
     }
 
     @Test
@@ -63,7 +64,7 @@ class ConceptMultilingualPropertyTest {
     void noLangTag_defaultsToCs() {
         OntModel model = createDefaultModel();
         Resource concept = addSkosConcept(model, "nolangtag", "placeholder");
-        concept.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + TRIDA));
+        concept.addProperty(RDF.type, OWL2.Class);
         // Remove the cs-tagged label and add one without a tag
         concept.removeAll(SKOS.prefLabel);
         concept.addProperty(SKOS.prefLabel, "Bez značky");
@@ -73,8 +74,8 @@ class ConceptMultilingualPropertyTest {
 
         @SuppressWarnings("unchecked")
         Map<String, Object> nazev = (Map<String, Object>) result.get(NAZEV);
-        assertNotNull(nazev);
-        assertEquals("Bez značky", nazev.get("cs"));
+        assertThat(nazev).isNotNull();
+        assertThat(nazev.get("cs")).isEqualTo("Bez značky");
     }
 
     @Test
@@ -82,7 +83,7 @@ class ConceptMultilingualPropertyTest {
     void duplicateLang_producesArray() {
         OntModel model = createDefaultModel();
         Resource concept = addSkosConcept(model, "dupcs", "Prvni");
-        concept.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + TRIDA));
+        concept.addProperty(RDF.type, OWL2.Class);
         concept.addProperty(SKOS.prefLabel, model.createLiteral("Druhy", "cs"));
         ModelStructure structure = createModelStructure(model);
 
@@ -90,12 +91,12 @@ class ConceptMultilingualPropertyTest {
 
         @SuppressWarnings("unchecked")
         Map<String, Object> nazev = (Map<String, Object>) result.get(NAZEV);
-        assertNotNull(nazev);
+        assertThat(nazev).isNotNull();
         Object csValue = nazev.get("cs");
-        assertInstanceOf(List.class, csValue, "Duplicate lang values should produce an array");
+        assertThat(csValue).as("Duplicate lang values should produce an array").isInstanceOf(List.class);
         @SuppressWarnings("unchecked")
         List<Object> csArray = (List<Object>) csValue;
-        assertEquals(2, csArray.size());
+        assertThat(csArray).hasSize(2);
     }
 
     @Test
@@ -110,7 +111,7 @@ class ConceptMultilingualPropertyTest {
 
         @SuppressWarnings("unchecked")
         Map<String, Object> nazev = (Map<String, Object>) result.get(NAZEV);
-        assertEquals(diacritics, nazev.get("cs"));
+        assertThat(nazev.get("cs")).isEqualTo(diacritics);
     }
 
     @Test
@@ -126,9 +127,9 @@ class ConceptMultilingualPropertyTest {
 
         @SuppressWarnings("unchecked")
         Map<String, Object> definice = (Map<String, Object>) result.get(DEFINICE);
-        assertNotNull(definice);
-        assertEquals("Toto je definice", definice.get("cs"));
-        assertEquals("This is a definition", definice.get("en"));
+        assertThat(definice).isNotNull();
+        assertThat(definice.get("cs")).isEqualTo("Toto je definice");
+        assertThat(definice.get("en")).isEqualTo("This is a definition");
     }
 
     @Test
@@ -143,8 +144,8 @@ class ConceptMultilingualPropertyTest {
 
         @SuppressWarnings("unchecked")
         Map<String, Object> popis = (Map<String, Object>) result.get(POPIS);
-        assertNotNull(popis);
-        assertEquals("Detailní popis", popis.get("cs"));
+        assertThat(popis).isNotNull();
+        assertThat(popis.get("cs")).isEqualTo("Detailní popis");
     }
 
     @Test
@@ -154,11 +155,11 @@ class ConceptMultilingualPropertyTest {
         Resource concept = model.createResource(TEST_POJEM_NS + "nolabel");
         concept.addProperty(RDF.type, model.createResource(SKOS_NS + "Concept"));
         concept.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + POJEM));
-        concept.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + TRIDA));
+        concept.addProperty(RDF.type, OWL2.Class);
         ModelStructure structure = createModelStructure(model);
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertFalse(result.containsKey(NAZEV));
+        assertThat(result).doesNotContainKey(NAZEV);
     }
 }

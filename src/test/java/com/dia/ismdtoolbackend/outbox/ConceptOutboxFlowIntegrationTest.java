@@ -1,107 +1,59 @@
 package com.dia.ismdtoolbackend.outbox;
 
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
-import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
-import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
-import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapperImpl;
 import com.dia.ismdtoolbackend.models.NameModel;
+import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptModel;
+import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
-import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.impl.ConceptServiceImpl;
-import com.dia.ismdtoolbackend.service.impl.MetadataTouchService;
-import com.dia.ismdtoolbackend.service.impl.ConceptDeviationComparator;
-import com.dia.ismdtoolbackend.service.impl.ReferencedConceptsEnricher;
-import com.dia.ismdtoolbackend.service.impl.WorkingCopyDeviationServiceImpl;
-import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
-import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
-import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
-import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
+import com.dia.ismdtoolbackend.testsupport.pg.OutboxFlowIT;
+import com.dia.ismdtoolbackend.testsupport.pg.OutboxFlowTestBase;
+import com.dia.ismdtoolbackend.testsupport.pg.PgTestData;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.RDFNode;
-import org.apache.jena.sys.JenaSystem;
-import org.junit.jupiter.api.BeforeAll;
+import org.assertj.core.groups.Tuple;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.persistence.autoconfigure.EntityScan;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
-import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionTemplate;
 
-import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 /**
  * Review #8(c) — the end-to-end seam: the REAL {@link ConceptServiceImpl} (real editor/creator/mapper,
- * real PG repos via Testcontainers, real outbox beans + in-mem TDB2) with {@code outbox.enabled=true},
+ * real PG repos via Testcontainers, real outbox beans + in-mem TDB2),
  * driven through the actual enqueue → drain → apply flow. The headline case is **create → rename**:
  * the #4 fix keys both rows on the pre-edit IRI (same aggregate), so the rename's DELETE of old-IRI
  * triples can never apply before the create's INSERT of them.
  *
- * <p>Beans are Spring-managed (a {@link TestConfiguration}) so {@code @Transactional}/REQUIRES_NEW on
+ * <p>Beans are Spring-managed ({@link OutboxFlowIT}) so {@code @Transactional}/REQUIRES_NEW on
  * the service and relay are actually proxied — hand-{@code new}'d beans would skip the proxies and the
  * after-commit nudge's REQUIRES_NEW drain would fail with "no transaction". Peripheral read-path deps
- * are mocked.
+ * are mocked. No ambient test transaction: the service methods run in their OWN boundary so the
+ * after-commit nudge fires on a real commit.
  */
-@DataJpaTest
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@ActiveProfiles("junit")
-@Import({ConceptOutboxFlowIntegrationTest.Beans.class, TransactionTemplateConfig.class,
-        com.dia.ismdtoolbackend.config.JpaAuditingConfig.class})
-@EntityScan(basePackageClasses = {OutboxEntry.class, ConceptMetadataEntity.class})
-@EnableJpaRepositories(basePackageClasses = {OutboxEntryRepository.class, ConceptMetadataRepository.class})
-// No ambient test transaction: the service methods must run in their OWN @Transactional boundary so
-// the after-commit nudge fires on a real commit (a wrapping test tx would never commit).
-@Transactional(propagation = Propagation.NOT_SUPPORTED)
-class ConceptOutboxFlowIntegrationTest extends PostgresIntegrationTestBase {
+@OutboxFlowIT
+class ConceptOutboxFlowIntegrationTest extends OutboxFlowTestBase {
 
     private static final String GRAPH = "https://slovnik.gov.cz/g";
     private static final String USER = "user123";
 
     @Autowired private ConceptMetadataRepository conceptMetadataRepository;
-    @Autowired private OntologyMetadataRepository ontologyMetadataRepository;
     @Autowired private OutboxEntryRepository outboxRepository;
-    @Autowired private TransactionTemplate txTemplate;
     @Autowired private ConceptServiceImpl service;
-    @Autowired private OutboxConfig outboxConfig;
-    @Autowired private InMemoryTdb2 tdb2;
-
-    @BeforeAll
-    static void initJena() {
-        JenaSystem.init();
-    }
+    @Autowired private PgTestData data;
 
     @BeforeEach
     void setUp() {
-        outboxConfig.setEnabled(true);
-        outboxConfig.setBatchSize(100);
-        // Clean slate + the FK target ontology row (createMetadataEntity requires it).
-        txTemplate.executeWithoutResult(tx -> {
-            outboxRepository.deleteAll();
-            conceptMetadataRepository.deleteAll();
-            ontologyMetadataRepository.deleteAll();
-            OntologyMetadataEntity ont = new OntologyMetadataEntity();
-            ont.setSlug("g-ontology");
-            ont.setGraphName(GRAPH);
-            ont.setUserId(USER);
-            ont.setIsPublished(false);
-            ont.setCreatedAt(LocalDateTime.now());
-            ontologyMetadataRepository.save(ont);
-        });
-        tdb2.reset();
+        // The FK target ontology row (createMetadataEntity requires it).
+        data.createOntology("g-ontology", GRAPH, USER, false);
     }
 
     private ClassConceptModel classModel(String name) {
@@ -119,8 +71,69 @@ class ConceptOutboxFlowIntegrationTest extends PostgresIntegrationTestBase {
     }
 
     @Test
+    void bulkCreate_allValid_persistsEveryConcept() {
+        service.createConcepts(List.of(classModel("Alpha"), classModel("Beta")), USER);
+
+        List<ConceptMetadataEntity> rows = conceptMetadataRepository.findAll();
+        assertThat(rows).hasSize(2);
+        Model graph = tdb2.dataset().getNamedModel(GRAPH);
+        assertThat(rows).allSatisfy(row ->
+                assertThat(graph.containsResource(graph.getResource(row.getConceptIri()))).isTrue());
+    }
+
+    @Test
+    void bulkCreate_failingItem_persistsNothing() {
+        List<ConceptCreateModel> batch = List.of(classModel("Alpha"), classModel("Beta"), classModel("Alpha"));
+
+        assertThatThrownBy(() -> service.createConcepts(batch, USER))
+                .isInstanceOf(ConceptValidationException.class);
+
+        assertThat(conceptMetadataRepository.count()).as("no metadata row survives the failed batch").isZero();
+        assertThat(outboxRepository.count()).as("no RDF write is queued").isZero();
+        assertThat(tdb2.dataset().getNamedModel(GRAPH).isEmpty()).as("nothing reached TDB2").isTrue();
+    }
+
+    @Test
+    void deleteConcept_graphMissing_stillRemovesMetadata() {
+        service.createConcept(classModel("Alpha"), USER);
+        Long id = conceptMetadataRepository.findAll().get(0).getId();
+        tdb2.reset();
+
+        String iri = conceptMetadataRepository.findById(id).orElseThrow().getConceptIri();
+
+        service.deleteConcept(id);
+
+        assertThat(conceptMetadataRepository.count()).isZero();
+        assertThat(outboxRows()).containsExactly(
+                tuple(OutboxOperation.UPSERT_CONCEPT, iri, OutboxStatus.DONE),
+                tuple(OutboxOperation.DELETE_CONCEPTS, iri, OutboxStatus.DONE));
+    }
+
+    @Test
+    void deleteConcept_conceptAbsentFromPopulatedGraph_removesOnlyItsMetadata() {
+        service.createConcept(classModel("Alpha"), USER);
+        service.createConcept(classModel("Beta"), USER);
+        ConceptMetadataEntity alpha = conceptMetadataRepository.findAll().stream()
+                .filter(row -> row.getConceptIri().endsWith("alpha")).findFirst().orElseThrow();
+        ConceptMetadataEntity beta = conceptMetadataRepository.findAll().stream()
+                .filter(row -> row.getConceptIri().endsWith("beta")).findFirst().orElseThrow();
+        tdb2.deleteConceptsFromGraph(List.of(alpha.getConceptIri()), GRAPH);
+
+        service.deleteConcept(alpha.getId());
+
+        assertThat(conceptMetadataRepository.findAll()).extracting(ConceptMetadataEntity::getId)
+                .containsExactly(beta.getId());
+        Model graph = tdb2.dataset().getNamedModel(GRAPH);
+        assertThat(graph.containsResource(graph.getResource(beta.getConceptIri()))).isTrue();
+        assertThat(outboxRows()).containsExactly(
+                tuple(OutboxOperation.UPSERT_CONCEPT, alpha.getConceptIri(), OutboxStatus.DONE),
+                tuple(OutboxOperation.UPSERT_CONCEPT, beta.getConceptIri(), OutboxStatus.DONE),
+                tuple(OutboxOperation.DELETE_CONCEPTS, alpha.getConceptIri(), OutboxStatus.DONE));
+    }
+
+    @Test
     void createThenRename_throughRealService_ordersCorrectly_noLostConcept() {
-        // CREATE (flag on): the synchronous after-commit nudge drains, so the concept lands in TDB2.
+        // CREATE: the synchronous after-commit nudge drains, so the concept lands in TDB2.
         service.createConcept(classModel("Alpha"), USER);
         ConceptMetadataEntity row = conceptMetadataRepository.findAll().get(0);
         Long id = row.getId();
@@ -129,7 +142,7 @@ class ConceptOutboxFlowIntegrationTest extends PostgresIntegrationTestBase {
         assertThat(afterCreate.containsResource(afterCreate.getResource(oldIri)))
                 .as("create's nudge drained the concept into TDB2").isTrue();
 
-        // RENAME (flag on): rename to a new IRI. The outbox row keys on the PRE-EDIT (old) IRI — same
+        // RENAME: rename to a new IRI. The outbox row keys on the PRE-EDIT (old) IRI — same
         // aggregate as the create — so ordering holds and the rename relocates old→new in TDB2.
         com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel rename =
                 new com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel();
@@ -152,52 +165,16 @@ class ConceptOutboxFlowIntegrationTest extends PostgresIntegrationTestBase {
         assertThat(g.size()).as("concept survived the rename").isGreaterThan(0);
 
         // Both outbox rows applied (DONE) and keyed on the SAME aggregate (the old IRI) — the #4 fix.
-        assertThat(outboxRepository.findAll()).allMatch(r -> r.getStatus() == OutboxStatus.DONE);
-        assertThat(outboxRepository.findAll()).allMatch(r -> oldIri.equals(r.getAggregateIri()));
+        assertThat(outboxRows()).containsExactly(
+                tuple(OutboxOperation.UPSERT_CONCEPT, oldIri, OutboxStatus.DONE),
+                tuple(OutboxOperation.UPSERT_CONCEPT, oldIri, OutboxStatus.DONE));
     }
 
-    @TestConfiguration
-    static class Beans {
-        @Bean OutboxConfig outboxConfig() {
-            OutboxConfig c = new OutboxConfig();
-            c.setEnabled(true);
-            return c;
-        }
-        @Bean InMemoryTdb2 inMemoryTdb2() { return new InMemoryTdb2(); }
-        @Bean MetadataTouchService metadataTouchService(ConceptMetadataRepository c,
-                                                        OntologyMetadataRepository o) {
-            return new MetadataTouchService(c, o);
-        }
-        @Bean @Primary ConceptMetadataMapper conceptMetadataMapper() { return new ConceptMetadataMapperImpl(); }
-        @Bean OutboxWriter outboxWriter(OutboxEntryRepository r) { return new OutboxWriter(r); }
-        @Bean OutboxRelay outboxRelay(OutboxEntryRepository r, InMemoryTdb2 t, OutboxConfig c) {
-            return new OutboxRelay(r, t, c);
-        }
-        @Bean OutboxRelayTrigger outboxRelayTrigger(OutboxRelay relay) { return new OutboxRelayTrigger(relay); }
-
-        @Bean ConceptServiceImpl conceptServiceImpl(
-                ConceptMetadataRepository conceptRepo, OntologyMetadataRepository ontologyRepo,
-                ConceptMetadataMapper mapper, InMemoryTdb2 tdb2,
-                OutboxConfig outboxConfig, OutboxWriter writer, OutboxEntryRepository outboxRepository, OutboxRelayTrigger trigger,
-                MetadataTouchService touchService) {
-            return new ConceptServiceImpl(
-                    conceptRepo, ontologyRepo, touchService, mapper,
-                    new ConceptCreator(), new ConceptEditor(), tdb2,
-                    mock(OntologyDetailExtractor.class),
-                    mock(com.dia.ismdtoolbackend.repository.CommentRepository.class),
-                    mock(com.dia.ismdtoolbackend.client.NkdSparqlClient.class),
-                    mock(ConceptDeviationComparator.class),
-                    mock(RppSnapshotHolder.class),
-                    mock(ReferencedConceptsEnricher.class),
-                    outboxConfig, writer, outboxRepository, trigger,
-                    // No external NKD links in this flow's test data → real detector returns empty and the
-                    // mocked snapshot service is never called; reconcileNkdLinks is a no-op here.
-                    mock(com.dia.ismdtoolbackend.service.NkdSnapshotService.class),
-                    new com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector(),
-                    new com.dia.ismdtoolbackend.utility.published.WorkingCopySyncFields(),
-                    mock(com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer.class),
-                    new com.dia.ismdtoolbackend.config.NkdConfig(),
-                    mock(WorkingCopyDeviationServiceImpl.class));
-        }
+    /** Every outbox row as (operation, aggregate, status), in enqueue order. */
+    private List<Tuple> outboxRows() {
+        return outboxRepository.findAll().stream()
+                .sorted(Comparator.comparing(OutboxEntry::getId))
+                .map(e -> tuple(e.getOperation(), e.getAggregateIri(), e.getStatus()))
+                .toList();
     }
 }

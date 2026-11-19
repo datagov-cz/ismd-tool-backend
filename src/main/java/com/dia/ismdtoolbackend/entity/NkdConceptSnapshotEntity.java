@@ -3,11 +3,11 @@ package com.dia.ismdtoolbackend.entity;
 import com.dia.ismdtoolbackend.enums.SnapshotOrigin;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel.ConceptDetailModel;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel.DeviationStatus;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.cfg.DateTimeFeature;
+import tools.jackson.databind.json.JsonMapper;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -107,15 +107,12 @@ public class NkdConceptSnapshotEntity {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    // JavaTimeModule is required: ConceptDetailModel embeds ResolvedLegalSourceDto, which carries
-    // LocalDate fields. Without it, serializing any snapshot whose NKD twin has a dated legal source
-    // throws InvalidDefinitionException — silently caught below — leaving snapshot_json null and the
-    // LINK_TARGET deviation permanently QUERY_ERROR. ISO strings (not timestamp arrays) to match the
-    // app's Spring mapper on read-back.
-    private static final ObjectMapper objectMapper = new ObjectMapper()
-            .registerModule(new JavaTimeModule())
-            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
-            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    // Jackson 2 defaults keep rows written before the Jackson 3 migration readable. Dates are ISO
+    // strings (not timestamp arrays) to match the app's Spring mapper on read-back.
+    private static final ObjectMapper objectMapper = JsonMapper.builderWithJackson2Defaults()
+            .disable(DateTimeFeature.WRITE_DATES_AS_TIMESTAMPS)
+            .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+            .build();
 
     /** Deserialize the stored NKD detail. Returns {@code null} on absent/malformed JSON (logged). */
     public ConceptDetailModel getSnapshot() {
@@ -124,7 +121,7 @@ public class NkdConceptSnapshotEntity {
         }
         try {
             return objectMapper.readValue(snapshotJson, ConceptDetailModel.class);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             log.error("Failed to deserialize snapshot JSON for nkdIri={}", nkdIri, e);
             return null;
         }
@@ -138,7 +135,7 @@ public class NkdConceptSnapshotEntity {
         }
         try {
             this.snapshotJson = objectMapper.writeValueAsString(snapshot);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             log.error("Failed to serialize snapshot for nkdIri={}", nkdIri, e);
             this.snapshotJson = null;
         }

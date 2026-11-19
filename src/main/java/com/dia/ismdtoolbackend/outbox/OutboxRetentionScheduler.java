@@ -10,7 +10,7 @@ import java.time.Instant;
 
 /**
  * Prunes {@code DONE} outbox rows older than {@code outbox.done-retention}, on
- * {@code outbox.prune-cron}, gated by {@code outbox.enabled}.
+ * {@code outbox.prune-cron}.
  *
  * <p>{@code DONE} rows are kept as a short write-path audit trail, but without this prune they would
  * accumulate one-per-write forever, bloating the table and slowing the relay's claim/gate scans.
@@ -28,10 +28,6 @@ public class OutboxRetentionScheduler {
     @Scheduled(cron = "${outbox.prune-cron:0 30 3 * * *}")
     @Transactional
     public void pruneDone() {
-        if (!config.isEnabled()) {
-            log.debug("Outbox DONE-row prune skipped — outbox.enabled=false");
-            return;
-        }
         Instant cutoff = Instant.now().minus(config.getDoneRetention());
         int removed = repository.deleteDoneBefore(cutoff);
         if (removed > 0) {

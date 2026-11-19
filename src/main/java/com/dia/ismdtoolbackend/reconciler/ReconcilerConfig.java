@@ -22,7 +22,7 @@ import org.springframework.context.annotation.Configuration;
 @ConfigurationProperties(prefix = "reconciler")
 public class ReconcilerConfig {
 
-    /** Master switch for the SCHEDULED run. Off by default; the admin endpoint works regardless. */
+    /** Master switch for the SCHEDULED run. Off unless configured; the admin endpoint works regardless. */
     private boolean enabled = false;
 
     /** Cron expression for the scheduled run (Spring 6-field). Default 03:00 daily. */

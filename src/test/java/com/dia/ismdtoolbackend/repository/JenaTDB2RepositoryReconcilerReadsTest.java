@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.repository;
 
+import com.dia.ismdtoolbackend.config.FusekiConnectionConfig;
 import org.apache.jena.query.Query;
 import org.apache.jena.query.QueryExecution;
 import org.apache.jena.query.QuerySolution;
@@ -14,7 +15,7 @@ import java.net.http.HttpClient;
 import java.util.List;
 import java.util.concurrent.Semaphore;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
 /**
@@ -31,7 +32,8 @@ class JenaTDB2RepositoryReconcilerReadsTest {
         private final RDFConnection mockConn;
 
         TestableJenaTDB2Repository(HttpClient httpClient, Semaphore semaphore, int timeout, RDFConnection mockConn) {
-            super(httpClient, semaphore, timeout, new MockEnvironment());
+            super(new FusekiConnectionConfig(httpClient, semaphore, timeout, "http://localhost/unused"),
+                    new MockEnvironment());
             this.mockConn = mockConn;
         }
 
@@ -77,7 +79,7 @@ class JenaTDB2RepositoryReconcilerReadsTest {
 
         List<String> graphs = repository.listNamedGraphs();
 
-        assertEquals(List.of("https://slovník.gov.cz/a", "https://slovník.gov.cz/b"), graphs);
+        assertThat(graphs).isEqualTo(List.of("https://slovník.gov.cz/a", "https://slovník.gov.cz/b"));
     }
 
     @Test
@@ -87,7 +89,7 @@ class JenaTDB2RepositoryReconcilerReadsTest {
         when(qExec.execSelect()).thenReturn(rs);
         when(mockConnection.query(anyString())).thenReturn(qExec);
 
-        assertTrue(repository.listNamedGraphs().isEmpty());
+        assertThat(repository.listNamedGraphs()).isEmpty();
     }
 
     @Test
@@ -100,13 +102,13 @@ class JenaTDB2RepositoryReconcilerReadsTest {
 
         List<String> owned = repository.listOwnedConceptIrisInGraph("https://slovník.gov.cz/g");
 
-        assertEquals(List.of(iri), owned);
+        assertThat(owned).isEqualTo(List.of(iri));
     }
 
     @Test
     void listOwnedConceptIris_unsafeGraphIri_returnsEmptyWithoutQuerying() {
         List<String> owned = repository.listOwnedConceptIrisInGraph("not a valid iri with spaces");
-        assertTrue(owned.isEmpty());
+        assertThat(owned).isEmpty();
         verify(mockConnection, never()).query(any(Query.class));
     }
 }
