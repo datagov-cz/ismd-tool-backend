@@ -46,7 +46,7 @@ services:
       - postgres
 
   nginx-mtls:
-    image: nginx:1.25-alpine
+    image: nginx:1.30.7-alpine
     container_name: ismd-nginx-mtls
     profiles:
       - caais
