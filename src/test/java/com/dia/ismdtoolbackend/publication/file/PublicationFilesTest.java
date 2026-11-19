@@ -148,6 +148,25 @@ class PublicationFilesTest {
     }
 
     @Test
+    void vocabularies_conceptWithoutPostgresRow_droppedWithDraftsOff_keptWithDraftsOn() {
+        Ontology withoutRow = new Ontology(1L, VOCABULARY, "test-slovnik", true, OntologyValidationStatus.VALIDATED,
+                null, CREATED, UPDATED, List.of(concept(OSOBA, true), concept(SUBJEKT, true)));
+        PublicationSnapshot snapshot = PublicationSnapshot.of(List.of(withoutRow), List.of(), Set.of());
+
+        ObjectNode off = graphNode(writeVocabularies(DraftFilter.withoutDrafts(snapshot), false).json, VOCABULARY);
+        assertThat(iris(off.get("pojmy"))).containsExactlyInAnyOrder(SUBJEKT, OSOBA);
+        assertThat(concept(off, OSOBA).toString()).as("references to the unknown concept are stripped")
+                .doesNotContain(ROZPRACOVANY).contains(SUBJEKT);
+        assertThat(off.get("počet_pojmů").asInt()).isEqualTo(2);
+
+        ObjectNode on = graphNode(writeVocabularies(snapshot, true).json, VOCABULARY);
+        assertThat(iris(on.get("pojmy"))).containsExactlyInAnyOrder(SUBJEKT, OSOBA, ROZPRACOVANY);
+        assertThat(concept(on, ROZPRACOVANY).has("je_publikován")).as("kept as downloaded").isFalse();
+        assertThat(concept(on, ROZPRACOVANY).has("slug")).isFalse();
+        assertThat(concept(on, OSOBA).toString()).contains(ROZPRACOVANY);
+    }
+
+    @Test
     void vocabularies_expandThroughBothContexts_toOfnAndIsmdTriples() {
         Written file = writeVocabularies(DraftFilter.withoutDrafts(snapshot()), false);
         assertEveryKeyIsDefined(file.json);
@@ -197,7 +216,7 @@ class PublicationFilesTest {
         Diagram unsaved = new Diagram(UUID.randomUUID(), "Nový", VOCABULARY, CREATED, null, null, null, null,
                 List.of(), List.of());
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        new DiagramFileWriter().write(new PublicationSnapshot(List.of(), List.of(routed, unsaved), Set.of()),
+        new DiagramFileWriter().write(PublicationSnapshot.of(List.of(), List.of(routed, unsaved), Set.of()),
                 header(true), out);
         ObjectNode json = (ObjectNode) JSON.readTree(out.toString(StandardCharsets.UTF_8));
 
@@ -238,7 +257,7 @@ class PublicationFilesTest {
                 concept(OSOBA, true), concept(SUBJEKT, true), concept(ROZPRACOVANY, false)));
         Ontology empty = new Ontology(2L, EMPTY_IRI, "prazdny", true, null, null, CREATED, null, List.of());
         Ontology failing = new Ontology(3L, FAILED_IRI, "selhavajici", true, null, null, CREATED, null, List.of());
-        return new PublicationSnapshot(List.of(published, empty, failing), List.of(), Set.of());
+        return PublicationSnapshot.of(List.of(published, empty, failing), List.of(), Set.of());
     }
 
     private static Concept concept(String iri, boolean published) {
@@ -254,7 +273,7 @@ class PublicationFilesTest {
 
     private Written writeVocabularies(PublicationSnapshot snapshot, boolean includesDrafts) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        boolean complete = new VocabularyFileWriter(downloads).write(snapshot, header(includesDrafts), out);
+        boolean complete = new VocabularyFileWriter(downloads, new PublicationConfig()).write(snapshot, header(includesDrafts), out);
         return new Written((ObjectNode) JSON.readTree(out.toString(StandardCharsets.UTF_8)), complete);
     }
 

@@ -21,6 +21,13 @@ public class PublicationConfig {
     /** How many of the newest publications keep their file content in PostgreSQL; metadata is kept forever. */
     private int retainFiles = 30;
 
+    /** How many vocabularies a run downloads at once; at least 1. The Fuseki semaphore still applies. */
+    private int downloadParallelism = 4;
+
+    public int getDownloadParallelism() {
+        return Math.max(1, downloadParallelism);
+    }
+
     /**
      * Base of the IRIs ISMD mints for publication: {@code <base>diagramy/<iri_id>} for diagrams and
      * {@code <base>publikace/<file>} for the publication records. Fixed once published.

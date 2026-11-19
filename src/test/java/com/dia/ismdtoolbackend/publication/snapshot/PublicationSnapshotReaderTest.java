@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -74,19 +75,49 @@ class PublicationSnapshotReaderTest extends PostgresIntegrationTestBase {
 
         PublicationSnapshot snapshot = reader.read();
 
-        Ontology o = snapshot.ontologies().stream().filter(x -> x.iri().equals(GRAPH)).findFirst().orElseThrow();
+        Ontology listed = snapshot.ontologies().stream().filter(x -> x.iri().equals(GRAPH)).findFirst().orElseThrow();
+        assertThat(listed.concepts()).as("concepts are read per vocabulary").isEmpty();
+        Ontology o = snapshot.withConcepts(listed);
         assertThat(o.slug()).isEqualTo("snapshot");
         assertThat(o.published()).isTrue();
         assertThat(o.concepts()).extracting(PublicationSnapshot.Concept::iri).containsExactly(A, B);
         assertThat(o.concepts().get(1).published()).as("null is_published reads as draft").isFalse();
 
-        Diagram d = snapshot.diagrams().stream().filter(x -> x.ontologyIri().equals(GRAPH)).findFirst().orElseThrow();
+        List<Diagram> diagrams = new ArrayList<>();
+        snapshot.forEachDiagram(diagrams::add);
+        Diagram d = diagrams.stream().filter(x -> x.ontologyIri().equals(GRAPH)).findFirst().orElseThrow();
         assertThat(d.iriId()).isEqualTo(diagram.getIriId());
         assertThat(d.viewportZoom()).isEqualTo(0.5);
         assertThat(d.nodes()).extracting(Node::conceptIri).containsExactly(A, B);
         assertThat(d.nodes().get(1).parentConceptIri()).isEqualTo(A);
         assertThat(d.edges()).extracting(PublicationSnapshot.Edge::edgeKey).containsExactly(B, A);
         assertThat(snapshot.excludedConceptIris()).isEmpty();
+        assertThat(snapshot.draftConceptIris()).as("null is_published is a draft").contains(B).doesNotContain(A);
+    }
+
+    @Test
+    void diagramsArePagedById_acrossPageBoundaries() {
+        OntologyMetadataEntity ontology = data.createOntology("paged", GRAPH + "/paged", PgTestData.USER, false);
+        String concept = GRAPH + "/paged/pojem/c";
+        data.createConcept(ontology, concept, "C", ConceptType.TRIDA);
+        List<java.util.UUID> created = new ArrayList<>();
+        for (int i = 0; i < PublicationSnapshotReader.DIAGRAM_PAGE_SIZE + 3; i++) {
+            DiagramEntity diagram = diagramRepository.findById(data.createDiagram(ontology, "D" + i)).orElseThrow();
+            DiagramNodeEntity n = node(concept, i, i);
+            diagram.addNode(n);
+            diagramRepository.saveAndFlush(diagram);
+            created.add(diagram.getIriId());
+        }
+        em.clear();
+
+        List<Diagram> read = new ArrayList<>();
+        reader.read().forEachDiagram(read::add);
+
+        List<Diagram> paged = read.stream().filter(x -> x.ontologyIri().equals(GRAPH + "/paged")).toList();
+        assertThat(paged).extracting(Diagram::iriId).containsExactlyElementsOf(created);
+        assertThat(paged).allSatisfy(x -> assertThat(x.nodes()).extracting(Node::conceptIri).containsExactly(concept));
+        assertThat(paged.get(paged.size() - 1).nodes().get(0).x()).isEqualTo(PublicationSnapshotReader.DIAGRAM_PAGE_SIZE + 2);
+        assertThat(reader.read().draftConceptIris()).as("a concept of a draft vocabulary is a draft").contains(concept);
     }
 
     private static DiagramNodeEntity node(String iri, double x, double y) {

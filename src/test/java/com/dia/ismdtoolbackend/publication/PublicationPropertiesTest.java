@@ -51,6 +51,7 @@ class PublicationPropertiesTest {
             PublicationConfig config = context.getBean(PublicationConfig.class);
             assertThat(config.isIncludeDrafts()).isEqualTo(defaults.isIncludeDrafts()).isTrue();
             assertThat(config.getRetainFiles()).isEqualTo(defaults.getRetainFiles()).isEqualTo(30);
+            assertThat(config.getDownloadParallelism()).isEqualTo(defaults.getDownloadParallelism()).isEqualTo(4);
             assertThat(config.getIriBase()).isEqualTo(defaults.getIriBase());
             assertThat(config.getContextUrl()).isEqualTo(PublicationConfig.DRAFT_CONTEXT_URL);
         });
@@ -61,15 +62,24 @@ class PublicationPropertiesTest {
         runner.withPropertyValues(
                         "PUBLICATION_INCLUDE_DRAFTS=false",
                         "PUBLICATION_RETAIN_FILES=5",
+                        "PUBLICATION_DOWNLOAD_PARALLELISM=8",
                         "PUBLICATION_IRI_BASE=https://example.org/ismd/",
                         "PUBLICATION_CONTEXT_URL=https://example.org/2026-11-19/kontext.jsonld")
                 .run(context -> {
                     PublicationConfig config = context.getBean(PublicationConfig.class);
                     assertThat(config.isIncludeDrafts()).isFalse();
                     assertThat(config.getRetainFiles()).isEqualTo(5);
+                    assertThat(config.getDownloadParallelism()).isEqualTo(8);
                     assertThat(config.getIriBase()).isEqualTo("https://example.org/ismd/");
                     assertThat(config.getContextUrl()).isEqualTo("https://example.org/2026-11-19/kontext.jsonld");
                 });
+    }
+
+    @Test
+    void downloadParallelism_isAtLeastOne() {
+        runner.withPropertyValues("PUBLICATION_DOWNLOAD_PARALLELISM=0")
+                .run(context -> assertThat(context.getBean(PublicationConfig.class).getDownloadParallelism())
+                        .isEqualTo(1));
     }
 
     @ParameterizedTest

@@ -6,13 +6,15 @@ import com.dia.ismdtoolbackend.publication.snapshot.PublicationSnapshot.Edge;
 import com.dia.ismdtoolbackend.publication.snapshot.PublicationSnapshot.Node;
 import com.dia.ismdtoolbackend.publication.snapshot.PublicationSnapshot.Ontology;
 
-import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 /**
- * Removes drafts from a snapshot for {@code ismd.publication.include-drafts=false}.
+ * Removes drafts from a snapshot for {@code ismd.publication.include-drafts=false}, as the snapshot is read.
  *
  * <ul>
  *   <li>a draft vocabulary is dropped with all its concepts and diagrams;</li>
@@ -22,42 +24,71 @@ import java.util.Set;
  *       it; a node grouped under a dropped node is ungrouped; foreign nodes not known to ISMD stay;</li>
  *   <li>an edge is dropped when its key is, or joins, an excluded concept.</li>
  * </ul>
+ *
+ * The excluded set is read once, when the filter is made; a concept is kept only when it is published
+ * and not in that set, so the vocabulary content and its concept count agree.
  */
-public final class DraftFilter {
+public final class DraftFilter implements PublicationSnapshot {
 
     private static final String COMPOSITE_EDGE_PREFIX = "edge|";
 
-    private DraftFilter() {
+    private final PublicationSnapshot source;
+    private final Set<String> excluded;
+    private final List<Ontology> ontologies;
+    private final Set<String> retainedOntologyIris;
+
+    private DraftFilter(PublicationSnapshot source) {
+        this.source = source;
+        // a HashSet view, not Set.copyOf: DRAFT nodes and ungrouped nodes look up null
+        this.excluded = Collections.unmodifiableSet(new HashSet<>(source.draftConceptIris()));
+        this.ontologies = source.ontologies().stream()
+                .filter(Ontology::published)
+                .map(this::retained)
+                .toList();
+        this.retainedOntologyIris = ontologies.stream().map(Ontology::iri).collect(Collectors.toUnmodifiableSet());
     }
 
     public static PublicationSnapshot withoutDrafts(PublicationSnapshot snapshot) {
-        Set<String> excluded = new HashSet<>();
-        Set<String> retainedOntologyIris = new HashSet<>();
-        List<Ontology> ontologies = new ArrayList<>();
-        for (Ontology o : snapshot.ontologies()) {
-            List<Concept> retained = new ArrayList<>();
-            for (Concept c : o.concepts()) {
-                if (o.published() && c.published()) {
-                    retained.add(c);
-                } else {
-                    excluded.add(c.iri());
-                }
-            }
-            if (o.published()) {
-                retainedOntologyIris.add(o.iri());
-                ontologies.add(o.withConcepts(retained));
-            }
-        }
-
-        List<Diagram> diagrams = snapshot.diagrams().stream()
-                .filter(d -> retainedOntologyIris.contains(d.ontologyIri()))
-                .map(d -> withoutExcluded(d, excluded))
-                .toList();
-
-        return new PublicationSnapshot(ontologies, diagrams, excluded);
+        return new DraftFilter(snapshot);
     }
 
-    private static Diagram withoutExcluded(Diagram diagram, Set<String> excluded) {
+    @Override
+    public List<Ontology> ontologies() {
+        return ontologies;
+    }
+
+    @Override
+    public Ontology withConcepts(Ontology ontology) {
+        return retained(source.withConcepts(ontology));
+    }
+
+    @Override
+    public void forEachDiagram(Consumer<Diagram> action) {
+        source.forEachDiagram(d -> {
+            if (retainedOntologyIris.contains(d.ontologyIri())) {
+                action.accept(withoutExcluded(d));
+            }
+        });
+    }
+
+    @Override
+    public Set<String> draftConceptIris() {
+        return excluded;
+    }
+
+    @Override
+    public Set<String> excludedConceptIris() {
+        return excluded;
+    }
+
+    private Ontology retained(Ontology ontology) {
+        List<Concept> retained = ontology.concepts().stream()
+                .filter(c -> c.published() && !excluded.contains(c.iri()))
+                .toList();
+        return ontology.withConcepts(retained);
+    }
+
+    private Diagram withoutExcluded(Diagram diagram) {
         List<Node> nodes = diagram.nodes().stream()
                 .filter(n -> !excluded.contains(n.conceptIri()))
                 .map(n -> excluded.contains(n.parentConceptIri())

@@ -8,6 +8,7 @@ import com.dia.ismdtoolbackend.publication.snapshot.PublicationSnapshot.Ontology
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -47,9 +48,15 @@ class DraftFilterTest {
     }
 
     private static PublicationSnapshot snapshot(List<Diagram> diagrams) {
-        return new PublicationSnapshot(List.of(
+        return PublicationSnapshot.of(List.of(
                 ontology(PUB, true, concept(KEPT, true), concept(DRAFT_IN_PUB, false)),
                 ontology(DRAFT, false, concept(IN_DRAFT, true))), diagrams, Set.of());
+    }
+
+    private static List<Diagram> diagrams(PublicationSnapshot snapshot) {
+        List<Diagram> diagrams = new ArrayList<>();
+        snapshot.forEachDiagram(diagrams::add);
+        return diagrams;
     }
 
     @Test
@@ -67,7 +74,7 @@ class DraftFilterTest {
         PublicationSnapshot filtered = DraftFilter.withoutDrafts(snapshot(List.of(
                 diagram(PUB, List.of(), List.of()), diagram(DRAFT, List.of(), List.of()))));
 
-        assertThat(filtered.diagrams()).extracting(Diagram::ontologyIri).containsExactly(PUB);
+        assertThat(diagrams(filtered)).extracting(Diagram::ontologyIri).containsExactly(PUB);
     }
 
     @Test
@@ -78,7 +85,7 @@ class DraftFilterTest {
                 node(IN_DRAFT, null),
                 node(NKD, KEPT)), List.of());
 
-        List<Node> nodes = DraftFilter.withoutDrafts(snapshot(List.of(d))).diagrams().get(0).nodes();
+        List<Node> nodes = diagrams(DraftFilter.withoutDrafts(snapshot(List.of(d)))).get(0).nodes();
 
         assertThat(nodes).extracting(Node::conceptIri).containsExactly(KEPT, NKD);
         assertThat(nodes.get(0).parentConceptIri()).isNull();
@@ -94,9 +101,30 @@ class DraftFilterTest {
                 edge("edge|SUBCLASS|" + IN_DRAFT + "|" + KEPT),
                 edge("edge|SUBCLASS|" + KEPT + "|" + NKD)));
 
-        List<Edge> edges = DraftFilter.withoutDrafts(snapshot(List.of(d))).diagrams().get(0).edges();
+        List<Edge> edges = diagrams(DraftFilter.withoutDrafts(snapshot(List.of(d)))).get(0).edges();
 
         assertThat(edges).extracting(Edge::edgeKey).containsExactly(KEPT, "edge|SUBCLASS|" + KEPT + "|" + NKD);
+    }
+
+    @Test
+    void conceptsLoadedLater_areFilteredOnLoad_andDraftNodesWithoutConceptStay() {
+        Ontology listed = ontology(PUB, true);
+        Ontology loaded = ontology(PUB, true, concept(KEPT, true), concept(DRAFT_IN_PUB, false));
+        Diagram d = diagram(PUB, List.of(node(null, null), node(KEPT, null)), List.of());
+        PublicationSnapshot lazy = new PublicationSnapshot() {
+            public List<Ontology> ontologies() { return List.of(listed); }
+            public Ontology withConcepts(Ontology o) { return loaded; }
+            public void forEachDiagram(java.util.function.Consumer<Diagram> action) { action.accept(d); }
+            public Set<String> draftConceptIris() { return Set.of(DRAFT_IN_PUB); }
+            public Set<String> excludedConceptIris() { return Set.of(); }
+        };
+
+        PublicationSnapshot filtered = DraftFilter.withoutDrafts(lazy);
+
+        assertThat(filtered.ontologies().get(0).concepts()).isEmpty();
+        assertThat(filtered.withConcepts(filtered.ontologies().get(0)).concepts()).extracting(Concept::iri)
+                .containsExactly(KEPT);
+        assertThat(diagrams(filtered).get(0).nodes()).extracting(Node::conceptIri).containsExactly(null, KEPT);
     }
 
     @Test

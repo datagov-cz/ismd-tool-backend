@@ -10,25 +10,6 @@ open data. ISMD builds the two open-data files on demand for an administrator, s
 PostgreSQL and lets the administrator download the files. The DIA LKOD pipeline uploads them to LKOD
 DIA, from where they are catalogued in NKOD. ISMD serves no public copy and never touches LKOD.
 
-| Client requirement | How the design meets it |
-|---|---|
-| No ZIP and no X files, a small fixed set of files | Exactly **two files**: `slovniky.jsonld` and `diagramy.jsonld` |
-| No `manifest.json`; its general fields (`complete`, `exportedAt`, …) and the vocabulary and diagram fields (`createdAt`, `isPublished`, …) belong in the files | Each file carries a **publication record** node (general fields); vocabulary and diagram metadata sit on their own nodes |
-| One file for all vocabularies and one for all diagrams instead of a file each | `@graph` with one node per vocabulary or diagram |
-| `concepts.json` goes away, its content moves into the vocabulary file | PostgreSQL concept metadata is added to each concept in `pojmy` |
-| Attributes that point to files go away | No `file`, `concepts`, `rdf.file`; links are by IRI only |
-| Everything is `.jsonld` with an `@context` of a vocabulary describing this open data | Two contexts: OFN Slovníky and the ISMD OD context (see [Contexts](#contexts)) |
-| ISMD need not generate the dataset metadata; it is made once by hand | The catalogue record lives in LKOD DIA and is maintained by the DIA LKOD pipeline (see [Cataloguing](#cataloguing)) |
-
-## Why ISMD builds the files
-
-The data is split across two stores and no existing interface yields it as two files.
-
-| Option | Why it falls short |
-|---|---|
-| **Fuseki / SPARQL directly** | Diagrams and vocabulary metadata (slug, publication state, timestamps) exist only in PostgreSQL. Fuseki also exposes `update`, `upload` and `gsp-rw` next to `query`, so it cannot be opened to the pipeline as it is. |
-| **Existing REST endpoints** | Assembling the files would need one call for the vocabulary list, one download per vocabulary, one call for the diagram list and one detail call per diagram. With the restriction on, a vocabulary download is refused for vocabularies with validation errors, the list model carries user and comment fields, and the diagram detail is a "fat" read that includes pending edits. |
-
 Publication reuses the existing building blocks (`OntologyDownloadService`, the diagram repositories)
 and applies the export rules in one place.
 
@@ -49,17 +30,18 @@ and applies the export rules in one place.
 |---|---|---|
 | `ismd.publication.include-drafts` | `true` | Drafts are published. `false` leaves out draft vocabularies, draft concepts of published vocabularies and the diagrams of left-out vocabularies (see [Drafts](#drafts)) |
 | `ismd.publication.retain-files` | `30` | How many of the newest stored publications keep their file content in PostgreSQL (at least 1); metadata is kept forever (see [Archive](#archive)) |
+| `ismd.publication.download-parallelism` | `4` | How many vocabularies a run downloads at once (at least 1). They are written in id order regardless; the Fuseki semaphore of `OntologyDownloadServiceImpl` still applies |
 | `ismd.publication.iri-base` | `https://data.dia.gov.cz/zdroj/ismd/` | Base of the IRIs ISMD mints: `<base>diagramy/<iri_id>` and `<base>publikace/<file>` (see [Diagram IRI](#diagram-iri)) |
 | `ismd.publication.context-url` | `https://datagov-cz.github.io/ismd-tool-backend/ismd-otevřená-data/draft/kontext.jsonld` | Second context in both files' `@context`, a public `https://` URL (see [Context hosting](#context-hosting)). A blank value fails the run. |
 
-All four are set in `application.properties` and can be overridden per environment with `PUBLICATION_INCLUDE_DRAFTS`, `PUBLICATION_RETAIN_FILES`, `PUBLICATION_IRI_BASE` and `PUBLICATION_CONTEXT_URL`.
+All five are set in `application.properties` and can be overridden per environment with `PUBLICATION_INCLUDE_DRAFTS`, `PUBLICATION_RETAIN_FILES`, `PUBLICATION_DOWNLOAD_PARALLELISM`, `PUBLICATION_IRI_BASE` and `PUBLICATION_CONTEXT_URL`.
 
 ## Admin endpoints
 
 ```
-POST /api/admin/publikace/run
+POST /api/admin/publikace/run?wait
 GET  /api/admin/publikace/history?page&size
-GET  /api/admin/publikace/{id}/{file}
+GET  /api/admin/publikace/{id}/{file}?format
 ```
 
 All three are admin-only (`@PreAuthorize("hasRole('ADMIN')")` in `PublicationAdminController`);
@@ -68,37 +50,63 @@ All three are admin-only (`@PreAuthorize("hasRole('ADMIN')")` in `PublicationAdm
 
 ### Running a publication
 
-`POST /run` builds and stores a publication; nothing runs on startup or on a schedule. The request
-waits for the build and answers with `ApiResponseDto`:
+`POST /run` starts a publication; nothing runs on startup or on a schedule. The run builds in the
+background (a run of thousands of vocabularies outlasts the ingress HTTP timeout) and its progress
+shows in [History](#history). The answer is an `ApiResponseDto`:
 
 | Status | Meaning |
 |---|---|
-| `200` | Stored; data `PublicationRun` `{id, publishedAt, vocabularies, diagrams, complete, includeDrafts}`, `id` = the stored publication |
+| `202` | Started; data `PublicationRun` `{id, status: RUNNING, publishedAt, vocabularies: 0, diagrams: 0, complete: false, includeDrafts}`, `id` = the publication's history entry |
+| `200` | Only with `?wait=true`: the request waits for the build; data the `STORED` `PublicationRun` with its counts and `complete` |
 | `409` `PUBLICATION_IN_PROGRESS` | Another run holds the lock |
-| `500` `PUBLICATION_FAILED` | The run failed (including a blank `context-url`); nothing is stored |
+| `500` `PUBLICATION_FAILED` | A blank `context-url` (nothing is recorded), or the run could not be recorded or started; with `?wait=true` also a failed build, whose row stays `FAILED` with `error` |
 
-The controller only delegates to `PublicationService.publish(triggeredBy)`, which returns the
-`PublicationRun`. The service takes the lock and reports failure by throwing
-`PublicationInProgressException` or `PublicationFailedException` (package
-`com.dia.ismdtoolbackend.exception`); `GlobalExceptionHandler` maps them to the statuses above. At
-most one build runs at a time (a `ReentrantLock` suffices, the backend runs as a single instance).
+A run has a status: `RUNNING` while it builds, then `STORED` (with its files) or `FAILED` (with a
+short `error`, no files; the stack trace goes to the log). A run cut off by a restart is marked
+`FAILED` with `error` = `přerušeno restartem` when the backend starts again.
+
+The controller only delegates to `PublicationService.publish(triggeredBy, wait)`. The service takes
+the lock, records the `RUNNING` row and hands the build to the single-thread `publicationExecutor`;
+it reports failure by throwing `PublicationInProgressException` or `PublicationFailedException`
+(package `com.dia.ismdtoolbackend.exception`), which `GlobalExceptionHandler` maps to the statuses
+above. At most one build runs at a time: the lock is a `Semaphore` released by whichever thread ends
+the run, including when the executor rejects it (the backend runs as a single instance, so an
+in-process lock suffices).
 
 ### History
 
-`GET /history` lists the stored publications newest first (`page` default `0`, `size` default `50`,
-at most `200`), metadata only: `PublicationSummary` with the run's fields, `triggeredBy`,
-`contextUrl` and per file `name`, `size`, `etag` and `stored` (`false` once the content is past
-`retain-files`).
+`GET /history` lists the publication runs newest first (`page` default `0`, `size` default `50`, at
+most `200`), metadata only: `PublicationSummary` with the run's fields, `status`, `error`,
+`triggeredBy`, `contextUrl` and per file `name`, `size`, `etag` and `stored` (`false` once the content
+is past `retain-files`). A `RUNNING` or `FAILED` run has no files.
 
 ### Downloading the files
 
 `GET /{id}/{file}` (`file` = `slovniky.jsonld` | `diagramy.jsonld`) returns a stored file from
 PostgreSQL. This is how an admin gets the files for LKOD DIA; the newest publication's `id` comes from
-the run response or the first `history` entry.
+the run response or the first `STORED` `history` entry. The stored gzip is streamed, never
+decompressed into memory as a whole:
+
+| Request | Response |
+|---|---|
+| `Accept-Encoding` includes `gzip` (browsers, `curl --compressed`) | The stored gzip as is: `Content-Encoding: gzip`, `Content-Length` = gzip length |
+| no `gzip` in `Accept-Encoding` (plain `curl`) | Decompressed while sent: `Content-Length` = `size` |
+| `?format=gzip` | The stored gzip as a file: `Content-Type: application/gzip`, `filename="publikace-<id>-<file>.gz"`, no `Content-Encoding` |
+
+The first two are `application/ld+json;charset=UTF-8` with
+`Content-Disposition: attachment; filename="publikace-<id>-<file>"` and `Vary: Accept-Encoding`. All
+three carry `ETag` (quoted SHA-256 of the decompressed content).
+
+```sh
+curl -H "Authorization: Bearer $TOKEN" -OJ  "$API/api/admin/publikace/$ID/slovniky.jsonld"              # plain file
+curl -H "Authorization: Bearer $TOKEN" -OJ --compressed "$API/api/admin/publikace/$ID/slovniky.jsonld" # gzip on the wire, plain file saved
+curl -H "Authorization: Bearer $TOKEN" -OJ "$API/api/admin/publikace/$ID/slovniky.jsonld?format=gzip"  # .gz file
+```
 
 | Status | Meaning |
 |---|---|
-| `200` | Stored content, `application/ld+json;charset=UTF-8`, `ETag` (quoted SHA-256 of the content), `Content-Disposition: attachment; filename="publikace-<id>-<file>"` |
+| `200` | The stored content as above |
+| `400` `INVALID_ARGUMENT` | `format` other than `gzip` |
 | `404` `RESOURCE_NOT_FOUND` | Unknown publication or file |
 | `410` `PUBLICATION_FILE_PRUNED` | The publication exists but its content is past `retain-files` |
 
@@ -171,7 +179,7 @@ One `@graph` node in each file; it replaces the general fields of the former man
 
 | Field | Formerly (manifest) | Note |
 |---|---|---|
-| `publikováno` | `exportedAt` | Instant of the PostgreSQL snapshot (see [Consistency](#consistency)); identical in both files of one run |
+| `publikováno` | `exportedAt` | Instant the run started, before PostgreSQL is read (see [Consistency](#consistency)); identical in both files of one run |
 | `úplná` | `complete` | `false` when at least one vocabulary has `stav_obsahu = FAILED`. Always `true` in the diagram file. |
 | `obsahuje_rozpracované` | — | The value of `ismd.publication.include-drafts`, so a consumer knows whether a missing vocabulary does not exist or is only a draft |
 | — | `schemaVersion` | Gone; the dated ISMD OD context URL carries the format version |
@@ -312,37 +320,44 @@ Governed by `ismd.publication.include-drafts`. With `false`:
 |---|---|
 | Vocabulary | A vocabulary with `isPublished = false` is left out entirely |
 | Concept of a published vocabulary | A concept with `isPublished = false` is removed from `pojmy` by IRI. Draft concepts' RDF shares the graph with published ones, so the filter runs on the download output, not on the Fuseki query. |
+| Concept without a PostgreSQL row | A concept in the vocabulary's RDF download with no PostgreSQL row in that vocabulary (created after its concepts were read, or an RDF orphan) has an unknown publish state and is removed from `pojmy` like a draft concept |
 | Diagram | A diagram of a left-out vocabulary is left out |
 | Diagram node | A node whose concept is a draft concept of **any** ISMD vocabulary is left out, so a foreign node cannot reveal another vocabulary's draft; a `seskupen_pod` pointing at a left-out node is dropped. Nodes on concepts ISMD does not know (NKD) stay. |
 | References in concepts | References from kept concepts to left-out concepts (`nadřazený-pojem`, `nadřazená-třída`, `obor-hodnot`, …) are removed; a list left empty is removed with its key. |
 | Edge | An edge whose `klíč_hrany` is a draft concept (relationship), or a hierarchy edge `edge\|KIND\|source\|target` with a draft end, is left out |
 
-With `true` (the default) everything is published and `je_publikován` tells drafts apart.
+With `true` (the default) everything is published and `je_publikován` tells drafts apart; a concept in RDF without a PostgreSQL row is published as downloaded, without ISMD metadata (`slug`, `je_publikován`, timestamps).
 
 ## How a publication is built
 
 An admin starts it with `POST /api/admin/publikace/run` (see [Running a publication](#running-a-publication));
 one run builds both files.
 
-1. **Lock and context.** The run takes the lock (another run in progress → `409`) and fails on a blank
-   `context-url`.
-2. **One PostgreSQL read.** `publikováno` is recorded and `PublicationSnapshotReader` loads, in one
-   read-only transaction (one query per table), the vocabularies with their concepts and the diagrams
-   with their nodes and edges into a `PublicationSnapshot`. It has no fields for users, comments or
-   pending diagram edits, so excluded data cannot leak through a shared model. With
-   `include-drafts=false`, `DraftFilter` applies the rules above to the snapshot.
-3. **`slovniky.jsonld`, one vocabulary at a time.** For each vocabulary
-   `OntologyDownloadService.downloadOntology(id, "json-ld")` is called, the PostgreSQL metadata is
-   added and the node is written by a streaming JSON writer into a temporary directory
-   (`ismd-publication-*`). Only one vocabulary is in memory at a time.
-4. **`diagramy.jsonld`** is built from PostgreSQL alone.
+1. **Lock, context and the run row.** The run takes the lock (another run in progress → `409`) and
+   fails on a blank `context-url`. `publikováno` is recorded and the run is stored as `RUNNING`;
+   `POST /run` answers `202` here and the build continues on `publicationExecutor`.
+2. **PostgreSQL, read as the files are written.** `PublicationSnapshotReader` reads scalar rows (no
+   managed entities), each step in a short read-only transaction: the vocabulary list first, then
+   each vocabulary's concepts as it is written, and the diagrams in pages of 100 by id with their
+   nodes and edges. Memory therefore stays flat in the number of vocabularies and diagrams. The
+   `PublicationSnapshot` it returns has no fields for users, comments or pending diagram edits, so
+   excluded data cannot leak through a shared model. With `include-drafts=false`, `DraftFilter`
+   applies the rules above as the snapshot is read; it needs the IRIs of all draft concepts (draft
+   concepts and concepts of draft vocabularies, one projection query), because a diagram node can
+   show another vocabulary's draft concept.
+3. **`slovniky.jsonld`, in id order.** For up to `download-parallelism` upcoming vocabularies at once
+   the concepts are read and `OntologyDownloadService.downloadOntology(id, "json-ld")` is called;
+   each vocabulary is written strictly in id order by a streaming JSON writer into a temporary
+   directory (`ismd-publication-*`), so the output does not depend on download timing. At most
+   `download-parallelism` vocabularies' content is in memory.
+4. **`diagramy.jsonld`** is built from PostgreSQL alone, one diagram at a time.
 5. **The publication record** is written as the last node of both files (node order in `@graph` has
    no meaning); size and ETag (SHA-256) of each file are computed (`BuiltFile`).
-6. **Archive.** `PublicationArchive.save(...)` stores the run and both files (gzip) in PostgreSQL in
-   one transaction, which also drops content outside `retain-files`.
-7. **Clean-up.** The temporary directory is deleted in every case; the run returns `PublicationRun`.
+6. **Archive.** `PublicationArchive.store(...)` marks the run `STORED` with its counts and stores both
+   files (gzip) in one transaction, which also drops content outside `retain-files`.
+7. **Clean-up.** The temporary directory is deleted in every case.
 
-Any failure fails the run (`PUBLICATION_FAILED`) and nothing is stored.
+Any failure marks the run `FAILED` with a short `error` and stores no files.
 
 Design points that follow from the existing code:
 
@@ -354,27 +369,34 @@ Design points that follow from the existing code:
 - **Failures are reported per vocabulary** (`stav_obsahu = FAILED`, `úplná = false`).
 - **An empty vocabulary is not a failure.** A vocabulary without RDF content is published with its
   metadata and `stav_obsahu = EMPTY`.
-- **Fuseki load.** Graphs are fetched one at a time through the existing Fuseki semaphore, so
-  publication does not crowd out interactive requests. Only an admin starts a run.
+- **Fuseki load.** At most `download-parallelism` graphs are fetched at once, each through the
+  existing Fuseki semaphore, so publication does not crowd out interactive requests. Only an admin
+  starts a run.
 
 ## Archive
 
 Every publication is stored in PostgreSQL as audit trail and as the source of the admin download
-(Liquibase `025-create-publications.yaml`, schema `ismd_schema`):
+(Liquibase `025-create-publications.yaml` and `026-publication-status.yaml`, schema `ismd_schema`):
 
 | Table | Columns | Retention |
 |---|---|---|
-| `publication` | `id`, `published_at` (`timestamptz`), `triggered_by` (e.g. `ADMIN:<username>`), `include_drafts`, `complete`, `vocabularies`, `diagrams`, `context_url` | Forever |
-| `publication_file` | `publication_id` (FK, `ON DELETE CASCADE`), `name`, `size`, `etag`, `content_gzip` (`bytea`, gzip of the file); unique (`publication_id`, `name`) | `name`, `size`, `etag` forever; `content_gzip` is set to `NULL` once the publication is older than the newest `retain-files` publications |
+| `publication` | `id`, `published_at` (`timestamptz`), `triggered_by` (e.g. `ADMIN:<username>`), `include_drafts`, `complete`, `vocabularies`, `diagrams`, `context_url`, `status` (`RUNNING` \| `STORED` \| `FAILED`, `NOT NULL`, default `STORED` for rows from before `026`), `error` (`VARCHAR(1024)`, why a `FAILED` run failed) | Forever |
+| `publication_file` | `publication_id` (FK, `ON DELETE CASCADE`), `name`, `size` (decompressed), `etag`, `content_gzip` (`bytea`, gzip of the file); unique (`publication_id`, `name`) | `name`, `size`, `etag` forever; `content_gzip` is set to `NULL` once the publication is older than the newest `retain-files` `STORED` publications. `RUNNING` and `FAILED` runs have no files and take no place in the retention. |
 
-`triggered_by` stays in the database; it is not part of the published files.
+`triggered_by` stays in the database; it is not part of the published files. `026` also adds the
+index `idx_concepts_ontology_metadata_id`, which the per-vocabulary concept read uses. Rollback drops
+both columns and the index.
 
 ## Consistency
 
 PostgreSQL and TDB2 share no transaction (see
-[`PG_TDB2_CONSISTENCY.md`](./PG_TDB2_CONSISTENCY.md)). The PostgreSQL side is one consistent snapshot;
-each vocabulary's RDF is read shortly after. An edit made during a run can therefore appear in the RDF
-but not in the metadata. `publikováno` marks the PostgreSQL snapshot. An admin chooses when to publish,
+[`PG_TDB2_CONSISTENCY.md`](./PG_TDB2_CONSISTENCY.md)). The PostgreSQL side is read in short steps
+while the files are written, not as one snapshot: the vocabulary list and the draft concept IRIs at the
+start, each vocabulary's concepts just before its RDF is downloaded, the diagrams after the
+vocabularies. An edit made during a run can therefore appear in one part and not another. The draft
+rule stays closed: a concept is published only when it is published in its row and not in the draft
+set read at the start, and RDF concepts without a row are dropped with `include-drafts=false`.
+`publikováno` marks the start of the run. An admin chooses when to publish,
 so this is acceptable. Between publications the files deliberately do not follow changes; the existing
 REST endpoints give the current state.
 
@@ -432,22 +454,25 @@ Package `com.dia.ismdtoolbackend.publication`:
 | Class | Role |
 |---|---|
 | `PublicationConfig` | `@ConfigurationProperties("ismd.publication")` with the defaults above |
-| `snapshot.PublicationSnapshotReader` | One PostgreSQL read into `PublicationSnapshot` |
-| `snapshot.DraftFilter` | The `include-drafts=false` rules |
+| `snapshot.PublicationSnapshotReader` | PostgreSQL as scalar rows in short read-only transactions: vocabulary list, concepts per vocabulary, diagrams in pages, draft concept IRIs |
+| `snapshot.PublicationSnapshot` | What the writers read: the vocabulary list, concepts on demand, diagrams one at a time; `PublicationSnapshot.of(...)` holds one in memory (tests) |
+| `snapshot.DraftFilter` | The `include-drafts=false` rules, applied as the snapshot is read |
 | `file.VocabularyFileWriter` | `slovniky.jsonld`: OFN JSON-LD download + PostgreSQL metadata, references to left-out concepts removed |
+| `file.OrderedFetcher` | Bounded concurrent fetches handed over strictly in list order |
 | `file.DiagramFileWriter` | `diagramy.jsonld` from PostgreSQL alone |
 | `file.PublicationJson` | All keys in one place, the document frame, the publication record, timestamps |
 | `BuiltFile` | A file written by a run: `name`, `path`, `size`, `etag` |
-| `PublicationService` | One run: lock, snapshot, filter, write both files into a temporary directory, archive, clean up; returns `PublicationRun` or throws `PublicationInProgressException` / `PublicationFailedException` |
-| `PublicationRun` | Result of a stored run with its `id`, returned by `POST /run` |
-| `PublicationAdminController` | `POST /run`, `GET /history`, `GET /{id}/{file}`; delegates to `PublicationService` and `PublicationArchive` |
-| `archive.PublicationEntity`, `archive.PublicationFileEntity` | The `publication` and `publication_file` rows |
+| `PublicationService` | One run: lock, `RUNNING` row, then on the executor snapshot, filter, write both files into a temporary directory, archive, clean up; fails `RUNNING` rows on startup; returns `PublicationRun` or throws `PublicationInProgressException` / `PublicationFailedException` |
+| `PublicationExecutorConfig` | The single-thread `publicationExecutor`; on shutdown the build is interrupted and given 30 s to record itself `FAILED` |
+| `PublicationRun` | The run with its `id` and `status`, returned by `POST /run` |
+| `PublicationAdminController` | `POST /run`, `GET /history`, `GET /{id}/{file}` (gzip or decompressed stream); delegates to `PublicationService` and `PublicationArchive` |
+| `archive.PublicationEntity`, `archive.PublicationFileEntity`, `archive.PublicationStatus` | The `publication` and `publication_file` rows, the run status |
 | `archive.PublicationRepository`, `archive.PublicationFileRepository` | Their repositories |
-| `archive.PublicationArchive` | `save` (with retention), `history`, `file` |
+| `archive.PublicationArchive` | `begin`, `store` (with retention), `fail`, `failInterrupted`, `history`, `file` (the stored gzip) |
 | `archive.PublicationSummary`, `archive.PublicationFileSummaryRow` | The history entry and its content-free file projection |
 
 Outside the package: Liquibase `024-diagram-iri-id.yaml` + `DiagramEntity.iriId`; Liquibase
-`025-create-publications.yaml`; `/api/admin/publikace/**` in `SecurityConfig`;
+`025-create-publications.yaml` and `026-publication-status.yaml`; `/api/admin/publikace/**` in `SecurityConfig`;
 `PublicationInProgressException`, `PublicationFailedException`, `PublicationFilePrunedException` in
 `exception`, mapped in `GlobalExceptionHandler` to `PUBLICATION_*` in `ErrorCode`; the context in
 `pages/ismd-otevřená-data/draft/kontext.jsonld` and its deployment in `.github/workflows/pages.yml`.
@@ -458,13 +483,18 @@ already pointed at OFN `2026-02-26`.
 validation against real PostgreSQL fails (`bytea` reported as `BINARY` vs `VARBINARY`); H2 does not
 catch it.
 
-**Tests:** `DiagramRepositoryTest` (diagram IRI), `PublicationSnapshotReaderTest`, `DraftFilterTest`,
+**Tests:** `DiagramRepositoryTest` (diagram IRI), `PublicationSnapshotReaderTest` (scalar reads,
+diagram paging across page boundaries), `DraftFilterTest` (also concepts loaded later),
 `PublicationFilesTest` (real `JsonExporter` output, expansion through both real contexts, every key a
-defined term, default `context-url` maps to the file in `pages/`), `PublicationServiceTest` (stored
-files and run, temporary build removed, drafts off, a snapshot, writer or archive failure stores
-nothing, missing `context-url`, run in progress), `archive.PublicationArchivePostgresTest` (real
-PostgreSQL via Testcontainers: `bytea` round trip, retention keeps metadata and drops content, not
-found), `PublicationAdminControllerTest`. The key rules were checked by deliberately breaking them.
+defined term, default `context-url` maps to the file in `pages/`), `OrderedFetcherTest` and
+`VocabularyFileWriterParallelTest` (id order with downloads finishing in reverse, bounded in-flight
+results, one failed vocabulary), `PublicationServiceTest` (`202` run built in the background, `wait`,
+stored files and run, temporary build removed, drafts off, failures recorded `FAILED`, missing
+`context-url`, run in progress, lock released after failure and executor rejection, startup
+recovery), `archive.PublicationArchivePostgresTest` (real PostgreSQL via Testcontainers: changeset
+`026`, status transitions, `bytea` round trip, retention counts only `STORED` runs, a whole run
+through the executor), `PublicationAdminControllerTest` (`202` / `wait`, the three download forms).
+The key rules (id order, retention ignoring `RUNNING`) were checked by deliberately breaking them.
 There is no validation against the OFN JSON Schema: no schema validator is on the classpath.
 
 ## Enabling
@@ -476,6 +506,7 @@ There is no `enabled` switch and nothing to hand off to infrastructure. Before p
    `context-url` from the `dev`, `test` and `local` profiles.
 2. Freeze a dated context version (`pages/ismd-otevřená-data/<YYYY-MM-DD>/`) and set `context-url` to
    it.
-3. An admin runs `POST /api/admin/publikace/run` and downloads both files via
+3. An admin runs `POST /api/admin/publikace/run`, waits for the run to be `STORED` in
+   `GET /api/admin/publikace/history` and downloads both files via
    `GET /api/admin/publikace/{id}/{file}`.
 4. The DIA LKOD pipeline uploads them and maintains the catalogue record.

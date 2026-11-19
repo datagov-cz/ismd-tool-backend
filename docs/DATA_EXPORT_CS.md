@@ -10,25 +10,6 @@ otevřená data. ISMD na vyžádání administrátora sestaví dva soubory otev�
 PostgreSQL a administrátorovi soubory zpřístupní ke stažení. Pipeline DIA LKOD je nahraje do LKOD DIA,
 odkud se katalogizují v NKOD. ISMD žádnou veřejnou kopii neservíruje a do LKOD nijak nezasahuje.
 
-| Připomínka klienta | Jak ji návrh plní |
-|---|---|
-| Nesmí to být ZIP ani X souborů, ale pevný malý počet souborů | Právě **dva soubory**: `slovniky.jsonld` a `diagramy.jsonld` |
-| `manifest.json` nebude; jeho obecné údaje (`complete`, `exportedAt`, …) i údaje o slovnících a diagramech (`createdAt`, `isPublished`, …) patří do souborů | Každý soubor nese uzel **záznamu o publikaci** (obecné údaje); metadata slovníků a diagramů jsou přímo na jejich uzlech |
-| Místo souboru na každý slovník a diagram jeden soubor pro všechny slovníky a jeden pro všechny diagramy | `@graph` s jedním uzlem na slovník, resp. diagram |
-| `concepts.json` zaniká, jeho obsah se propíše do souboru slovníků | Metadata pojmů z PostgreSQL se doplní přímo k pojmům v `pojmy` |
-| Atributy odkazující na soubory zanikají | Žádné `file`, `concepts`, `rdf.file`; vazby jsou jen přes IRI |
-| Vše ve formátu `.jsonld` s `@context` slovníku popisujícího tato OD | Dva kontexty: OFN Slovníky a kontext ISMD OD (viz [Kontexty](#kontexty)) |
-| Metadata datové sady nemusí generovat ISMD, stačí je jednou vytvořit ručně | Katalogizační záznam je v LKOD DIA a spravuje ho pipeline DIA LKOD (viz [Katalogizace](#katalogizace)) |
-
-## Proč soubory sestavuje ISMD
-
-Data jsou rozdělena mezi dvě úložiště a žádné ze stávajících rozhraní je nevydá jako dva soubory.
-
-| Možnost | Proč nestačí |
-|---|---|
-| **Fuseki / SPARQL napřímo** | Diagramy a metadata slovníků (slug, stav publikace, časové značky) existují jen v PostgreSQL. Služba Fuseki navíc vedle `query` vystavuje i `update`, `upload` a `gsp-rw`, takže ji nelze v současné podobě otevřít pipeline. |
-| **Stávající REST endpointy** | Sestavení souborů by potřebovalo jedno volání pro seznam slovníků, jedno stažení na každý slovník, jedno volání pro seznam diagramů a jedno volání detailu na každý diagram. Stažení slovníku je při zapnutém omezení odmítnuto pro slovníky s validačními chybami, model seznamu nese pole o uživateli a komentářích a detail diagramu je „tlusté“ čtení, které obsahuje i rozpracované změny. |
-
 Publikace znovu používá stávající stavební kameny (`OntologyDownloadService`, repozitáře diagramů)
 a pravidla exportu uplatňuje na jednom místě.
 
@@ -50,17 +31,18 @@ a pravidla exportu uplatňuje na jednom místě.
 |---|---|---|
 | `ismd.publication.include-drafts` | `true` | Rozpracované slovníky se publikují. `false` vynechá rozpracované slovníky, rozpracované pojmy publikovaných slovníků a diagramy vynechaných slovníků (viz [Rozpracované slovníky](#rozpracované-slovníky)) |
 | `ismd.publication.retain-files` | `30` | Kolik nejnovějších uložených publikací si v PostgreSQL ponechá obsah souborů (nejméně 1); metadata se uchovávají navždy (viz [Archiv](#archiv)) |
+| `ismd.publication.download-parallelism` | `4` | Kolik slovníků běh stahuje současně (nejméně 1). Zapisují se vždy v pořadí podle id; semafor Fuseki v `OntologyDownloadServiceImpl` platí dál |
 | `ismd.publication.iri-base` | `https://data.dia.gov.cz/zdroj/ismd/` | Základ IRI, která ISMD vytváří: `<základ>diagramy/<iri_id>` a `<základ>publikace/<soubor>` (viz [IRI diagramu](#iri-diagramu)) |
 | `ismd.publication.context-url` | `https://datagov-cz.github.io/ismd-tool-backend/ismd-otevřená-data/draft/kontext.jsonld` | Druhý kontext v `@context` obou souborů, veřejná URL `https://` (viz [Hostování kontextu](#hostování-kontextu)). Prázdná hodnota způsobí selhání běhu. |
 
-Všechny čtyři jsou nastavené v `application.properties` a v každém prostředí je lze přepsat proměnnými `PUBLICATION_INCLUDE_DRAFTS`, `PUBLICATION_RETAIN_FILES`, `PUBLICATION_IRI_BASE` a `PUBLICATION_CONTEXT_URL`.
+Všech pět je nastavených v `application.properties` a v každém prostředí je lze přepsat proměnnými `PUBLICATION_INCLUDE_DRAFTS`, `PUBLICATION_RETAIN_FILES`, `PUBLICATION_DOWNLOAD_PARALLELISM`, `PUBLICATION_IRI_BASE` a `PUBLICATION_CONTEXT_URL`.
 
 ## Administrátorské endpointy
 
 ```
-POST /api/admin/publikace/run
+POST /api/admin/publikace/run?wait
 GET  /api/admin/publikace/history?page&size
-GET  /api/admin/publikace/{id}/{file}
+GET  /api/admin/publikace/{id}/{file}?format
 ```
 
 Všechny tři jsou jen pro administrátory (`@PreAuthorize("hasRole('ADMIN')")`
@@ -69,36 +51,62 @@ uživatelům, stejně jako `/api/admin/reconciler/**`. Veřejný endpoint neexis
 
 ### Spuštění publikace
 
-`POST /run` sestaví a uloží publikaci; při startu ani podle plánu se nic nespouští. Požadavek čeká na
-dokončení sestavení a odpovídá `ApiResponseDto`:
+`POST /run` spustí publikaci; při startu ani podle plánu se nic nespouští. Běh se sestavuje na pozadí
+(běh s tisíci slovníky trvá déle, než ingress drží HTTP spojení) a jeho průběh ukazuje
+[Historie](#historie). Odpovědí je `ApiResponseDto`:
 
 | Stav | Význam |
 |---|---|
-| `200` | Uloženo; data `PublicationRun` `{id, publishedAt, vocabularies, diagrams, complete, includeDrafts}`, `id` = uložená publikace |
+| `202` | Spuštěno; data `PublicationRun` `{id, status: RUNNING, publishedAt, vocabularies: 0, diagrams: 0, complete: false, includeDrafts}`, `id` = záznam publikace v historii |
+| `200` | Jen s `?wait=true`: požadavek čeká na sestavení; data `PublicationRun` ve stavu `STORED` s počty a `complete` |
 | `409` `PUBLICATION_IN_PROGRESS` | Zámek drží jiný běh |
-| `500` `PUBLICATION_FAILED` | Běh selhal (včetně prázdné `context-url`); nic se neuloží |
+| `500` `PUBLICATION_FAILED` | Prázdná `context-url` (nic se nezaznamená), nebo běh nešlo zaznamenat či spustit; s `?wait=true` i selhané sestavení, jehož řádek zůstane `FAILED` s `error` |
 
-Kontroler jen deleguje na `PublicationService.publish(triggeredBy)`, která vrací `PublicationRun`.
-Služba získá zámek a selhání hlásí vyhozením `PublicationInProgressException` nebo
-`PublicationFailedException` (balíček `com.dia.ismdtoolbackend.exception`); na stavy výše je mapuje
-`GlobalExceptionHandler`. Běží vždy nejvýše jedno sestavení (`ReentrantLock` stačí, backend běží
-v jedné instanci).
+Běh má stav: `RUNNING` během sestavování, poté `STORED` (se soubory), nebo `FAILED` (s krátkým
+`error`, bez souborů; výpis zásobníku jde jen do logu). Běh přerušený restartem se při dalším startu
+backendu označí `FAILED` s `error` = `přerušeno restartem`.
+
+Kontroler jen deleguje na `PublicationService.publish(triggeredBy, wait)`. Služba získá zámek,
+zaznamená řádek `RUNNING` a sestavení předá jednovláknovému `publicationExecutor`; selhání hlásí
+vyhozením `PublicationInProgressException` nebo `PublicationFailedException` (balíček
+`com.dia.ismdtoolbackend.exception`), které `GlobalExceptionHandler` mapuje na stavy výše. Běží vždy
+nejvýše jedno sestavení: zámek je `Semaphore`, který uvolní vlákno, jež běh ukončí, i když exekutor
+běh odmítne (backend běží v jedné instanci, zámek v procesu stačí).
 
 ### Historie
 
-`GET /history` vypíše uložené publikace od nejnovější (`page` výchozí `0`, `size` výchozí `50`, nejvýše
-`200`), jen metadata: `PublicationSummary` s poli běhu, `triggeredBy`, `contextUrl` a u každého souboru
-`name`, `size`, `etag` a `stored` (`false`, jakmile je obsah mimo `retain-files`).
+`GET /history` vypíše běhy publikace od nejnovějšího (`page` výchozí `0`, `size` výchozí `50`, nejvýše
+`200`), jen metadata: `PublicationSummary` s poli běhu, `status`, `error`, `triggeredBy`, `contextUrl`
+a u každého souboru `name`, `size`, `etag` a `stored` (`false`, jakmile je obsah mimo `retain-files`).
+Běh `RUNNING` nebo `FAILED` soubory nemá.
 
 ### Stažení souborů
 
 `GET /{id}/{file}` (`file` = `slovniky.jsonld` | `diagramy.jsonld`) vrátí uložený soubor z PostgreSQL.
 Tak administrátor získá soubory pro LKOD DIA; `id` nejnovější publikace je v odpovědi běhu nebo
-v prvním záznamu `history`.
+v prvním záznamu `history` ve stavu `STORED`. Uložený gzip se posílá streamem a nikdy se celý
+nerozbaluje do paměti:
+
+| Požadavek | Odpověď |
+|---|---|
+| `Accept-Encoding` obsahuje `gzip` (prohlížeče, `curl --compressed`) | Uložený gzip beze změny: `Content-Encoding: gzip`, `Content-Length` = délka gzipu |
+| `Accept-Encoding` bez `gzip` (prostý `curl`) | Rozbaluje se za běhu: `Content-Length` = `size` |
+| `?format=gzip` | Uložený gzip jako soubor: `Content-Type: application/gzip`, `filename="publikace-<id>-<file>.gz"`, bez `Content-Encoding` |
+
+První dvě mají `application/ld+json;charset=UTF-8`,
+`Content-Disposition: attachment; filename="publikace-<id>-<file>"` a `Vary: Accept-Encoding`. Všechny
+tři nesou `ETag` (SHA-256 rozbaleného obsahu v uvozovkách).
+
+```sh
+curl -H "Authorization: Bearer $TOKEN" -OJ  "$API/api/admin/publikace/$ID/slovniky.jsonld"              # nekomprimovaný soubor
+curl -H "Authorization: Bearer $TOKEN" -OJ --compressed "$API/api/admin/publikace/$ID/slovniky.jsonld" # gzip po síti, uloží se nekomprimovaný soubor
+curl -H "Authorization: Bearer $TOKEN" -OJ "$API/api/admin/publikace/$ID/slovniky.jsonld?format=gzip"  # soubor .gz
+```
 
 | Stav | Význam |
 |---|---|
-| `200` | Uložený obsah, `application/ld+json;charset=UTF-8`, `ETag` (SHA-256 obsahu v uvozovkách), `Content-Disposition: attachment; filename="publikace-<id>-<file>"` |
+| `200` | Uložený obsah podle tabulky výše |
+| `400` `INVALID_ARGUMENT` | `format` jiný než `gzip` |
 | `404` `RESOURCE_NOT_FOUND` | Neznámá publikace nebo soubor |
 | `410` `PUBLICATION_FILE_PRUNED` | Publikace existuje, ale její obsah je mimo `retain-files` |
 
@@ -170,7 +178,7 @@ Je v obou souborech jako jeden uzel `@graph`; nahrazuje obecná pole dřívějš
 
 | Pole | Dříve (manifest) | Poznámka |
 |---|---|---|
-| `publikováno` | `exportedAt` | Okamžik snímku PostgreSQL (viz [Konzistence](#konzistence)); stejný v obou souborech jednoho běhu |
+| `publikováno` | `exportedAt` | Okamžik spuštění běhu, před čtením PostgreSQL (viz [Konzistence](#konzistence)); stejný v obou souborech jednoho běhu |
 | `úplná` | `complete` | `false`, pokud má alespoň jeden slovník `stav_obsahu = FAILED`. V souboru diagramů je vždy `true`. |
 | `obsahuje_rozpracované` | — | Hodnota `ismd.publication.include-drafts`, aby konzument věděl, zda chybějící slovník neexistuje, nebo je jen rozpracovaný |
 | — | `schemaVersion` | Zaniká; verzi formátu nese datovaná URL kontextu ISMD OD |
@@ -309,36 +317,44 @@ a přejmenování slovníku mění jeho IRI. Publikace proto dává každému di
 |---|---|
 | Slovník | Vynechá se celý slovník s `isPublished = false` |
 | Pojem publikovaného slovníku | Pojem s `isPublished = false` se odebere z `pojmy` podle IRI. RDF rozpracovaných pojmů je ve stejném grafu jako publikovaných, takže filtr musí běžet nad výstupem stažení, ne nad dotazem do Fuseki. |
+| Pojem bez řádku v PostgreSQL | Pojem ve staženém RDF slovníku, který v PostgreSQL k tomuto slovníku nemá řádek (vznikl po načtení pojmů slovníku, nebo je osiřelý v RDF), má neznámý stav publikace a odebere se z `pojmy` stejně jako rozpracovaný pojem |
 | Diagram | Vynechá se diagram vynechaného slovníku |
 | Uzel diagramu | Uzel, jehož pojem je rozpracovaný pojem **kteréhokoli** slovníku ISMD, se vynechá, aby cizí uzel neprozradil rozpracovaný pojem jiného slovníku; `seskupen_pod` odkazující na vynechaný uzel se vynechá. Uzly na pojmy, které ISMD nezná (NKD), se ponechají. |
 | Odkazy v pojmech | Odkazy ponechaných pojmů na vynechané pojmy (`nadřazený-pojem`, `nadřazená-třída`, `obor-hodnot`, …) se odeberou; seznam, který zůstane prázdný, se odebere celý. |
 | Hrana | Hrana, jejíž `klíč_hrany` je rozpracovaný pojem (vztah), nebo hrana hierarchie `edge\|DRUH\|zdroj\|cíl` s rozpracovaným koncem, se vynechá |
 
-Při `true` (výchozí) se publikuje vše a rozlišení nese `je_publikován`.
+Při `true` (výchozí) se publikuje vše a rozlišení nese `je_publikován`; pojem v RDF bez řádku v PostgreSQL se publikuje tak, jak byl stažen, bez metadat ISMD (`slug`, `je_publikován`, časové údaje).
 
 ## Jak se publikace sestavuje
 
 Spouští ji administrátor přes `POST /api/admin/publikace/run` (viz
 [Spuštění publikace](#spuštění-publikace)); běh sestaví oba soubory.
 
-1. **Zámek a kontext.** Běh získá zámek (jiný běh probíhá → `409`) a s prázdnou `context-url` selže.
-2. **Jedno čtení z PostgreSQL.** Zaznamená se `publikováno` a `PublicationSnapshotReader` načte
-   v jediné transakci pouze pro čtení (jeden dotaz na tabulku) slovníky s pojmy a diagramy s uzly
-   a hranami do `PublicationSnapshot`. Ten nemá pole pro uživatele, komentáře ani rozpracované změny
-   diagramů, takže vyloučená data nemohou uniknout přes sdílený model. Při `include-drafts=false`
-   na snímek použije pravidla výše `DraftFilter`.
-3. **`slovniky.jsonld` slovník po slovníku.** Pro každý slovník se zavolá
-   `OntologyDownloadService.downloadOntology(id, "json-ld")`, doplní se metadata z PostgreSQL a uzel
-   se zapíše streamovacím zapisovačem JSON do dočasného adresáře (`ismd-publication-*`). V paměti je
-   vždy jen jeden slovník.
-4. **`diagramy.jsonld`** se sestaví jen z PostgreSQL.
+1. **Zámek, kontext a řádek běhu.** Běh získá zámek (jiný běh probíhá → `409`) a s prázdnou
+   `context-url` selže. Zaznamená se `publikováno` a běh se uloží jako `RUNNING`; zde `POST /run`
+   odpoví `202` a sestavení pokračuje na `publicationExecutor`.
+2. **PostgreSQL se čte během zápisu souborů.** `PublicationSnapshotReader` čte skalární řádky (žádné
+   spravované entity), každý krok v krátké transakci pouze pro čtení: nejdřív seznam slovníků, pak
+   pojmy každého slovníku, když se zapisuje, a diagramy po stránkách po 100 podle id s jejich uzly
+   a hranami. Paměť proto neroste s počtem slovníků a diagramů. Vrácený `PublicationSnapshot` nemá
+   pole pro uživatele, komentáře ani rozpracované změny diagramů, takže vyloučená data nemohou
+   uniknout přes sdílený model. Při `include-drafts=false` použije pravidla výše `DraftFilter` za
+   čtení; potřebuje IRI všech rozpracovaných pojmů (rozpracované pojmy a pojmy rozpracovaných
+   slovníků, jeden projekční dotaz), protože uzel diagramu může zobrazovat rozpracovaný pojem jiného
+   slovníku.
+3. **`slovniky.jsonld` v pořadí podle id.** Pro nejvýše `download-parallelism` následujících slovníků
+   současně se načtou pojmy a zavolá se `OntologyDownloadService.downloadOntology(id, "json-ld")`;
+   každý slovník se zapíše přísně v pořadí podle id streamovacím zapisovačem JSON do dočasného
+   adresáře (`ismd-publication-*`), takže výstup nezávisí na časování stahování. V paměti je obsah
+   nejvýše `download-parallelism` slovníků.
+4. **`diagramy.jsonld`** se sestaví jen z PostgreSQL, diagram po diagramu.
 5. **Záznam o publikaci** se zapíše do obou souborů jako poslední uzel (pořadí uzlů v `@graph` nemá
    význam); spočítá se velikost a ETag (SHA-256) každého souboru (`BuiltFile`).
-6. **Archiv.** `PublicationArchive.save(...)` uloží běh i oba soubory (gzip) do PostgreSQL v jedné
-   transakci, která zároveň odebere obsah mimo `retain-files`.
-7. **Úklid.** Dočasný adresář se v každém případě smaže; běh vrátí `PublicationRun`.
+6. **Archiv.** `PublicationArchive.store(...)` označí běh `STORED` s jeho počty a uloží oba soubory
+   (gzip) v jedné transakci, která zároveň odebere obsah mimo `retain-files`.
+7. **Úklid.** Dočasný adresář se v každém případě smaže.
 
-Jakékoli selhání znamená selhání běhu (`PUBLICATION_FAILED`) a nic se neuloží.
+Jakékoli selhání označí běh `FAILED` s krátkým `error` a neuloží žádné soubory.
 
 Návrhové body plynoucí ze stávajícího kódu:
 
@@ -349,27 +365,33 @@ Návrhové body plynoucí ze stávajícího kódu:
 - **Selhání se hlásí po slovnících** (`stav_obsahu = FAILED`, `úplná = false`).
 - **Prázdný slovník není selhání.** Slovník bez RDF obsahu se publikuje se svými metadaty
   a `stav_obsahu = EMPTY`.
-- **Zátěž Fuseki.** Grafy se načítají jeden po druhém přes stávající semafor Fuseki, takže publikace
-  nezahltí interaktivní požadavky. Běh spouští jen administrátor.
+- **Zátěž Fuseki.** Současně se načítá nejvýše `download-parallelism` grafů, každý přes stávající
+  semafor Fuseki, takže publikace nezahltí interaktivní požadavky. Běh spouští jen administrátor.
 
 ## Archiv
 
 Každá publikace se ukládá do PostgreSQL jako auditní stopa a jako zdroj stažení pro administrátora
-(Liquibase `025-create-publications.yaml`, schéma `ismd_schema`):
+(Liquibase `025-create-publications.yaml` a `026-publication-status.yaml`, schéma `ismd_schema`):
 
 | Tabulka | Sloupce | Uchování |
 |---|---|---|
-| `publication` | `id`, `published_at` (`timestamptz`), `triggered_by` (např. `ADMIN:<username>`), `include_drafts`, `complete`, `vocabularies`, `diagrams`, `context_url` | Navždy |
-| `publication_file` | `publication_id` (FK, `ON DELETE CASCADE`), `name`, `size`, `etag`, `content_gzip` (`bytea`, gzip souboru); unikátní (`publication_id`, `name`) | `name`, `size`, `etag` navždy; `content_gzip` se nastaví na `NULL`, jakmile publikace není mezi `retain-files` nejnovějšími |
+| `publication` | `id`, `published_at` (`timestamptz`), `triggered_by` (např. `ADMIN:<username>`), `include_drafts`, `complete`, `vocabularies`, `diagrams`, `context_url`, `status` (`RUNNING` \| `STORED` \| `FAILED`, `NOT NULL`, výchozí `STORED` pro řádky z doby před `026`), `error` (`VARCHAR(1024)`, proč běh `FAILED` selhal) | Navždy |
+| `publication_file` | `publication_id` (FK, `ON DELETE CASCADE`), `name`, `size` (rozbalený), `etag`, `content_gzip` (`bytea`, gzip souboru); unikátní (`publication_id`, `name`) | `name`, `size`, `etag` navždy; `content_gzip` se nastaví na `NULL`, jakmile publikace není mezi `retain-files` nejnovějšími publikacemi `STORED`. Běhy `RUNNING` a `FAILED` soubory nemají a do uchování se nepočítají. |
 
-`triggered_by` zůstává v databázi; do publikovaných souborů se nedostane.
+`triggered_by` zůstává v databázi; do publikovaných souborů se nedostane. `026` navíc přidává index
+`idx_concepts_ontology_metadata_id`, který používá čtení pojmů po slovnících. Rollback odebere oba
+sloupce i index.
 
 ## Konzistence
 
 PostgreSQL a TDB2 nesdílejí transakci (viz
-[`PG_TDB2_CONSISTENCY_CS.md`](./PG_TDB2_CONSISTENCY_CS.md)). Strana PostgreSQL je jeden
-konzistentní snímek; RDF každého slovníku se čte krátce poté. Úprava provedená během běhu se proto
-může objevit v RDF, ale ne v metadatech. `publikováno` označuje snímek PostgreSQL. Kdy publikovat,
+[`PG_TDB2_CONSISTENCY_CS.md`](./PG_TDB2_CONSISTENCY_CS.md)). Strana PostgreSQL se čte po krátkých
+krocích během zápisu souborů, ne jako jeden snímek: seznam slovníků a IRI rozpracovaných pojmů na
+začátku, pojmy každého slovníku těsně před stažením jeho RDF, diagramy po slovnících. Úprava provedená
+během běhu se proto může objevit v jedné části a v jiné ne. Pravidlo rozpracovaných pojmů zůstává
+uzavřené: pojem se publikuje, jen když je publikovaný ve svém řádku a není v množině rozpracovaných
+pojmů načtené na začátku, a pojmy v RDF bez řádku se při `include-drafts=false` vynechají.
+`publikováno` označuje začátek běhu. Kdy publikovat,
 volí administrátor, takže je to přijatelné. Mezi publikacemi soubory úmyslně nesledují změny; aktuální
 stav dávají stávající REST endpointy.
 
@@ -426,22 +448,25 @@ Balíček `com.dia.ismdtoolbackend.publication`:
 | Třída | Úloha |
 |---|---|
 | `PublicationConfig` | `@ConfigurationProperties("ismd.publication")` s výchozími hodnotami výše |
-| `snapshot.PublicationSnapshotReader` | Jedno čtení PostgreSQL do `PublicationSnapshot` |
-| `snapshot.DraftFilter` | Pravidla `include-drafts=false` |
+| `snapshot.PublicationSnapshotReader` | PostgreSQL jako skalární řádky v krátkých transakcích pouze pro čtení: seznam slovníků, pojmy po slovnících, diagramy po stránkách, IRI rozpracovaných pojmů |
+| `snapshot.PublicationSnapshot` | Co čtou zapisovače: seznam slovníků, pojmy na vyžádání, diagramy po jednom; `PublicationSnapshot.of(...)` drží snímek v paměti (testy) |
+| `snapshot.DraftFilter` | Pravidla `include-drafts=false`, použitá za čtení snímku |
 | `file.VocabularyFileWriter` | `slovniky.jsonld`: stažení OFN JSON-LD + metadata z PostgreSQL, odebrání odkazů na vynechané pojmy |
+| `file.OrderedFetcher` | Omezené souběžné načítání, výsledky předává přísně v pořadí seznamu |
 | `file.DiagramFileWriter` | `diagramy.jsonld` jen z PostgreSQL |
 | `file.PublicationJson` | Všechny klíče na jednom místě, rámec dokumentu, záznam o publikaci, časové okamžiky |
 | `BuiltFile` | Soubor zapsaný během běhu: `name`, `path`, `size`, `etag` |
-| `PublicationService` | Jeden běh: zámek, snímek, filtr, zápis obou souborů do dočasného adresáře, archivace, úklid; vrací `PublicationRun`, nebo vyhodí `PublicationInProgressException` / `PublicationFailedException` |
-| `PublicationRun` | Výsledek uloženého běhu s jeho `id`, který vrací `POST /run` |
-| `PublicationAdminController` | `POST /run`, `GET /history`, `GET /{id}/{file}`; deleguje na `PublicationService` a `PublicationArchive` |
-| `archive.PublicationEntity`, `archive.PublicationFileEntity` | Řádky `publication` a `publication_file` |
+| `PublicationService` | Jeden běh: zámek, řádek `RUNNING`, pak na exekutoru snímek, filtr, zápis obou souborů do dočasného adresáře, archivace, úklid; při startu označí řádky `RUNNING` jako `FAILED`; vrací `PublicationRun`, nebo vyhodí `PublicationInProgressException` / `PublicationFailedException` |
+| `PublicationExecutorConfig` | Jednovláknový `publicationExecutor`; při vypnutí se sestavení přeruší a dostane 30 s na zaznamenání stavu `FAILED` |
+| `PublicationRun` | Běh s jeho `id` a `status`, který vrací `POST /run` |
+| `PublicationAdminController` | `POST /run`, `GET /history`, `GET /{id}/{file}` (gzip nebo rozbalovaný proud); deleguje na `PublicationService` a `PublicationArchive` |
+| `archive.PublicationEntity`, `archive.PublicationFileEntity`, `archive.PublicationStatus` | Řádky `publication` a `publication_file`, stav běhu |
 | `archive.PublicationRepository`, `archive.PublicationFileRepository` | Jejich repozitáře |
-| `archive.PublicationArchive` | `save` (s uchováním), `history`, `file` |
+| `archive.PublicationArchive` | `begin`, `store` (s uchováním), `fail`, `failInterrupted`, `history`, `file` (uložený gzip) |
 | `archive.PublicationSummary`, `archive.PublicationFileSummaryRow` | Záznam historie a projekce souboru bez obsahu |
 
 Mimo balíček: Liquibase `024-diagram-iri-id.yaml` + `DiagramEntity.iriId`; Liquibase
-`025-create-publications.yaml`; `/api/admin/publikace/**` v `SecurityConfig`;
+`025-create-publications.yaml` a `026-publication-status.yaml`; `/api/admin/publikace/**` v `SecurityConfig`;
 `PublicationInProgressException`, `PublicationFailedException`, `PublicationFilePrunedException`
 v `exception`, které `GlobalExceptionHandler` mapuje na `PUBLICATION_*` v `ErrorCode`; kontext
 v `pages/ismd-otevřená-data/draft/kontext.jsonld` a jeho nasazení v `.github/workflows/pages.yml`.
@@ -452,14 +477,19 @@ ukazoval na OFN `2026-02-26`.
 validace schématu proti skutečnému PostgreSQL (`bytea` hlášeno jako `BINARY` vs. `VARBINARY`); H2 to
 nezachytí.
 
-**Testy:** `DiagramRepositoryTest` (IRI diagramu), `PublicationSnapshotReaderTest`, `DraftFilterTest`,
+**Testy:** `DiagramRepositoryTest` (IRI diagramu), `PublicationSnapshotReaderTest` (skalární čtení,
+stránkování diagramů přes hranici stránky), `DraftFilterTest` (i pojmy načtené později),
 `PublicationFilesTest` (skutečný výstup `JsonExporter`, expanze přes oba skutečné kontexty, každý klíč je
-definovaný termín, výchozí `context-url` odpovídá souboru v `pages/`), `PublicationServiceTest` (uložené
-soubory a běh, odstranění dočasného sestavení, vypnuté rozpracované slovníky, selhání snímku,
-zapisovače nebo archivu nic neuloží, chybějící `context-url`, probíhající běh),
-`archive.PublicationArchivePostgresTest` (skutečný PostgreSQL přes Testcontainers: `bytea` tam a zpět,
-uchování ponechá metadata a odebere obsah, nenalezeno), `PublicationAdminControllerTest`. Klíčová
-pravidla ověřena záměrným rozbitím (mutace). Validace proti JSON Schema OFN se nedělá: v classpath není
+definovaný termín, výchozí `context-url` odpovídá souboru v `pages/`), `OrderedFetcherTest`
+a `VocabularyFileWriterParallelTest` (pořadí podle id, i když stahování končí obráceně, omezený počet
+rozpracovaných výsledků, jeden selhaný slovník), `PublicationServiceTest` (běh `202` sestavený na
+pozadí, `wait`, uložené soubory a běh, odstranění dočasného sestavení, vypnuté rozpracované slovníky,
+selhání zaznamenaná jako `FAILED`, chybějící `context-url`, probíhající běh, uvolnění zámku po selhání
+i po odmítnutí exekutorem, obnova při startu), `archive.PublicationArchivePostgresTest` (skutečný
+PostgreSQL přes Testcontainers: changeset `026`, přechody stavů, `bytea` tam a zpět, uchování počítá
+jen běhy `STORED`, celý běh přes exekutor), `PublicationAdminControllerTest` (`202` / `wait`, tři
+podoby stažení). Klíčová pravidla (pořadí podle id, uchování ignoruje `RUNNING`) ověřena záměrným
+rozbitím (mutace). Validace proti JSON Schema OFN se nedělá: v classpath není
 validátor schémat.
 
 ## Zapnutí
@@ -471,6 +501,7 @@ Přepínač `enabled` neexistuje a nic se nepředává infrastruktuře. Před pr
    `context-url` přes jsDelivr z profilů `dev`, `test` a `local`.
 2. Zmrazit datovanou verzi kontextu (`pages/ismd-otevřená-data/<RRRR-MM-DD>/`) a nastavit na ni
    `context-url`.
-3. Administrátor spustí `POST /api/admin/publikace/run` a stáhne oba soubory přes
+3. Administrátor spustí `POST /api/admin/publikace/run`, počká, až je běh v
+   `GET /api/admin/publikace/history` ve stavu `STORED`, a stáhne oba soubory přes
    `GET /api/admin/publikace/{id}/{file}`.
 4. Pipeline DIA LKOD je nahraje a spravuje katalogizační záznam.

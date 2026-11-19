@@ -97,7 +97,7 @@ public enum ErrorCode {
     OUTBOX_ROW_NOT_RETRYABLE(HttpStatus.CONFLICT, "Záznam neexistuje nebo není ve stavu FAILED; není co opakovat."),
     RECONCILIATION_IN_PROGRESS(HttpStatus.CONFLICT, "Kontrola konzistence již probíhá."),
     PUBLICATION_IN_PROGRESS(HttpStatus.CONFLICT, "Publikace již probíhá."),
-    PUBLICATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "Publikace selhala; zůstává předchozí publikace."),
+    PUBLICATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "Publikace selhala; nic nebylo uloženo."),
     PUBLICATION_FILE_PRUNED(HttpStatus.GONE, "Obsah souboru této publikace už není uložen.");
 
     private final HttpStatus status;

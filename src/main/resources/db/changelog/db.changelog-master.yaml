@@ -72,3 +72,5 @@ databaseChangeLog:
       file: db/changelog/v1/024-diagram-iri-id.yaml
   - include:
       file: db/changelog/v1/025-create-publications.yaml
+  - include:
+      file: db/changelog/v1/026-publication-status.yaml

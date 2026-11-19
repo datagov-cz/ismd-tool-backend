@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.publication.file;
 
 import com.dia.ismdtoolbackend.exception.EmptyDataException;
+import com.dia.ismdtoolbackend.publication.PublicationConfig;
 import com.dia.ismdtoolbackend.publication.snapshot.PublicationSnapshot;
 import com.dia.ismdtoolbackend.publication.snapshot.PublicationSnapshot.Concept;
 import com.dia.ismdtoolbackend.publication.snapshot.PublicationSnapshot.Ontology;
@@ -15,6 +16,7 @@ import tools.jackson.databind.node.ObjectNode;
 
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -25,8 +27,9 @@ import static com.dia.ismdtoolbackend.publication.file.PublicationJson.*;
 
 /**
  * Writes {@code slovniky.jsonld}: one graph node per vocabulary, being its OFN JSON-LD download merged
- * with its PostgreSQL metadata, then the publication record. Vocabularies are downloaded and written one
- * at a time, so only one vocabulary's content is in memory.
+ * with its PostgreSQL metadata, then the publication record. Up to
+ * {@code ismd.publication.download-parallelism} vocabularies are downloaded at once; they are written
+ * strictly in id order, and only that many vocabularies' content is in memory.
  */
 @Slf4j
 @Component
@@ -38,32 +41,45 @@ public class VocabularyFileWriter {
     enum ContentStatus { OK, EMPTY, FAILED }
 
     private final OntologyDownloadService downloads;
+    private final PublicationConfig config;
+
+    /** One vocabulary ready to write. */
+    private record Fetched(Ontology ontology, ObjectNode content, ContentStatus status) {
+    }
 
     /** @return whether every vocabulary's content was written, i.e. none ended {@code FAILED} */
     public boolean write(PublicationSnapshot snapshot, PublicationHeader header, OutputStream out) {
-        boolean complete = true;
+        boolean[] complete = {true};
         JsonGenerator generator = open(out, header);
-        for (Ontology ontology : snapshot.ontologies()) {
-            ObjectNode content = null;
-            ContentStatus status;
-            try {
-                content = (ObjectNode) MAPPER.readTree(downloads.downloadOntology(ontology.id(), "json-ld"));
-                status = ContentStatus.OK;
-            } catch (EmptyDataException e) {
-                status = ContentStatus.EMPTY;
-            } catch (RuntimeException e) {
-                log.warn("Publication: content of vocabulary {} failed, publishing metadata only", ontology.iri(), e);
-                status = ContentStatus.FAILED;
-                complete = false;
-            }
-            generator.writeTree(vocabularyNode(ontology, content, status, snapshot.excludedConceptIris()));
+        OrderedFetcher.forEachInOrder(snapshot.ontologies(), config.getDownloadParallelism(), "publication-download-",
+                ontology -> fetch(snapshot, ontology),
+                fetched -> {
+                    if (fetched.status() == ContentStatus.FAILED) {
+                        complete[0] = false;
+                    }
+                    generator.writeTree(vocabularyNode(fetched.ontology(), fetched.content(), fetched.status(),
+                            snapshot.excludedConceptIris(), header.includesDrafts()));
+                });
+        close(generator, header, FILE, complete[0]);
+        return complete[0];
+    }
+
+    /** A failed PostgreSQL read fails the run; a failed download marks only this vocabulary. */
+    private Fetched fetch(PublicationSnapshot snapshot, Ontology listed) {
+        Ontology ontology = snapshot.withConcepts(listed);
+        try {
+            return new Fetched(ontology,
+                    (ObjectNode) MAPPER.readTree(downloads.downloadOntology(ontology.id(), "json-ld")), ContentStatus.OK);
+        } catch (EmptyDataException e) {
+            return new Fetched(ontology, null, ContentStatus.EMPTY);
+        } catch (RuntimeException e) {
+            log.warn("Publication: content of vocabulary {} failed, publishing metadata only", ontology.iri(), e);
+            return new Fetched(ontology, null, ContentStatus.FAILED);
         }
-        close(generator, header, FILE, complete);
-        return complete;
     }
 
     static ObjectNode vocabularyNode(Ontology ontology, ObjectNode content, ContentStatus status,
-                                     Set<String> excluded) {
+                                     Set<String> excluded, boolean includesDrafts) {
         ObjectNode node = MAPPER.createObjectNode();
         node.put(IRI, ontology.iri());
         if (content != null && content.has(TYP)) {
@@ -89,24 +105,42 @@ public class VocabularyFileWriter {
         node.put(STAV_OBSAHU, status.name());
         node.put(POCET_POJMU, ontology.concepts().size());
         if (content != null && content.get(POJMY) instanceof ArrayNode pojmy) {
-            node.set(POJMY, concepts(pojmy, ontology.concepts(), excluded));
+            node.set(POJMY, concepts(pojmy, ontology.concepts(), excluded, includesDrafts));
         }
         return node;
     }
 
     /**
      * Drops excluded concepts, strips references to them from the rest, and adds each remaining concept's
-     * PostgreSQL metadata. A concept in RDF without a PostgreSQL row is kept as downloaded.
+     * PostgreSQL metadata. A concept in RDF without a PostgreSQL row in this vocabulary has an unknown
+     * publish state: with drafts included it is kept as downloaded, otherwise it is dropped and treated
+     * as excluded.
      */
-    private static ArrayNode concepts(ArrayNode pojmy, List<Concept> metadata, Set<String> excluded) {
+    private static ArrayNode concepts(ArrayNode pojmy, List<Concept> metadata, Set<String> excluded,
+                                      boolean includesDrafts) {
         Map<String, Concept> byIri = metadata.stream().collect(Collectors.toMap(Concept::iri, Function.identity(),
                 (first, second) -> first));
+        Set<String> dropped = excluded;
+        if (!includesDrafts) {
+            Set<String> unknown = new HashSet<>();
+            for (JsonNode element : pojmy) {
+                String iri = element.path(IRI).asString("");
+                if (!byIri.containsKey(iri)) {
+                    unknown.add(iri);
+                }
+            }
+            if (!unknown.isEmpty()) {
+                // excluded spans every vocabulary; copy it only when this one has unknown concepts
+                dropped = new HashSet<>(excluded);
+                dropped.addAll(unknown);
+            }
+        }
         ArrayNode result = MAPPER.createArrayNode();
         for (JsonNode element : pojmy) {
-            if (!(element instanceof ObjectNode pojem) || excluded.contains(pojem.path(IRI).asString(""))) {
+            if (!(element instanceof ObjectNode pojem) || dropped.contains(pojem.path(IRI).asString(""))) {
                 continue;
             }
-            stripReferences(pojem, excluded);
+            stripReferences(pojem, dropped);
             Concept concept = byIri.get(pojem.path(IRI).asString(""));
             if (concept != null) {
                 pojem.put(SLUG, concept.slug());

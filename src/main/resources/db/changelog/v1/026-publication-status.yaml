@@ -1,0 +1,63 @@
+databaseChangeLog:
+  # A publication run is recorded RUNNING when it starts and ends STORED (with its files) or FAILED
+  # (with error). Rows from before this changeset were all stored, hence the default.
+
+  - changeSet:
+      id: 026-publication-status
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                schemaName: ismd_schema
+                tableName: publication
+                columnName: status
+      changes:
+        - addColumn:
+            schemaName: ismd_schema
+            tableName: publication
+            columns:
+              - column:
+                  name: status
+                  type: VARCHAR(16)
+                  defaultValue: STORED
+                  constraints:
+                    nullable: false
+              # Why a FAILED run failed; null otherwise.
+              - column:
+                  name: error
+                  type: VARCHAR(1024)
+      rollback:
+        - dropColumn:
+            schemaName: ismd_schema
+            tableName: publication
+            columnName: error
+        - dropColumn:
+            schemaName: ismd_schema
+            tableName: publication
+            columnName: status
+
+  # A run reads each vocabulary's concepts by ontology_metadata_id; without an index that is a scan of
+  # the whole table per vocabulary.
+  - changeSet:
+      id: 026-concepts-ontology-metadata-id-index
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                indexName: idx_concepts_ontology_metadata_id
+                schemaName: ismd_schema
+      changes:
+        - createIndex:
+            schemaName: ismd_schema
+            tableName: concepts
+            indexName: idx_concepts_ontology_metadata_id
+            columns:
+              - column:
+                  name: ontology_metadata_id
+      rollback:
+        - dropIndex:
+            schemaName: ismd_schema
+            tableName: concepts
+            indexName: idx_concepts_ontology_metadata_id

@@ -16,7 +16,7 @@ import static com.dia.ismdtoolbackend.publication.file.PublicationJson.*;
 /**
  * Writes {@code diagramy.jsonld}: one graph node per diagram with its node positions and grouping and the
  * edges placed on it (route waypoints are not published), then the publication
- * record. Reads PostgreSQL data only; concepts are referenced by IRI and described in
+ * record. Diagrams are written as the snapshot visits them, one at a time. Reads PostgreSQL data only; concepts are referenced by IRI and described in
  * {@code slovniky.jsonld}.
  */
 @Component
@@ -24,12 +24,16 @@ public class DiagramFileWriter {
 
     public static final String FILE = "diagramy.jsonld";
 
-    public void write(PublicationSnapshot snapshot, PublicationHeader header, OutputStream out) {
+    /** @return how many diagrams were written */
+    public int write(PublicationSnapshot snapshot, PublicationHeader header, OutputStream out) {
         JsonGenerator generator = open(out, header);
-        for (Diagram diagram : snapshot.diagrams()) {
+        int[] written = {0};
+        snapshot.forEachDiagram(diagram -> {
             generator.writeTree(diagramNode(diagram, header.iriBase()));
-        }
+            written[0]++;
+        });
         close(generator, header, FILE, true);
+        return written[0];
     }
 
     static ObjectNode diagramNode(Diagram diagram, String iriBase) {
