@@ -167,12 +167,11 @@ concepts whose `inScheme` points at a scheme their IRI doesn't prefix-match.
 | Category | Meaning | Disposition |
 |---|---|---|
 | `RDF_ORPHAN` | Owned RDF subject in Fuseki, no PG row | The only **auto-repairable** category (future phase) |
-| `PG_MISSING_RDF` | PG row whose IRI is not owned-resolvable in **any** graph | Report-only (two causes: failed delete vs failed create) |
+| `PG_MISSING_RDF` | PG row whose IRI is not owned-resolvable in **any** graph and has no triples in its declared graph | Report-only (two causes: failed delete vs failed create) |
 | `IRI_GRAPH_MISMATCH` | PG IRI owned-resolvable, but not in its declared `graphName` (or `graphName` is null) | Report-only |
 | `GRAPH_ORPHAN` | Fuseki graph holds owned subjects but no ontology row references it | Report-only (deletable only in a future gated phase) |
 | `SUSPECTED_RENAME` | An `RDF_ORPHAN`(new IRI) + `PG_MISSING_RDF`(old IRI) pair that looks like one half-finished rename | Report-only; both IRIs excluded from any future repair |
-| `EXCLUDED_NO_INSCHEME` | In-namespace subject with no `inScheme` (deliberately excluded / legacy) | Informational; *not emitted yet* |
-| `RDF_NOT_OWNED_RESOLVABLE` | PG IRI has triples but isn't ownership-resolvable (e.g. lost `inScheme`) | Report-only; *not emitted yet* |
+| `RDF_NOT_OWNED_RESOLVABLE` | PG row whose IRI is the subject of triples in its declared graph but isn't owned-resolvable anywhere (lost or foreign `inScheme`); replaces `PG_MISSING_RDF` for that row | Report-only |
 
 > **Detection-only today.** No category is repaired. Only `RDF_ORPHAN` is *ever* auto-repairable, and
 > only after the repair-safety machinery (quarantine, pre-delete audit, distributed lock) is built.

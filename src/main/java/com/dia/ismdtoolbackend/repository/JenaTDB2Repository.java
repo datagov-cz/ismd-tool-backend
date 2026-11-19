@@ -20,6 +20,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -45,6 +46,9 @@ public class JenaTDB2Repository {
      */
     public static final String OWNED_CONCEPT_PATTERN =
             " ?concept skos:inScheme ?scheme . FILTER(STRSTARTS(STR(?concept), CONCAT(STR(?scheme), \"/\"))) ";
+
+    /** IRIs per {@code VALUES} block of {@link #findSubjectsInGraph}. */
+    private static final int SUBJECT_BATCH_SIZE = 500;
 
     private final FusekiConnectionConfig connectionConfig;
     private final FusekiSparqlExecutor executor;
@@ -179,7 +183,7 @@ public class JenaTDB2Repository {
 
     /**
      * Returns the IRIs of concepts OWNED by {@code graphName} — i.e. subjects carrying
-     * {@code skos:inScheme ?scheme} with {@code STRSTARTS(conceptIri, scheme)} — within that
+     * {@code skos:inScheme ?scheme} with the IRI under {@code <scheme>/} — within that
      * named graph. Uses the shared {@link #OWNED_CONCEPT_PATTERN} so the reconciler's notion
      * of "owned" is byte-identical to the resolver's.
      *
@@ -217,6 +221,50 @@ public class JenaTDB2Repository {
                     log.debug("Graph '{}' has {} owned concept subject(s)", graphName, iris.size());
                     return iris;
                 });
+    }
+
+    /**
+     * The IRIs among {@code iris} that are the subject of at least one triple in {@code graphName}, owned or not.
+     * Unsafe IRIs are skipped. THROWS on Fuseki failure.
+     */
+    public Set<String> findSubjectsInGraph(String graphName, Collection<String> iris) {
+        if (!SparqlIriValidator.isSafeHttpIri(graphName)) {
+            log.warn("Skipping findSubjectsInGraph for unsafe graph IRI");
+            return Set.of();
+        }
+        List<String> safe = iris.stream().filter(SparqlIriValidator::isSafeHttpIri).distinct().toList();
+        Set<String> found = new HashSet<>();
+        for (int from = 0; from < safe.size(); from += SUBJECT_BATCH_SIZE) {
+            List<String> batch = safe.subList(from, Math.min(from + SUBJECT_BATCH_SIZE, safe.size()));
+            found.addAll(executor.execute(
+                    "finding " + batch.size() + " subject(s) in graph " + graphName,
+                    "Failed to find subjects in graph",
+                    conn -> subjectsInGraph(conn, graphName, batch)));
+        }
+        return found;
+    }
+
+    private static Set<String> subjectsInGraph(RDFConnection conn, String graphName, List<String> batch) {
+        ParameterizedSparqlString pss = new ParameterizedSparqlString();
+        pss.append("SELECT DISTINCT ?s WHERE { VALUES ?s { ");
+        for (String iri : batch) {
+            pss.appendIri(iri);
+            pss.append(" ");
+        }
+        pss.append("} GRAPH ");
+        pss.appendIri(graphName);
+        pss.append(" { ?s ?p ?o } }");
+        Set<String> found = new HashSet<>();
+        try (QueryExecution qExec = conn.query(pss.asQuery())) {
+            ResultSet rs = qExec.execSelect();
+            while (rs.hasNext()) {
+                Resource s = rs.next().getResource("s");
+                if (s != null && s.isURIResource()) {
+                    found.add(s.getURI());
+                }
+            }
+        }
+        return found;
     }
 
     public Model fetchMetadataProperties(List<String> graphNames) {

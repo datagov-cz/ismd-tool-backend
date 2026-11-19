@@ -167,12 +167,11 @@ s cizím IRI, jejichž `inScheme` ukazuje na schéma, jehož prefixem jejich IRI
 | Kategorie | Význam                                                                                                   | Nakládání                                                              |
 |---|----------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------|
 | `RDF_ORPHAN` | Vlastněný RDF subjekt ve Fuseki, žádný PG řádek                                                          | Jediná **automaticky opravitelná** kategorie (budoucí fáze)            |
-| `PG_MISSING_RDF` | PG řádek, jehož IRI není vlastnicky řešitelné v **žádném** grafu                                         | Pouze hlášení (dvě příčiny: neúspěšné smazání vs. neúspěšné vytvoření) |
+| `PG_MISSING_RDF` | PG řádek, jehož IRI není vlastnicky řešitelné v **žádném** grafu a ve svém deklarovaném grafu nemá žádné trojice | Pouze hlášení (dvě příčiny: neúspěšné smazání vs. neúspěšné vytvoření) |
 | `IRI_GRAPH_MISMATCH` | PG IRI je vlastnicky řešitelné, ale ne ve svém deklarovaném `graphName` (nebo je `graphName` null)       | Pouze hlášení                                                          |
 | `GRAPH_ORPHAN` | Graf Fuseki drží vlastněné subjekty, ale neodkazuje na něj žádný řádek slovníku                          | Pouze hlášení (smazatelné jen v budoucí hlídané fázi)                  |
 | `SUSPECTED_RENAME` | Dvojice `RDF_ORPHAN`(nové IRI) + `PG_MISSING_RDF`(staré IRI), jež vypadá jako jedno nedokončené přejmenování | Pouze hlášení; obě IRI vyloučena z jakékoli budoucí opravy             |
-| `EXCLUDED_NO_INSCHEME` | Subjekt v daném namespacu bez `inScheme` (záměrně vyloučený)                                    | Informativní; *zatím se nehlásí*                                       |
-| `RDF_NOT_OWNED_RESOLVABLE` | PG IRI má trojice, ale není vlastnicky řešitelné (např. ztracené `inScheme`)                             | Pouze hlášení; *zatím se nehlásí*                                      |
+| `RDF_NOT_OWNED_RESOLVABLE` | PG řádek, jehož IRI je subjektem trojic ve svém deklarovaném grafu, ale není vlastnicky řešitelné v žádném grafu (ztracené nebo cizí `inScheme`); nahrazuje u řádku `PG_MISSING_RDF` | Pouze hlášení |
 
 > **Dnes pouze detekce.** Žádná kategorie se neopravuje. Automaticky opravitelná je jen
 > `RDF_ORPHAN`, a to v pozdější iteraci.
