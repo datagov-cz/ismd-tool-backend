@@ -38,6 +38,5 @@ public interface ConceptService {
      *         so the post-sync detail is read by the caller via {@link #getConceptDetail}
      */
     String syncWorkingCopy(Long conceptId, List<String> fieldsToAccept);
-    List<ConceptSummaryDto> getAll(String userId, Boolean isPublished);
     GetConceptDto getConceptDetail(String conceptSlug) throws OntologyException;
 }

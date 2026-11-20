@@ -1,6 +1,8 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.exception.OntologyExceptions;
+import com.dia.ismdtoolbackend.exception.RdfDataMissingException;
+import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
@@ -72,25 +74,19 @@ class OntologyEditOperation {
         Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findById(id);
         if (ontologyMetadataOpt.isEmpty()) {
             log.error("Ontology with ID {} not found", id);
-            throw new OntologyException("Slovník s ID " + id + " nebyl nalezen.");
+            throw new OntologyNotFoundException("Slovník s ID " + id + " nebyl nalezen.");
         }
         return ontologyMetadataOpt.get();
     }
 
-    Model fetchOntologyModel(String ontologyIRI) throws OntologyException {
-        try {
-            Model model = jenaTDB2Repository.fetchGraph(ontologyIRI);
-            if (model.isEmpty()) {
-                log.error("Ontology model is empty for IRI: {}", ontologyIRI);
-                throw new OntologyException("Model slovníku je prázdný nebo nebyl nalezen.");
-            }
-            return model;
-        } catch (Exception e) {
-            log.error("Failed to fetch ontology model for IRI: {}. Error: {}", ontologyIRI, e.getMessage());
-            throw new OntologyException("Slovník s IRI " + ontologyIRI + " nebyl nalezen v úložišti. " +
-                    "Je možné, že došlo k nesrovnalosti mezi databází a RDF úložištěm. " +
-                    "Zkontrolujte, zda slovník existuje v Fuseki.");
+    Model fetchOntologyModel(String ontologyIRI) {
+        Model model = jenaTDB2Repository.fetchGraph(ontologyIRI);
+        if (model.isEmpty()) {
+            log.error("Ontology model is empty for IRI: {}", ontologyIRI);
+            throw new RdfDataMissingException("Slovník " + ontologyIRI
+                    + " je evidován, ale jeho data v úložišti RDF chybí.");
         }
+        return model;
     }
 
     OntologyEditor.EditResult performOntologyEdit(OntologyEditModel editModel, Model model, String oldNamespace, String iri) {

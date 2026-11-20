@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptSourceTag;
 import com.dia.ismdtoolbackend.enums.ConceptType;
@@ -328,6 +329,17 @@ class ConceptCreateOperationTest {
 
     @Nested
     class Failures {
+
+        @Test
+        void rejectsAnUnknownVocabularyAsNotFound() {
+            givenCreatableConcept();
+            when(ontologyMetadataRepository.findByGraphName(GRAPH_NAME)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> operation.createConcept(createModel, USER_ID))
+                    .isExactlyInstanceOf(OntologyNotFoundException.class)
+                    .hasMessage("Slovník s názvem " + GRAPH_NAME + " nebyl nalezen.");
+            verify(conceptMetadataRepository, never()).save(any(ConceptMetadataEntity.class));
+        }
 
         @Test
         void wrapsACreatorFailure() {

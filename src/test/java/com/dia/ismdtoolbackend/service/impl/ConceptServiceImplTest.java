@@ -129,14 +129,6 @@ class ConceptServiceImplTest {
     }
 
     @Test
-    void getAllDelegates() {
-        List<ConceptSummaryDto> all = List.of(new ConceptSummaryDto());
-        when(detailReader.getAll(USER_ID, true)).thenReturn(all);
-
-        assertThat(service.getAll(USER_ID, true)).isSameAs(all);
-    }
-
-    @Test
     void getConceptDetailDelegates() {
         GetConceptDto detail = new GetConceptDto();
         when(detailReader.getConceptDetail(SLUG)).thenReturn(detail);
