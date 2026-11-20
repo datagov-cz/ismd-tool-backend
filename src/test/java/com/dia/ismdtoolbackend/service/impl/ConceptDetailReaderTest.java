@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.exception.ConceptNotFoundException;
 import com.dia.ismdtoolbackend.controller.dto.CodeListDto;
 import com.dia.ismdtoolbackend.controller.dto.ConceptSummaryDto;
 import com.dia.ismdtoolbackend.enums.ConceptSourceTag;
@@ -133,11 +134,11 @@ class ConceptDetailReaderTest {
     class Lookup {
 
         @Test
-        void rejectsAnUnknownSlug() {
+        void rejectsAnUnknownSlugAsNotFound() {
             when(conceptMetadataRepository.findBySlug(SLUG)).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> reader.getConceptDetail(SLUG))
-                    .isInstanceOf(OntologyException.class)
+                    .isInstanceOf(ConceptNotFoundException.class)
                     .hasMessageContaining(SLUG);
         }
 
