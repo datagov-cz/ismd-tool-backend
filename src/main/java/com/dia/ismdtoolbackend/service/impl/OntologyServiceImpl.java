@@ -1,6 +1,9 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.service.search.OntologyGraphNames;
+import com.dia.ismdtoolbackend.utility.paging.PageParams;
+import com.dia.ismdtoolbackend.models.OntologyListQuery;
+import com.dia.ismdtoolbackend.controller.dto.PageDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsRequestDto;
@@ -101,14 +104,8 @@ public class OntologyServiceImpl implements OntologyService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<OntologySummaryDto> getAll(String userId, Boolean isPublished) {
-        return metadataReader.getAll(userId, isPublished);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public List<OntologySummaryDto> getBySlugs(List<String> slugs) {
-        return metadataReader.getBySlugs(slugs);
+    public PageDto<OntologySummaryDto> list(OntologyListQuery query, PageParams page) {
+        return metadataReader.list(query, page);
     }
 
     @Override

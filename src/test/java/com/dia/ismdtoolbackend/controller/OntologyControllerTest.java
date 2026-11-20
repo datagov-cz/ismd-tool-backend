@@ -2,6 +2,12 @@ package com.dia.ismdtoolbackend.controller;
 
 import com.dia.ismdtoolbackend.enums.ErrorCode;
 import com.dia.ismdtoolbackend.controller.dto.ResolveConceptsRequest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.ParameterizedTest;
+import com.dia.ismdtoolbackend.utility.paging.PageParams;
+import com.dia.ismdtoolbackend.models.OntologyListSort;
+import com.dia.ismdtoolbackend.models.OntologyListQuery;
+import com.dia.ismdtoolbackend.controller.dto.PageDto;
 import com.dia.ismdtoolbackend.exception.RdfDataMissingException;
 import com.dia.ismdtoolbackend.models.OntologyRef;
 import com.dia.ismdtoolbackend.controller.dto.OntologyUploadResultDto;
@@ -1180,22 +1186,25 @@ class OntologyControllerTest {
         ontology2.setGraphName("http://example.org/ontology2");
         ontology2.setSlug("ontology-2");
 
-        when(ontologyService.getAll(null, null))
-                .thenReturn(java.util.List.of(ontology1, ontology2));
+        when(ontologyService.list(eq(new OntologyListQuery(null, null, null, null, null, null)), eq(new PageParams(20, 0))))
+                .thenReturn(new PageDto<>(List.of(ontology1, ontology2), 2, 20, 0));
 
         mockMvc.perform(get("/api/ontology/list"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data").isArray())
-                .andExpect(jsonPath("$.data.length()").value(2))
-                .andExpect(jsonPath("$.data[0].id").value(1))
-                .andExpect(jsonPath("$.data[0].graphName").value("http://example.org/ontology1"))
-                .andExpect(jsonPath("$.data[0].conceptCount").value(7))
+                .andExpect(jsonPath("$.data.items").isArray())
+                .andExpect(jsonPath("$.data.items.length()").value(2))
+                .andExpect(jsonPath("$.data.totalCount").value(2))
+                .andExpect(jsonPath("$.data.limit").value(20))
+                .andExpect(jsonPath("$.data.offset").value(0))
+                .andExpect(jsonPath("$.data.items[0].id").value(1))
+                .andExpect(jsonPath("$.data.items[0].graphName").value("http://example.org/ontology1"))
+                .andExpect(jsonPath("$.data.items[0].conceptCount").value(7))
                 // The public list names no owner and carries no comments.
-                .andExpect(jsonPath("$.data[0].user").doesNotExist())
-                .andExpect(jsonPath("$.data[0].comments").doesNotExist())
-                .andExpect(jsonPath("$.data[1].id").value(2))
-                .andExpect(jsonPath("$.data[1].graphName").value("http://example.org/ontology2"))
+                .andExpect(jsonPath("$.data.items[0].user").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].comments").doesNotExist())
+                .andExpect(jsonPath("$.data.items[1].id").value(2))
+                .andExpect(jsonPath("$.data.items[1].graphName").value("http://example.org/ontology2"))
                 .andExpect(jsonPath("$.message").value("Žádost o seznam slovníků proběhla úspěšně."));
     }
 
@@ -1206,17 +1215,17 @@ class OntologyControllerTest {
         ontology1.setId(1L);
         ontology1.setGraphName("http://example.org/ontology1");
 
-        when(ontologyService.getAll(userId, null))
-                .thenReturn(java.util.List.of(ontology1));
+        when(ontologyService.list(eq(new OntologyListQuery(userId, null, null, null, null, null)), eq(new PageParams(20, 0))))
+                .thenReturn(new PageDto<>(List.of(ontology1), 1, 20, 0));
 
         mockMvc.perform(get("/api/ontology/list")
                         .param("userId", userId))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data").isArray())
-                .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].id").value(1))
-                .andExpect(jsonPath("$.data[0].user").doesNotExist())
+                .andExpect(jsonPath("$.data.items").isArray())
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].id").value(1))
+                .andExpect(jsonPath("$.data.items[0].user").doesNotExist())
                 .andExpect(jsonPath("$.message").value("Žádost o seznam slovníků proběhla úspěšně."));
     }
 
@@ -1227,16 +1236,16 @@ class OntologyControllerTest {
         ontology1.setGraphName("http://example.org/ontology1");
         ontology1.setIsPublished(true);
 
-        when(ontologyService.getAll(null, true))
-                .thenReturn(java.util.List.of(ontology1));
+        when(ontologyService.list(eq(new OntologyListQuery(null, true, null, null, null, null)), eq(new PageParams(20, 0))))
+                .thenReturn(new PageDto<>(List.of(ontology1), 1, 20, 0));
 
         mockMvc.perform(get("/api/ontology/list")
                         .param("isPublished", "true"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data").isArray())
-                .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].isPublished").value(true))
+                .andExpect(jsonPath("$.data.items").isArray())
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].isPublished").value(true))
                 .andExpect(jsonPath("$.message").value("Žádost o seznam slovníků proběhla úspěšně."));
     }
 
@@ -1252,30 +1261,32 @@ class OntologyControllerTest {
         ontology2.setSlug("ontology-2");
         ontology2.setGraphName("http://example.org/ontology2");
 
-        when(ontologyService.getBySlugs(java.util.List.of("ontology-1", "ontology-2")))
-                .thenReturn(java.util.List.of(ontology1, ontology2));
+        when(ontologyService.list(
+                eq(new OntologyListQuery(null, null, List.of("ontology-1", "ontology-2"), null, null, null)),
+                eq(new PageParams(20, 0))))
+                .thenReturn(new PageDto<>(List.of(ontology1, ontology2), 2, 20, 0));
 
         mockMvc.perform(get("/api/ontology/list")
                         .param("slugs", "ontology-1", "ontology-2"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data").isArray())
-                .andExpect(jsonPath("$.data.length()").value(2))
-                .andExpect(jsonPath("$.data[0].slug").value("ontology-1"))
-                .andExpect(jsonPath("$.data[1].slug").value("ontology-2"))
+                .andExpect(jsonPath("$.data.items").isArray())
+                .andExpect(jsonPath("$.data.items.length()").value(2))
+                .andExpect(jsonPath("$.data.items[0].slug").value("ontology-1"))
+                .andExpect(jsonPath("$.data.items[1].slug").value("ontology-2"))
                 .andExpect(jsonPath("$.message").value("Žádost o seznam slovníků proběhla úspěšně."));
     }
 
     @Test
     void testGetOntologyList_EmptyResult() throws Exception {
-        when(ontologyService.getAll(null, null))
-                .thenReturn(java.util.List.of());
+        when(ontologyService.list(eq(new OntologyListQuery(null, null, null, null, null, null)), eq(new PageParams(20, 0))))
+                .thenReturn(new PageDto<>(List.of(), 0, 20, 0));
 
         mockMvc.perform(get("/api/ontology/list"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data").isArray())
-                .andExpect(jsonPath("$.data.length()").value(0))
+                .andExpect(jsonPath("$.data.items").isArray())
+                .andExpect(jsonPath("$.data.items.length()").value(0))
                 .andExpect(jsonPath("$.message").value("Žádost o seznam slovníků proběhla úspěšně."));
     }
 
@@ -1287,19 +1298,58 @@ class OntologyControllerTest {
         ontology1.setGraphName("http://example.org/ontology1");
         ontology1.setIsPublished(true);
 
-        when(ontologyService.getAll(userId, true))
-                .thenReturn(java.util.List.of(ontology1));
+        when(ontologyService.list(eq(new OntologyListQuery(userId, true, null, null, null, null)), eq(new PageParams(20, 0))))
+                .thenReturn(new PageDto<>(List.of(ontology1), 1, 20, 0));
 
         mockMvc.perform(get("/api/ontology/list")
                         .param("userId", userId)
                         .param("isPublished", "true"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data").isArray())
-                .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].user").doesNotExist())
-                .andExpect(jsonPath("$.data[0].isPublished").value(true))
+                .andExpect(jsonPath("$.data.items").isArray())
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].user").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].isPublished").value(true))
                 .andExpect(jsonPath("$.message").value("Žádost o seznam slovníků proběhla úspěšně."));
+    }
+
+    @Test
+    void testGetOntologyList_forwardsEveryFilterAndThePage() throws Exception {
+        when(ontologyService.list(any(), any())).thenReturn(new PageDto<>(List.of(), 41, 10, 30));
+
+        mockMvc.perform(get("/api/ontology/list")
+                        .param("userId", "user123")
+                        .param("graphName", "http://example.org/ontology1")
+                        .param("q", "slovník")
+                        .param("sort", "UPDATED")
+                        .param("limit", "10")
+                        .param("offset", "30"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(41))
+                .andExpect(jsonPath("$.data.limit").value(10))
+                .andExpect(jsonPath("$.data.offset").value(30));
+
+        verify(ontologyService).list(
+                new OntologyListQuery("user123", null, List.of(), "http://example.org/ontology1", "slovník",
+                        OntologyListSort.UPDATED),
+                new PageParams(10, 30));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"limit,0", "limit,101", "offset,-1"})
+    void testGetOntologyList_outOfRangePage_isBadRequest(String param, String value) throws Exception {
+        mockMvc.perform(get("/api/ontology/list").param(param, value))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("INVALID_ARGUMENT"));
+        verifyNoInteractions(ontologyService);
+    }
+
+    @Test
+    void testGetOntologyList_unknownSort_isBadRequest() throws Exception {
+        mockMvc.perform(get("/api/ontology/list").param("sort", "SIZE"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("INVALID_PARAMETER"));
+        verifyNoInteractions(ontologyService);
     }
 
     // ========== Validate Ontology Tests ==========
@@ -1597,15 +1647,15 @@ class OntologyControllerTest {
 
     /** An empty {@code slugs} parameter is no filter: the plain list is served. */
     @Test
-    void testGetOntologyList_EmptySlugs_fallsBackToGetAll() throws Exception {
-        when(ontologyService.getAll(null, null)).thenReturn(List.of());
+    void testGetOntologyList_EmptySlugs_isNoFilter() throws Exception {
+        when(ontologyService.list(any(), any())).thenReturn(new PageDto<>(List.of(), 0, 20, 0));
 
         mockMvc.perform(get("/api/ontology/list").param("slugs", ""))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(0));
+                .andExpect(jsonPath("$.data.items.length()").value(0));
 
-        verify(ontologyService).getAll(null, null);
-        verify(ontologyService, never()).getBySlugs(any());
+        verify(ontologyService).list(new OntologyListQuery(null, null, List.of(), null, null, null),
+                new PageParams(20, 0));
     }
 
     // ========== Resolve concept references ==========
