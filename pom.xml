@@ -30,6 +30,7 @@
         <java.version>17</java.version>
         <jena.version>5.4.0</jena.version>
         <jacoco.version>0.8.16</jacoco.version>
+        <bucket4j.version>8.22.0</bucket4j.version>
         <!-- Same test class order on macOS and CI (the default follows the filesystem).
              Override with -Dsurefire.runOrder=random to look for state leaking between classes. -->
         <surefire.runOrder>alphabetical</surefire.runOrder>
@@ -75,6 +76,11 @@
         <dependency>
             <groupId>com.github.ben-manes.caffeine</groupId>
             <artifactId>caffeine</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.bucket4j</groupId>
+            <artifactId>bucket4j_jdk17-core</artifactId>
+            <version>${bucket4j.version}</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
