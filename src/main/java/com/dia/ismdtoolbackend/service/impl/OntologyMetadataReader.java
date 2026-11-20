@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import org.springframework.data.domain.Page;
+import com.dia.ismdtoolbackend.models.OntologyListSort;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
@@ -32,10 +34,18 @@ class OntologyMetadataReader {
             throw new IllegalArgumentException("Maximální počet slugů je " + MAX_SLUGS + ".");
         }
         boolean anySlug = query.slugs().isEmpty();
-        List<OntologyMetadataEntity> entities = ontologyMetadataRepository.findForList(
-                query.userId(), query.isPublished(), query.graphName(), anySlug,
-                anySlug ? List.of("") : query.slugs());
+        List<String> slugs = anySlug ? List.of("") : query.slugs();
 
+        // Newest-first without a text filter needs no RDF to order, so only the page is enriched.
+        if (query.q() == null && query.sort() == OntologyListSort.UPDATED) {
+            Page<OntologyMetadataEntity> rows = ontologyMetadataRepository.findForListByUpdated(
+                    query.userId(), query.isPublished(), query.graphName(), anySlug, slugs, page.pageable());
+            return page.page(metadataEnricher.enrichEntitiesWithBatchMetadata(rows.getContent()),
+                    rows.getTotalElements());
+        }
+
+        List<OntologyMetadataEntity> entities = ontologyMetadataRepository.findForList(
+                query.userId(), query.isPublished(), query.graphName(), anySlug, slugs);
         List<OntologySummaryDto> rows = metadataEnricher.enrichEntitiesWithBatchMetadata(entities);
         return page.slice(OntologyListOrdering.filterAndSort(rows, query.q(), query.sort()));
     }
