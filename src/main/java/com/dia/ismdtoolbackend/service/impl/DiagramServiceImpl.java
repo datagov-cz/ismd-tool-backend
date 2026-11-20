@@ -1,5 +1,9 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import org.springframework.data.domain.Page;
+import com.dia.ismdtoolbackend.repository.DiagramRepository;
+import com.dia.ismdtoolbackend.utility.paging.PageParams;
+import com.dia.ismdtoolbackend.controller.dto.PageDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramSummaryDto;
@@ -30,8 +34,9 @@ public class DiagramServiceImpl implements DiagramService {
     private final DiagramMaterializeService materializeService;
 
     @Override
-    public List<DiagramSummaryDto> listAll(String userId) {
-        return labelReader.withOntologyLabels(transactions.listAll(userId));
+    public PageDto<DiagramSummaryDto> listAll(String userId, PageParams page) {
+        Page<DiagramRepository.DiagramSummaryRow> rows = transactions.listAll(userId, page);
+        return page.page(labelReader.withOntologyLabels(rows.getContent()), rows.getTotalElements());
     }
 
     @Override

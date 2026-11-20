@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.utility.paging.PageParams;
+import org.springframework.data.domain.Page;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramSummaryDto;
 import com.dia.ismdtoolbackend.repository.DiagramRepository;
@@ -23,8 +25,8 @@ class DiagramTransactions {
     private final DiagramSnapshotReader snapshotReader;
 
     @Transactional(readOnly = true)
-    public List<DiagramRepository.DiagramSummaryRow> listAll(String userId) {
-        return listReader.listAll(userId);
+    public Page<DiagramRepository.DiagramSummaryRow> listAll(String userId, PageParams page) {
+        return listReader.listAll(userId, page);
     }
 
     @Transactional(readOnly = true)

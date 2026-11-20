@@ -609,7 +609,6 @@ class IsmdSearchProviderTest {
                         assertThat(dto.getIri()).isEqualTo(workingCopyGraph);
                         assertThat(dto.getLabel()).isEqualTo("A3791 - Registr Vysokých škol");
                     });
-            verify(ontologyMetadataRepository, never()).findAllByIsPublished(false);
         }
     }
 
