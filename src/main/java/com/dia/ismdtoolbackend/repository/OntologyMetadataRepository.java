@@ -89,13 +89,22 @@ public interface OntologyMetadataRepository extends JpaRepository<OntologyMetada
 
     List<OntologyMetadataEntity> findAllByGraphNameIn(List<String> graphNames);
 
-    List<OntologyMetadataEntity> findAllByUserId(String userId);
-
-    List<OntologyMetadataEntity> findAllByIsPublished(Boolean isPublished);
-
-    List<OntologyMetadataEntity> findAllByUserIdAndIsPublished(String userId, Boolean isPublished);
-
     Optional<OntologyMetadataEntity> findBySlug(String slug);
 
-    List<OntologyMetadataEntity> findBySlugIn(List<String> slugs);
+    /**
+     * The ontology list's PostgreSQL filters; null means unfiltered. {@code slugs} applies only when
+     * {@code anySlug} is false, since an empty {@code in} list is not portable.
+     */
+    @Query("""
+            select o from OntologyMetadataEntity o
+            where (:userId is null or o.userId = :userId)
+              and (:isPublished is null or o.isPublished = :isPublished)
+              and (:graphName is null or o.graphName = :graphName)
+              and (:anySlug = true or o.slug in :slugs)
+            """)
+    List<OntologyMetadataEntity> findForList(@Param("userId") String userId,
+                                             @Param("isPublished") Boolean isPublished,
+                                             @Param("graphName") String graphName,
+                                             @Param("anySlug") boolean anySlug,
+                                             @Param("slugs") List<String> slugs);
 }

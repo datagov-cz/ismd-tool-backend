@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.controller;
 
+import com.dia.ismdtoolbackend.utility.paging.PageParams;
+import com.dia.ismdtoolbackend.controller.dto.PageDto;
 import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramConceptUsageDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramConceptUsageKind;
@@ -63,17 +65,17 @@ class DiagramControllerTest {
     @Test
     @WithMockSecurityUser(userId = "user123")
     void getAll_returnsDiagramSummaries() throws Exception {
-        when(diagramService.listAll(null)).thenReturn(List.of(
+        when(diagramService.listAll(null, FIRST_PAGE)).thenReturn(page(
                 new DiagramSummaryDto(5L, "Hlavní diagram", "pracovni-pomer",
                         "https://x/pracovni-pomer", Map.of("cs", "Pracovní poměr", "en", "Employment"),
                         7, "2026-07-21T10:00:00")));
 
         mockMvc.perform(get("/api/diagram/all"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].ontologySlug").value("pracovni-pomer"))
-                .andExpect(jsonPath("$.data[0].ontologyLabel.cs").value("Pracovní poměr"))
-                .andExpect(jsonPath("$.data[0].ontologyLabel.en").value("Employment"))
-                .andExpect(jsonPath("$.data[0].nodeCount").value(7));
+                .andExpect(jsonPath("$.data.items[0].ontologySlug").value("pracovni-pomer"))
+                .andExpect(jsonPath("$.data.items[0].ontologyLabel.cs").value("Pracovní poměr"))
+                .andExpect(jsonPath("$.data.items[0].ontologyLabel.en").value("Employment"))
+                .andExpect(jsonPath("$.data.items[0].nodeCount").value(7));
     }
 
     @Test
@@ -81,42 +83,69 @@ class DiagramControllerTest {
     void getAll_omitsOntologyLabelWhenUnavailable() throws Exception {
         // Fuseki unreachable, or the slovník simply carries no prefLabel: the list still answers,
         // with the field absent rather than null (@JsonInclude(NON_NULL)).
-        when(diagramService.listAll(null)).thenReturn(List.of(
+        when(diagramService.listAll(null, FIRST_PAGE)).thenReturn(page(
                 new DiagramSummaryDto(5L, "Hlavní diagram", "pracovni-pomer",
                         "https://x/pracovni-pomer", null, 7, "2026-07-21T10:00:00")));
 
         mockMvc.perform(get("/api/diagram/all"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].ontologySlug").value("pracovni-pomer"))
-                .andExpect(jsonPath("$.data[0].ontologyLabel").doesNotExist());
+                .andExpect(jsonPath("$.data.items[0].ontologySlug").value("pracovni-pomer"))
+                .andExpect(jsonPath("$.data.items[0].ontologyLabel").doesNotExist());
     }
 
     @Test
     @WithMockSecurityUser(userId = "user123")
     void getAll_passesTheUserIdFilterThrough() throws Exception {
-        when(diagramService.listAll("someone-else")).thenReturn(List.of(
+        when(diagramService.listAll("someone-else", FIRST_PAGE)).thenReturn(page(
                 new DiagramSummaryDto(5L, "Hlavní diagram", "pracovni-pomer",
                         "https://x/pracovni-pomer", null, 7, null)));
 
         mockMvc.perform(get("/api/diagram/all").param("userId", "someone-else"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].diagramId").value(5));
+                .andExpect(jsonPath("$.data.items[0].diagramId").value(5));
 
         // The filter is the parameter's value, never the caller's own id — this endpoint lists
         // any user's diagrams (reads are canViewResource(), not ownership-gated).
-        verify(diagramService).listAll("someone-else");
-        verify(diagramService, never()).listAll("user123");
+        verify(diagramService).listAll("someone-else", FIRST_PAGE);
+        verify(diagramService, never()).listAll(eq("user123"), any());
     }
 
     @Test
     @WithMockSecurityUser(userId = "user123")
     void getAll_withoutTheParam_doesNotFilter() throws Exception {
-        when(diagramService.listAll(null)).thenReturn(List.of());
+        when(diagramService.listAll(null, FIRST_PAGE)).thenReturn(new PageDto<>(List.of(), 0, 20, 0));
 
         mockMvc.perform(get("/api/diagram/all"))
                 .andExpect(status().isOk());
 
-        verify(diagramService).listAll(null);
+        verify(diagramService).listAll(null, FIRST_PAGE);
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void getAll_forwardsThePageAndReportsTheTotal() throws Exception {
+        when(diagramService.listAll(null, new PageParams(8, 16))).thenReturn(new PageDto<>(List.of(), 30, 8, 16));
+
+        mockMvc.perform(get("/api/diagram/all").param("limit", "8").param("offset", "16"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(30))
+                .andExpect(jsonPath("$.data.limit").value(8))
+                .andExpect(jsonPath("$.data.offset").value(16));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void getAll_outOfRangeLimit_isBadRequest() throws Exception {
+        mockMvc.perform(get("/api/diagram/all").param("limit", "101"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("INVALID_ARGUMENT"));
+        verifyNoInteractions(diagramService);
+    }
+
+    private static final PageParams FIRST_PAGE = new PageParams(20, 0);
+
+    private static PageDto<DiagramSummaryDto> page(DiagramSummaryDto... items) {
+        return new PageDto<>(List.of(items), items.length, 20, 0);
     }
 
     @Test
