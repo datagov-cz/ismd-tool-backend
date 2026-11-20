@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.audit.DeleteAuditWriter;
 import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
@@ -32,6 +33,7 @@ public class CommentServiceImpl implements CommentService {
     private final CommentRepository commentRepository;
     private final OntologyMetadataRepository ontologyMetadataRepository;
     private final ConceptMetadataRepository conceptMetadataRepository;
+    private final DeleteAuditWriter deleteAuditWriter;
 
     @Override
     @Transactional
@@ -67,8 +69,12 @@ public class CommentServiceImpl implements CommentService {
     public void deleteComment(Long commentId) {
         log.info("Deleting comment with ID: {}", commentId);
 
-        commentRepository.findById(commentId)
+        CommentEntity comment = commentRepository.findById(commentId)
                 .orElseThrow(() -> new CommentNotFoundException("Komentář s ID " + commentId + " nebyl nalezen"));
+        ConceptMetadataEntity concept = comment.getConceptMetadata();
+        OntologyMetadataEntity ontology = comment.getOntologyMetadata();
+        String graphName = concept != null ? concept.getGraphName() : ontology != null ? ontology.getGraphName() : null;
+        deleteAuditWriter.comment(commentId, graphName, concept != null ? concept.getConceptIri() : null);
 
         commentRepository.deleteById(commentId);
         log.info("Successfully deleted comment {}", commentId);

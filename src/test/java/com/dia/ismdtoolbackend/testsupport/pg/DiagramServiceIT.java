@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.testsupport.pg;
 
+import com.dia.ismdtoolbackend.audit.DeleteAuditWriter;
 import com.dia.ismdtoolbackend.config.JpaAuditingConfig;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.outbox.OutboxEntry;
@@ -50,7 +51,8 @@ import java.lang.annotation.Target;
 @EntityScan(basePackageClasses = {OutboxEntry.class, ConceptMetadataEntity.class})
 @EnableJpaRepositories(basePackageClasses = {OutboxEntryRepository.class, ConceptMetadataRepository.class})
 @MockitoBean(types = {JenaTDB2Repository.class, OntologyDetailExtractor.class, OntologyLabelLookup.class,
-        DiagramMaterializeService.class, ReferencedConceptResolutionEngine.class})
+        DiagramMaterializeService.class, ReferencedConceptResolutionEngine.class,
+        DeleteAuditWriter.class})
 @MockitoSpyBean(types = DiagramPendingEditRepository.class)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 public @interface DiagramServiceIT {

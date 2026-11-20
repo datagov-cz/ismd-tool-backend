@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.audit.DeleteAuditWriter;
 import com.dia.ismdtoolbackend.testsupport.security.SignedInAdmin;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
@@ -36,6 +37,7 @@ class ConceptDeleteOperationTest {
     private JenaTDB2Repository jenaTDB2Repository;
     private OutboxWriter outboxWriter;
     private OutboxRelayTrigger outboxRelayTrigger;
+    private DeleteAuditWriter deleteAuditWriter;
     private ConceptDeleteOperation operation;
 
     private ConceptMetadataEntity concept;
@@ -47,6 +49,7 @@ class ConceptDeleteOperationTest {
         jenaTDB2Repository = fixture.jenaTDB2Repository();
         outboxWriter = fixture.outboxWriter();
         outboxRelayTrigger = fixture.outboxRelayTrigger();
+        deleteAuditWriter = fixture.deleteAuditWriter();
         operation = fixture.buildDeleteOperation();
 
         concept = ConceptServiceTestData.concept();
@@ -69,6 +72,25 @@ class ConceptDeleteOperationTest {
         verify(conceptMetadataRepository).deleteAll(List.of(concept));
         verify(jenaTDB2Repository, never()).graphHasData(anyString());
         verify(jenaTDB2Repository, never()).conceptNotFoundInGraph(anyString(), anyString());
+    }
+
+    @Test
+    void recordsTheDeleteWithTheRelatedConceptsThatWentWithIt() {
+        String related = GRAPH_NAME + "/pojem/vlastnost";
+        ConceptMetadataEntity relatedConcept = ConceptServiceTestData.concept();
+        relatedConcept.setId(2L);
+        relatedConcept.setConceptIri(related);
+        concept.setSlug("test-concept");
+        when(conceptMetadataRepository.findWithLockById(CONCEPT_ID)).thenReturn(Optional.of(concept));
+        when(jenaTDB2Repository.findRelatedConceptUris(CONCEPT_IRI, GRAPH_NAME))
+                .thenReturn(new ArrayList<>(List.of(related)));
+        when(conceptMetadataRepository.findByConceptIri(related)).thenReturn(Optional.of(relatedConcept));
+        when(conceptMetadataRepository.findByConceptIri(CONCEPT_IRI)).thenReturn(Optional.of(concept));
+
+        operation.deleteConcept(CONCEPT_ID);
+
+        verify(deleteAuditWriter).concept(CONCEPT_ID, CONCEPT_IRI, "test-concept", concept.getConceptName(),
+                GRAPH_NAME, List.of(related));
     }
 
     @Test

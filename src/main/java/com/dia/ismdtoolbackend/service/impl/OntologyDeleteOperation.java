@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.audit.DeleteAuditWriter;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
@@ -15,7 +16,7 @@ import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Component;
 
-/** Deletes a vocabulary: its validation report, NKD snapshot rows, metadata and graph. */
+/** Deletes a vocabulary: its validation report, NKD snapshot rows, metadata and graph, and records the delete. */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -28,6 +29,9 @@ class OntologyDeleteOperation {
     private final OutboxWriter outboxWriter;
     private final OutboxRelayTrigger outboxRelayTrigger;
     private final InitialGraphGuard initialGraphGuard;
+    private final DiagramRepository diagramRepository;
+    private final CommentRepository commentRepository;
+    private final DeleteAuditWriter deleteAuditWriter;
 
     void deleteOntology(Long ontologyId) {
         Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findById(ontologyId);
@@ -36,7 +40,8 @@ class OntologyDeleteOperation {
             throw new OntologyException("Slovník s id " + ontologyId + "nebyl nalezen.");
         }
 
-        String graphName = ontologyMetadataOpt.get().getGraphName();
+        OntologyMetadataEntity ontology = ontologyMetadataOpt.get();
+        String graphName = ontology.getGraphName();
         initialGraphGuard.requireInitialGraphApplied(graphName);
 
         Optional<ValidationReportEntity> validationReport =
@@ -51,6 +56,10 @@ class OntologyDeleteOperation {
                 .map(ConceptMetadataEntity::getId)
                 .toList();
         nkdSnapshotService.cascadeGraphDeletion(ownedConceptIds, graphName);
+
+        deleteAuditWriter.ontology(ontologyId, ontology.getSlug(), graphName, ownedConceptIds.size(),
+                diagramRepository.countByOntologyMetadataId(ontologyId),
+                commentRepository.countByOntologyMetadataId(ontologyId));
 
         // Enqueue the graph deletion, committed atomically with the PG metadata delete below. The graph
         // is not read first: the delete is idempotent, so a vocabulary whose graph is already gone is

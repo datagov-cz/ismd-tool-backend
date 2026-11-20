@@ -13,6 +13,8 @@ import java.util.Optional;
 
 public interface DiagramRepository extends JpaRepository<DiagramEntity, Long> {
 
+    long countByOntologyMetadataId(Long ontologyMetadataId);
+
     /** Every diagram of an ontology, oldest first. */
     List<DiagramEntity> findByOntologyMetadataIdOrderByIdAsc(Long ontologyMetadataId);
 

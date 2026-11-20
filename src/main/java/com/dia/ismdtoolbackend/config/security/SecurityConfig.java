@@ -239,6 +239,8 @@ public class SecurityConfig {
                         // is enforced by @PreAuthorize on the controller; this only lets the request
                         // reach it (otherwise denyAll() 403s first).
                         .requestMatchers("/api/admin/outbox/**").authenticated()
+                        // Admin-only delete audit trail. Same pattern as the outbox.
+                        .requestMatchers(HttpMethod.GET, "/api/admin/audit/deletes").authenticated()
                         .anyRequest().denyAll()
                 )
                 // CSRF disabled: auth is stateless Bearer-JWT only (no cookie/session
