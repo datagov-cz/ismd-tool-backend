@@ -40,7 +40,9 @@ public class NkodDatasetController {
             @Parameter(description = "Jazyk pro řazení a zobrazení názvu (výchozí cs)")
             @RequestParam(defaultValue = "cs") String lang
     ) {
-        log.info("NKOD dataset list requested, q={}, limit={}, offset={}, lang={}", q, limit, offset, lang);
+        log.info("NKOD dataset list requested, qLength={}, limit={}, offset={}, lang={}",
+                q == null ? 0 : q.length(), limit, offset, lang);
+        log.debug("NKOD dataset list q='{}'", q);
 
         NkodDatasetListDto dto = nkodDatasetService.listDatasets(q, limit, offset, lang);
 

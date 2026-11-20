@@ -35,7 +35,8 @@ public class RppController {
             @RequestParam(required = false) String q,
             @RequestParam(required = false) Integer limit) {
         int resolved = resolveLimit(limit);
-        log.info("RPP agenda search, q: {}, limit: {}", q, resolved);
+        log.info("RPP agenda search, qLength: {}, limit: {}", q == null ? 0 : q.length(), resolved);
+        log.debug("RPP agenda search q='{}'", q);
         List<RppSearchResultDto> results = rppService.searchAgendas(q, resolved);
         return ResponseEntity.ok(ApiResponseDto.success(results,
                 "Vyhledávání agend úspěšně provedeno."));
@@ -52,8 +53,9 @@ public class RppController {
             @RequestParam(required = false) Integer limit,
             @RequestParam(required = false) String preferredAgendaCode) {
         int resolved = resolveLimit(limit);
-        log.info("RPP ISVS search, q: {}, limit: {}, preferredAgendaCode: {}",
-                q, resolved, preferredAgendaCode);
+        log.info("RPP ISVS search, qLength: {}, limit: {}, preferredAgendaCode: {}",
+                q == null ? 0 : q.length(), resolved, preferredAgendaCode);
+        log.debug("RPP ISVS search q='{}'", q);
         List<RppSearchResultDto> results = rppService.searchIsvs(q, resolved, preferredAgendaCode);
         return ResponseEntity.ok(ApiResponseDto.success(results,
                 "Vyhledávání informačních systémů úspěšně provedeno."));

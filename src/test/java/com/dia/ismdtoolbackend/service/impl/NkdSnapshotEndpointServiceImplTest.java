@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.audit.DeleteAuditWriter;
 import com.dia.ismdtoolbackend.controller.dto.LinkSnapshotDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.NkdConceptSnapshotEntity;
@@ -58,6 +59,7 @@ class NkdSnapshotEndpointServiceImplTest {
     @Mock private OutboxRelayTrigger outboxRelayTrigger;
     @Mock private com.dia.ismdtoolbackend.client.NkdSparqlClient nkdSparqlClient;
     @Mock private DeviationResolutionEnricher deviationEnricher;
+    @Mock private DeleteAuditWriter deleteAuditWriter;
     @Mock private org.springframework.transaction.PlatformTransactionManager txManager;
 
     private NkdSnapshotEndpointServiceImpl service;
@@ -69,7 +71,7 @@ class NkdSnapshotEndpointServiceImplTest {
     void setUp() {
         service = new NkdSnapshotEndpointServiceImpl(snapshotRepository, nkdSnapshotService, jenaTDB2Repository,
                 conceptMetadataRepository, outboxWriter, outboxRelayTrigger, nkdSparqlClient, deviationEnricher,
-                new ConceptWriteTransaction(txManager));
+                new ConceptWriteTransaction(txManager), deleteAuditWriter);
         owner = new ConceptMetadataEntity();
         owner.setId(CONCEPT_ID);
         owner.setConceptIri(OWNER_IRI);
@@ -186,6 +188,7 @@ class NkdSnapshotEndpointServiceImplTest {
         service.removeSnapshot(CONCEPT_ID, SNAPSHOT_ID);
 
         verify(nkdSnapshotService).removeSnapshotAndLink(eq(snapshot), any(), any());
+        verify(deleteAuditWriter).localCopy(SNAPSHOT_ID, NKD_IRI, GRAPH, OWNER_IRI);
     }
 
     // ---- M4: the owner's stale-base fingerprint must move with its RDF ---------------------------

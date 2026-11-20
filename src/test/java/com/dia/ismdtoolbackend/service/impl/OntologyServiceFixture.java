@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.audit.DeleteAuditWriter;
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.config.NkdConfig;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
@@ -11,6 +12,7 @@ import com.dia.ismdtoolbackend.outbox.OutboxEntryRepository;
 import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.repository.CommentRepository;
+import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.NkdConceptSnapshotRepository;
@@ -53,6 +55,8 @@ public final class OntologyServiceFixture {
     private OutboxWriter outboxWriter = mock(OutboxWriter.class);
     private OutboxEntryRepository outboxRepository = mock(OutboxEntryRepository.class);
     private OutboxRelayTrigger outboxRelayTrigger = mock(OutboxRelayTrigger.class);
+    DiagramRepository diagramRepository = mock(DiagramRepository.class);
+    DeleteAuditWriter deleteAuditWriter = mock(DeleteAuditWriter.class);
     private NkdConceptSnapshotRepository nkdSnapshotRepository = mock(NkdConceptSnapshotRepository.class);
     private NkdSnapshotWarmer nkdSnapshotWarmer = mock(NkdSnapshotWarmer.class);
     private NkdSnapshotService nkdSnapshotService = mock(NkdSnapshotService.class);
@@ -94,7 +98,7 @@ public final class OntologyServiceFixture {
     OntologyDeleteOperation deleteOperation() {
         return new OntologyDeleteOperation(ontologyMetadataRepository, conceptMetadataRepository,
                 validationReportRepository, nkdSnapshotService, outboxWriter, outboxRelayTrigger,
-                new InitialGraphGuard(outboxRepository));
+                new InitialGraphGuard(outboxRepository), diagramRepository, commentRepository, deleteAuditWriter);
     }
 
     OntologyDetailReader detailReader() {
