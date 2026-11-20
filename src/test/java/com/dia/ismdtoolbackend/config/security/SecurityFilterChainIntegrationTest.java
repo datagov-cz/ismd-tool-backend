@@ -221,7 +221,10 @@ class SecurityFilterChainIntegrationTest {
                 new Route(HttpMethod.GET, "/api/admin/outbox/status", "status"),
                 new Route(HttpMethod.GET, "/api/admin/outbox/failed", "failed"),
                 new Route(HttpMethod.POST, "/api/admin/outbox/drain", "drain"),
-                new Route(HttpMethod.POST, "/api/admin/outbox/retry/1", "retry")
+                new Route(HttpMethod.POST, "/api/admin/outbox/retry/1", "retry"),
+                new Route(HttpMethod.POST, "/api/admin/publikace/run", "run"),
+                new Route(HttpMethod.GET, "/api/admin/publikace/1/slovniky.jsonld", "file"),
+                new Route(HttpMethod.GET, "/api/admin/publikace/history", "history")
         );
     }
 

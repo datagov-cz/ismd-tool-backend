@@ -22,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -504,6 +505,66 @@ class DiagramRepositoryTest extends PostgresIntegrationTestBase {
         assertThat(plan)
                 .as("the md5 expression index must be reachable; a plain col = $1 predicate cannot use it")
                 .contains("idx_diagram_edges_edge_key");
+    }
+
+    // The published IRI id is assigned on construction, persisted, distinct per diagram and kept on rename.
+    @Test
+    void iriIdIsAssignedDistinctAndSurvivesRename() {
+        OntologyMetadataEntity ontology = ontology("iri-id");
+        DiagramEntity first = diagramFor(ontology, "První");
+        DiagramEntity second = diagramFor(ontology, "Druhý");
+        UUID firstIriId = first.getIriId();
+
+        em.flush();
+        em.clear();
+
+        DiagramEntity reloaded = diagramRepository.findById(first.getId()).orElseThrow();
+        assertThat(reloaded.getIriId()).isEqualTo(firstIriId);
+        assertThat(diagramRepository.findById(second.getId()).orElseThrow().getIriId())
+                .isNotNull()
+                .isNotEqualTo(firstIriId);
+
+        reloaded.setName("Přejmenovaný");
+        reloaded.getOntologyMetadata().setGraphName("https://x/iri-id-prejmenovano");
+        em.flush();
+        em.clear();
+
+        assertThat(diagramRepository.findById(first.getId()).orElseThrow().getIriId()).isEqualTo(firstIriId);
+    }
+
+    // Rows inserted without the column (pre-024 rows, raw SQL) get their own value from the DB default.
+    @Test
+    void iriIdDefaultsPerRowWhenInsertedWithoutIt() {
+        Long ontologyId = ontology("iri-id-default").getId();
+        em.flush();
+        for (String name : List.of("a", "b")) {
+            em.createNativeQuery("INSERT INTO ismd_schema.diagrams (ontology_metadata_id, name, version, created_at) "
+                            + "VALUES (:o, :n, 0, now())")
+                    .setParameter("o", ontologyId)
+                    .setParameter("n", name)
+                    .executeUpdate();
+        }
+
+        List<?> ids = em.createNativeQuery(
+                        "SELECT iri_id FROM ismd_schema.diagrams WHERE ontology_metadata_id = :o")
+                .setParameter("o", ontologyId)
+                .getResultList();
+        assertThat(ids).hasSize(2).doesNotContainNull().doesNotHaveDuplicates();
+    }
+
+    @Test
+    void duplicateIriId_violatesTheUniqueConstraint() {
+        OntologyMetadataEntity ontology = ontology("iri-id-dup");
+        DiagramEntity first = diagramFor(ontology, "a");
+        DiagramEntity second = diagramFor(ontology, "b");
+        em.flush();
+
+        assertThatThrownBy(() -> em.createNativeQuery(
+                                "UPDATE ismd_schema.diagrams SET iri_id = :id WHERE id = :target")
+                        .setParameter("id", first.getIriId())
+                        .setParameter("target", second.getId())
+                        .executeUpdate())
+                .hasStackTraceContaining("uq_diagrams_iri_id");
     }
 
     private DiagramPendingEditEntity pendingEdit(DiagramEntity diagram, String conceptIri,
