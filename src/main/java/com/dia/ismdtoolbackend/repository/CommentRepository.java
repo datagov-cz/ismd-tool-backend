@@ -9,6 +9,8 @@ import java.util.List;
 public interface CommentRepository extends JpaRepository<CommentEntity, Long> {
     List<CommentEntity> findByOntologyMetadataId(Long ontologyMetadataId);
 
+    long countByOntologyMetadataId(Long ontologyMetadataId);
+
     /**
      * Join-fetches both owners: {@code ConceptMetadataMapper.commentEntityToModel} reads
      * {@code ontologyMetadata.graphName} and {@code conceptMetadata.conceptIri} after the fetching

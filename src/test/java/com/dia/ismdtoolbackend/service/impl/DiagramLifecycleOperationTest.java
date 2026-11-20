@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.audit.DeleteAuditWriter;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramSummaryDto;
 import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
@@ -43,13 +44,15 @@ class DiagramLifecycleOperationTest {
     private DiagramScopeReader scopeReader;
     @Mock
     private DiagramSnapshotReader snapshotReader;
+    @Mock
+    private DeleteAuditWriter deleteAuditWriter;
 
     private DiagramLifecycleOperation operation;
     private OntologyMetadataEntity ontology;
 
     @BeforeEach
     void setUp() {
-        operation = new DiagramLifecycleOperation(diagrams, scopeReader, snapshotReader);
+        operation = new DiagramLifecycleOperation(diagrams, scopeReader, snapshotReader, deleteAuditWriter);
         ontology = new OntologyMetadataEntity();
         ontology.setId(ONTOLOGY_ID);
         ontology.setSlug(SLUG);
@@ -195,11 +198,13 @@ class DiagramLifecycleOperationTest {
     @Test
     void deleteRemovesTheDiagramOfThatOntology() {
         DiagramEntity diagram = new DiagramEntity();
+        diagram.setName("Přehled");
         when(scopeReader.requireDiagramOf(ontology, SLUG, DIAGRAM_ID)).thenReturn(diagram);
 
         operation.deleteDiagram(SLUG, DIAGRAM_ID);
 
         verify(diagrams).delete(diagram);
+        verify(deleteAuditWriter).diagram(DIAGRAM_ID, "Přehled", SLUG, ontology.getGraphName());
     }
 
     private DiagramEntity savedDiagram() {

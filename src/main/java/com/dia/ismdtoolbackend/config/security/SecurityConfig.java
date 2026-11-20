@@ -241,6 +241,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/admin/outbox/**").authenticated()
                         // Admin-only on-demand publication of the open data. Same pattern.
                         .requestMatchers("/api/admin/publikace/**").authenticated()
+                        // Admin-only delete audit trail. Same pattern as the outbox.
+                        .requestMatchers(HttpMethod.GET, "/api/admin/audit/deletes").authenticated()
                         .anyRequest().denyAll()
                 )
                 // CSRF disabled: auth is stateless Bearer-JWT only (no cookie/session

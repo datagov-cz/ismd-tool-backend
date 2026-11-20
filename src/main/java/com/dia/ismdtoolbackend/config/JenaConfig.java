@@ -26,6 +26,10 @@ public class JenaConfig {
     @Value("${jena.fuseki.request-timeout:30000}")
     private int requestTimeout;
 
+    /** Longest silence from Fuseki while a response body streams, so a stalled body frees its permit too. */
+    @Value("${jena.fuseki.body-idle-timeout:30000}")
+    private int bodyIdleTimeout;
+
     /** Basic-auth user for Fuseki. Empty (the default) sends no credentials, as local compose expects. */
     @Value("${jena.fuseki.username:}")
     private String username;
@@ -47,7 +51,7 @@ public class JenaConfig {
     @Bean
     public HttpClient fusekiHttpClient() {
         return new RequestTimeoutHttpClient(buildFusekiHttpClient(connectionTimeout, username, password),
-                Duration.ofMillis(requestTimeout));
+                Duration.ofMillis(requestTimeout), Duration.ofMillis(bodyIdleTimeout));
     }
 
     /**

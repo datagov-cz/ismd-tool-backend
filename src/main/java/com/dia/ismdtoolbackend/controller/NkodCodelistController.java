@@ -39,7 +39,8 @@ public class NkodCodelistController {
             @RequestParam(required = false) String q
     ) {
         List<NkodCodelist> codelists = nkodCodelistService.list(q);
-        log.info("NKOD codelist list requested, q={}, {} entries", q, codelists.size());
+        log.info("NKOD codelist list requested, qLength={}, {} entries", q == null ? 0 : q.length(), codelists.size());
+        log.debug("NKOD codelist list q='{}'", q);
 
         return ResponseEntity.ok()
                 .body(ApiResponseDto.success(codelists, "Seznam číselníků byl úspěšně načten."));

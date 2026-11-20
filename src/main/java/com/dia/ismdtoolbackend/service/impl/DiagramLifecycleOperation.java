@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.audit.DeleteAuditWriter;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramSummaryDto;
 import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
@@ -19,6 +20,7 @@ class DiagramLifecycleOperation {
     private final DiagramRepository diagramRepository;
     private final DiagramScopeReader scopeReader;
     private final DiagramSnapshotReader snapshotReader;
+    private final DeleteAuditWriter deleteAuditWriter;
 
     DiagramSnapshot commitNewDiagram(String ontologySlug, String name) {
         OntologyMetadataEntity ontology = scopeReader.requireOntology(ontologySlug);
@@ -104,9 +106,11 @@ class DiagramLifecycleOperation {
         return base + " " + UUID.randomUUID();
     }
 
-    /** Deletes one diagram. Nodes, waypoints and staged edits cascade with it; concepts do not. */
+    /** Deletes one diagram and records it. Nodes, waypoints and staged edits cascade with it; concepts do not. */
     void deleteDiagram(String ontologySlug, Long diagramId) {
         OntologyMetadataEntity ontology = scopeReader.requireOntology(ontologySlug);
-        diagramRepository.delete(scopeReader.requireDiagramOf(ontology, ontologySlug, diagramId));
+        DiagramEntity diagram = scopeReader.requireDiagramOf(ontology, ontologySlug, diagramId);
+        deleteAuditWriter.diagram(diagramId, diagram.getName(), ontologySlug, ontology.getGraphName());
+        diagramRepository.delete(diagram);
     }
 }

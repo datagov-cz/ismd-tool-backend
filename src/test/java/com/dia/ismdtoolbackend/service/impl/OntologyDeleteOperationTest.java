@@ -1,5 +1,8 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.repository.CommentRepository;
+import com.dia.ismdtoolbackend.repository.DiagramRepository;
+import com.dia.ismdtoolbackend.audit.DeleteAuditWriter;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
 import com.dia.ismdtoolbackend.exception.OntologyCreationConflictException;
@@ -42,6 +45,9 @@ class OntologyDeleteOperationTest {
     private OutboxWriter outboxWriter;
     private OutboxRelayTrigger outboxRelayTrigger;
     private OutboxEntryRepository outboxRepository;
+    private DiagramRepository diagramRepository;
+    private CommentRepository commentRepository;
+    private DeleteAuditWriter deleteAuditWriter;
 
     private OntologyDeleteOperation operation;
 
@@ -55,6 +61,9 @@ class OntologyDeleteOperationTest {
         outboxWriter = fixture.outboxWriter();
         outboxRelayTrigger = fixture.outboxRelayTrigger();
         outboxRepository = fixture.outboxRepository();
+        diagramRepository = fixture.diagramRepository();
+        commentRepository = fixture.commentRepository();
+        deleteAuditWriter = fixture.deleteAuditWriter();
         operation = fixture.deleteOperation();
     }
 
@@ -66,8 +75,12 @@ class OntologyDeleteOperationTest {
         when(ontologyMetadataRepository.findById(ONTOLOGY_ID)).thenReturn(Optional.of(ontologyEntity()));
         when(validationReportRepository.findByOntologyMetadataId(ONTOLOGY_ID)).thenReturn(Optional.of(report));
         when(conceptMetadataRepository.findByGraphName(GRAPH)).thenReturn(List.of(owned));
+        when(diagramRepository.countByOntologyMetadataId(ONTOLOGY_ID)).thenReturn(2L);
+        when(commentRepository.countByOntologyMetadataId(ONTOLOGY_ID)).thenReturn(5L);
 
         operation.deleteOntology(ONTOLOGY_ID);
+
+        verify(deleteAuditWriter).ontology(ONTOLOGY_ID, ontologyEntity().getSlug(), GRAPH, 1, 2, 5);
 
         var order = inOrder(validationReportRepository, nkdSnapshotService, outboxWriter,
                 ontologyMetadataRepository, outboxRelayTrigger);
@@ -99,7 +112,7 @@ class OntologyDeleteOperationTest {
                 .isInstanceOf(OntologyException.class)
                 .hasMessageContaining("nebyl nalezen");
         verify(ontologyMetadataRepository, never()).deleteById(any());
-        verifyNoInteractions(outboxWriter, nkdSnapshotService);
+        verifyNoInteractions(outboxWriter, nkdSnapshotService, deleteAuditWriter);
     }
 
     @Test
