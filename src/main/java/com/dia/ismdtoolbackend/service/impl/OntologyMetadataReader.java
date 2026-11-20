@@ -59,10 +59,7 @@ class OntologyMetadataReader {
     OntologyRef getOntologyMetadataBySlug(String ontologySlug) {
         return ontologyMetadataRepository.findBySlug(ontologySlug)
                 .map(ontologyMetadataMapper::toRef)
-                .orElseThrow(() -> {
-                    log.error("ontologySlug {} not found", ontologySlug);
-                    return new OntologyNotFoundException(
-                            "Metadata slovníku s názvem " + ontologySlug + " nebyla nalezena.");
-                });
+                .orElseThrow(() -> new OntologyNotFoundException(
+                        "Metadata slovníku s názvem " + ontologySlug + " nebyla nalezena."));
     }
 }

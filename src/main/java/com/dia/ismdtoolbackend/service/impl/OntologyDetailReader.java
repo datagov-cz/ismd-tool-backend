@@ -98,7 +98,6 @@ class OntologyDetailReader {
     LoadedOntologyDetail loadOntologyDetail(String ontologySlug) {
         Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findBySlug(ontologySlug);
         if (ontologyMetadataOpt.isEmpty()) {
-            log.error("ontologySlug {} not found", ontologySlug);
             throw new OntologyNotFoundException("Metadata slovníku s názvem " + ontologySlug + " nebyla nalezena.");
         }
 

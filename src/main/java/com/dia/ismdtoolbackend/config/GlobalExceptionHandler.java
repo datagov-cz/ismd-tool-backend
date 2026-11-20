@@ -208,7 +208,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(OntologyNotFoundException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleOntologyNotFoundException(OntologyNotFoundException e) {
-        log.warn("Ontology not found: {}", e.getMessage());
+        log.debug("Ontology not found: {}", e.getMessage());
         return error(ErrorCode.ONTOLOGY_NOT_FOUND, e.getMessage());
     }
 
@@ -292,7 +292,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ConceptNotFoundException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleConceptNotFoundException(ConceptNotFoundException e) {
-        log.warn("Concept not found: {}", e.getMessage());
+        log.debug("Concept not found: {}", e.getMessage());
         return error(ErrorCode.CONCEPT_NOT_FOUND, e.getMessage());
     }
 
@@ -310,7 +310,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(CommentNotFoundException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleCommentNotFoundException(CommentNotFoundException e) {
-        log.warn("Comment not found: {}", e.getMessage());
+        log.debug("Comment not found: {}", e.getMessage());
         return error(ErrorCode.COMMENT_NOT_FOUND, e.getMessage());
     }
 

@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.exception.ConceptNotFoundException;
 import com.dia.ismdtoolbackend.config.NkdConfig;
 import com.dia.ismdtoolbackend.controller.dto.ConceptSummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
@@ -68,8 +69,7 @@ class ConceptDetailReader {
     GetConceptDto getConceptDetail(String conceptSlug) {
         Optional<ConceptMetadataEntity> conceptMetadataOpt = conceptMetadataRepository.findBySlug(conceptSlug);
         if (conceptMetadataOpt.isEmpty()) {
-            log.error("conceptSlug {} not found", conceptSlug);
-            throw new OntologyException("Metadata pojmu s názvem " + conceptSlug + " nebyla nalezena.");
+            throw new ConceptNotFoundException("Metadata pojmu s názvem " + conceptSlug + " nebyla nalezena.");
         }
 
         ConceptMetadataEntity metadataEntity = conceptMetadataOpt.get();
