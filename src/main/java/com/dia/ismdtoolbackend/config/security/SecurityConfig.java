@@ -1,6 +1,10 @@
 package com.dia.ismdtoolbackend.config.security;
 
 import com.dia.ismdtoolbackend.enums.ErrorCode;
+import com.dia.ismdtoolbackend.ratelimit.ClientIpResolver;
+import com.dia.ismdtoolbackend.ratelimit.RateLimitConfig;
+import com.dia.ismdtoolbackend.ratelimit.RateLimitFilter;
+import com.dia.ismdtoolbackend.ratelimit.RateLimiter;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,6 +20,7 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.util.StringUtils;
 
 @Slf4j
@@ -27,6 +32,9 @@ import org.springframework.util.StringUtils;
 public class SecurityConfig {
     private final JwtAuthenticationConverter jwtAuthenticationConverter;
     private final org.springframework.web.cors.CorsConfigurationSource corsConfigurationSource;
+    private final RateLimitConfig rateLimitConfig;
+    private final RateLimiter rateLimiter;
+    private final ClientIpResolver clientIpResolver;
 
     @Value("${spring.security.oauth2.client.registration.keycloak.client-id}")
     private String clientId;
@@ -76,6 +84,11 @@ public class SecurityConfig {
      * @param http HttpSecurity configuration
      * @return configured SecurityFilterChain for search endpoints
      */
+    /** One instance per chain; not a bean, so it is not also registered as a servlet filter. */
+    private RateLimitFilter rateLimitFilter() {
+        return new RateLimitFilter(rateLimitConfig, rateLimiter, clientIpResolver);
+    }
+
     @Bean
     @Order(0)
     public SecurityFilterChain searchSecurityFilterChain(HttpSecurity http) {
@@ -109,7 +122,8 @@ public class SecurityConfig {
                             }
                             // No token — allow anonymous access to proceed
                         })
-                );
+                )
+                .addFilterAfter(rateLimitFilter(), AuthorizationFilter.class);
 
         log.info("Search security filter chain configured successfully");
         return http.build();
@@ -174,7 +188,8 @@ public class SecurityConfig {
                 // Stateless session management
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-                );
+                )
+                .addFilterAfter(rateLimitFilter(), AuthorizationFilter.class);
 
         log.info("Public security filter chain configured successfully");
         return http.build();

@@ -25,6 +25,7 @@ public enum ErrorCode {
     // Access
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "Přihlášení je neplatné nebo vypršelo."),
     ACCESS_DENIED(HttpStatus.FORBIDDEN, "Přístup odepřen: nemáte oprávnění k této operaci."),
+    RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "Příliš mnoho požadavků. Zkuste to prosím za chvíli."),
 
     // Generic
     RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, "Požadovaný záznam nebyl nalezen."),
