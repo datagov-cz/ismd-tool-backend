@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.service.impl;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import com.dia.ismdtoolbackend.exception.OntologyExceptions;
+import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
@@ -168,7 +169,7 @@ class ConceptCreateOperation {
                 .findByGraphName(ontologyGraphName)
                 .orElseThrow(() -> {
                     log.error("Ontology metadata not found for graph: {}", ontologyGraphName);
-                    return new OntologyException("Slovník s názvem " + ontologyGraphName + " nebyl nalezen.");
+                    return new OntologyNotFoundException("Slovník s názvem " + ontologyGraphName + " nebyl nalezen.");
                 });
 
         return ConceptMetadataFactory.create(createModel, conceptIri, userId, ontologyMetadata,

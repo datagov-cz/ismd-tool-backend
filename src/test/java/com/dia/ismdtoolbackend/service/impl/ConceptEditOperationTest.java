@@ -1,6 +1,8 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.testsupport.security.SignedInAdmin;
+import com.dia.ismdtoolbackend.exception.RdfDataMissingException;
+import com.dia.ismdtoolbackend.exception.ConceptNotFoundException;
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
@@ -366,7 +368,7 @@ class ConceptEditOperationTest {
             when(conceptMetadataRepository.findWithLockById(CONCEPT_ID)).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> operation.editConcept(CONCEPT_ID, editModel))
-                    .isInstanceOf(OntologyException.class)
+                    .isInstanceOf(ConceptNotFoundException.class)
                     .hasMessageContaining("nebyla nalezena");
             verify(jenaTDB2Repository, never()).fetchGraph(anyString());
         }
@@ -377,8 +379,8 @@ class ConceptEditOperationTest {
             when(jenaTDB2Repository.fetchGraph(GRAPH_NAME)).thenReturn(ModelFactory.createDefaultModel());
 
             assertThatThrownBy(() -> operation.editConcept(CONCEPT_ID, editModel))
-                    .isInstanceOf(OntologyException.class)
-                    .hasMessageContaining("prázdný");
+                    .isInstanceOf(RdfDataMissingException.class)
+                    .hasMessageContaining("úložišti RDF chybí");
             verify(conceptEditor, never()).editConcept(anyString(), any(), any(), anyString(), any());
         }
 
@@ -390,8 +392,8 @@ class ConceptEditOperationTest {
             when(jenaTDB2Repository.fetchGraph(GRAPH_NAME)).thenReturn(otherGraph);
 
             assertThatThrownBy(() -> operation.editConcept(CONCEPT_ID, editModel))
-                    .isInstanceOf(OntologyException.class)
-                    .hasMessageContaining("nebyl nalezen");
+                    .isInstanceOf(RdfDataMissingException.class)
+                    .hasMessageContaining("je evidován, ale ve slovníku");
             verify(conceptEditor, never()).editConcept(anyString(), any(), any(), anyString(), any());
         }
     }

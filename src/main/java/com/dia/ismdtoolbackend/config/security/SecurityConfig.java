@@ -144,7 +144,6 @@ public class SecurityConfig {
                         "/api/ontology/concepts",
                         "/api/ontology/concepts/resolve",
                         "/api/ontology/list",
-                        "/api/concept/list",
                         "/api/concept/*/detail",
                         "/api/nkd/ontology/list",
                         "/api/nkd/ontology/detail",

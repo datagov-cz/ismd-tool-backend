@@ -171,6 +171,12 @@ public class GlobalExceptionHandler {
         return error(ErrorCode.RDF_STORE_ERROR, e.getMessage());
     }
 
+    @ExceptionHandler(RdfDataMissingException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleRdfDataMissing(RdfDataMissingException e) {
+        log.error("PG record without RDF data: {}", e.getMessage());
+        return craftedError(ErrorCode.RDF_DATA_MISSING, ownMessage(e));
+    }
+
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleMethodNotSupported(HttpRequestMethodNotSupportedException e) {
         log.warn("Method not supported: {}", e.getMessage());

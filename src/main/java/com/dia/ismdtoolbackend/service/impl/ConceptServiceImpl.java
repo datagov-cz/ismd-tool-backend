@@ -1,6 +1,5 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.controller.dto.ConceptSummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
@@ -82,12 +81,6 @@ public class ConceptServiceImpl implements ConceptService {
     public String syncWorkingCopy(Long conceptId, List<String> fieldsToAccept) {
         WorkingCopySyncOperation.SyncPlan plan = syncOperation.planSync(conceptId, fieldsToAccept);
         return writeTransaction.run(() -> syncOperation.applySync(conceptId, plan));
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public List<ConceptSummaryDto> getAll(String userId, Boolean isPublished) {
-        return detailReader.getAll(userId, isPublished);
     }
 
     @Override

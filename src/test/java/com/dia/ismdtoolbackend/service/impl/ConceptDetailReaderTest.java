@@ -1,8 +1,8 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.exception.RdfDataMissingException;
+import com.dia.ismdtoolbackend.exception.ConceptNotFoundException;
 import com.dia.ismdtoolbackend.controller.dto.CodeListDto;
-import com.dia.ismdtoolbackend.controller.dto.ConceptSummaryDto;
-import com.dia.ismdtoolbackend.enums.ConceptSourceTag;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.NkodCodelistCheckDto;
 import com.dia.ismdtoolbackend.entity.CommentEntity;
@@ -19,7 +19,6 @@ import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.service.nkod.NkodCodelistService;
 import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
-import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.junit.jupiter.api.BeforeEach;
@@ -102,34 +101,6 @@ class ConceptDetailReaderTest {
     }
 
     @Nested
-    class ListSummaries {
-
-        @Test
-        void routesEachFilterCombinationToItsQuery() {
-            when(conceptMetadataRepository.findAll()).thenReturn(List.of(concept));
-            when(conceptMetadataRepository.findAllByUserId("u")).thenReturn(List.of());
-            when(conceptMetadataRepository.findAllByIsPublished(true)).thenReturn(List.of());
-            when(conceptMetadataRepository.findAllByUserIdAndIsPublished("u", true)).thenReturn(List.of());
-
-            assertThat(reader.getAll(null, null)).hasSize(1);
-            assertThat(reader.getAll("u", null)).isEmpty();
-            assertThat(reader.getAll(null, true)).isEmpty();
-            assertThat(reader.getAll("u", true)).isEmpty();
-        }
-
-        @Test
-        void summaryCarriesTheRowAndDerivedTag_butReadsNoComments() {
-            when(conceptMetadataRepository.findAll()).thenReturn(List.of(concept));
-
-            ConceptSummaryDto summary = reader.getAll(null, null).get(0);
-
-            assertThat(summary.getConceptIri()).isEqualTo(concept.getConceptIri());
-            assertThat(summary.getSourceTag()).isEqualTo(ConceptSourceTag.DRAFT);
-            verifyNoInteractions(commentRepository);
-        }
-    }
-
-    @Nested
     class Lookup {
 
         @Test
@@ -137,7 +108,7 @@ class ConceptDetailReaderTest {
             when(conceptMetadataRepository.findBySlug(SLUG)).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> reader.getConceptDetail(SLUG))
-                    .isInstanceOf(OntologyException.class)
+                    .isInstanceOf(ConceptNotFoundException.class)
                     .hasMessageContaining(SLUG);
         }
 
@@ -147,8 +118,8 @@ class ConceptDetailReaderTest {
             when(jenaTDB2Repository.fetchGraph(GRAPH_NAME)).thenReturn(ModelFactory.createDefaultModel());
 
             assertThatThrownBy(() -> reader.getConceptDetail(SLUG))
-                    .isInstanceOf(OntologyException.class)
-                    .hasMessageContaining("prázdný");
+                    .isInstanceOf(RdfDataMissingException.class)
+                    .hasMessageContaining(GRAPH_NAME);
         }
 
         @Test
@@ -157,7 +128,7 @@ class ConceptDetailReaderTest {
             when(detailExtractor.extractConceptDetail(graph, CONCEPT_IRI)).thenReturn(null);
 
             assertThatThrownBy(() -> reader.getConceptDetail(SLUG))
-                    .isInstanceOf(OntologyException.class)
+                    .isInstanceOf(RdfDataMissingException.class)
                     .hasMessageContaining(CONCEPT_IRI);
         }
 
