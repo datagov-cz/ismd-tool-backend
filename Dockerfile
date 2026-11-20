@@ -5,7 +5,7 @@
 # so no extra install is needed.
 # Both base images are pinned to the multi-arch index digest; Dependabot
 # (docker ecosystem) raises the bump PRs.
-FROM eclipse-temurin:17-jdk@sha256:5d6042fb8cdc14d614e4e421f52e3211fc5aeadddce44cbf9de8ed37c791f824 AS builder
+FROM eclipse-temurin:17-jdk@sha256:fbe9d94debbe24e529acfe235b98f065edea050a2dc00129b7d86261ce3248c8 AS builder
 WORKDIR /app
 
 # Copy build manifests first so dependency layers cache across source changes.
@@ -23,7 +23,7 @@ RUN --mount=type=cache,target=/root/.m2/repository \
     ./mvnw clean install -DskipTests -B
 
 ### Runtime stage
-FROM eclipse-temurin:17-jre@sha256:207ecae0b2b104dfc6dfa763d1e9cd2041cb344800a180e24cb1a28ed533ff90 AS runtime
+FROM eclipse-temurin:17-jre@sha256:fb2cec8da84e3f086b59e29bf432d372e396fe0c247adcfb89303a28c2e313c0 AS runtime
 WORKDIR /app
 
 ENV SPRING_PROFILES_ACTIVE=production
