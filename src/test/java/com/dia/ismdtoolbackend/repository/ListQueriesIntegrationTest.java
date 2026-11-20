@@ -69,6 +69,40 @@ class ListQueriesIntegrationTest extends PostgresIntegrationTestBase {
         assertThat(ontologyRepository.findForList(null, null, null, false, List.of("missing"))).isEmpty();
     }
 
+    private OntologyMetadataEntity updatedAt(OntologyMetadataEntity o, LocalDateTime at) {
+        em.flush();
+        em.createQuery("update OntologyMetadataEntity o set o.updatedAt = :t where o.id = :id")
+                .setParameter("t", at)
+                .setParameter("id", o.getId())
+                .executeUpdate();
+        em.clear();
+        return o;
+    }
+
+    @Test
+    void ontologyPageByUpdatedIsNewestFirstWithIdTiebreakAndFiltered() {
+        LocalDateTime t = LocalDateTime.of(2026, 11, 1, 12, 0);
+        updatedAt(ontology("oldest", "alice", false), t.minusDays(3));
+        updatedAt(ontology("older", "alice", false), t.minusDays(1));
+        updatedAt(ontology("new-1", "alice", false), t);
+        updatedAt(ontology("new-2", "alice", false), t);
+        updatedAt(ontology("bobs", "bob", false), t.plusDays(1));
+
+        Page<OntologyMetadataEntity> mine = ontologyRepository.findForListByUpdated(
+                "alice", null, null, true, List.of(""), new OffsetPageable(2, 1));
+        assertThat(slugs(mine.getContent())).containsExactly("new-1", "older");
+        assertThat(mine.getTotalElements()).isEqualTo(4);
+
+        Page<OntologyMetadataEntity> all = ontologyRepository.findForListByUpdated(
+                null, null, null, true, List.of(""), new OffsetPageable(10, 0));
+        assertThat(slugs(all.getContent())).containsExactly("bobs", "new-2", "new-1", "older", "oldest");
+
+        Page<OntologyMetadataEntity> bySlug = ontologyRepository.findForListByUpdated(
+                null, null, null, false, List.of("oldest", "new-1"), new OffsetPageable(10, 0));
+        assertThat(slugs(bySlug.getContent())).containsExactly("new-1", "oldest");
+        assertThat(bySlug.getTotalElements()).isEqualTo(2);
+    }
+
     @Test
     void diagramPageIsNewestFirstWithIdTiebreak() {
         OntologyMetadataEntity alice = ontology("alice", "alice", false);
