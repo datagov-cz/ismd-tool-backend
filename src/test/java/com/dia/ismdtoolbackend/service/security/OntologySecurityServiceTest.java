@@ -1,5 +1,8 @@
 package com.dia.ismdtoolbackend.service.security;
 
+import com.dia.ismdtoolbackend.exception.CommentNotFoundException;
+import com.dia.ismdtoolbackend.exception.ConceptNotFoundException;
+import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.config.security.SecurityUser;
 import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
@@ -7,7 +10,6 @@ import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.repository.CommentRepository;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
-import jakarta.persistence.EntityNotFoundException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,7 +46,7 @@ class OntologySecurityServiceTest {
 
     /** Every ownership check, with how to stub its lookup and the message it throws when missing. */
     enum Check {
-        ONTOLOGY_BY_ID("Slovník s id 7 nebyl nalezen.") {
+        ONTOLOGY_BY_ID("Slovník s id 7 nebyl nalezen.", OntologyNotFoundException.class) {
             void stub(OntologySecurityServiceTest t, Optional<String> owner) {
                 when(t.ontologies.findById(7L)).thenReturn(owner.map(OntologySecurityServiceTest::ontologyOwnedBy));
             }
@@ -52,7 +54,7 @@ class OntologySecurityServiceTest {
                 return s.canModify(7L);
             }
         },
-        ONTOLOGY_BY_IRI("Slovník s IRI https://example.org/slovnik nebyl nalezen.") {
+        ONTOLOGY_BY_IRI("Slovník s IRI https://example.org/slovnik nebyl nalezen.", OntologyNotFoundException.class) {
             void stub(OntologySecurityServiceTest t, Optional<String> owner) {
                 when(t.ontologies.findByGraphName("https://example.org/slovnik"))
                         .thenReturn(owner.map(OntologySecurityServiceTest::ontologyOwnedBy));
@@ -61,7 +63,7 @@ class OntologySecurityServiceTest {
                 return s.canModify("https://example.org/slovnik");
             }
         },
-        ONTOLOGY_BY_SLUG("Slovník se slugem muj-slovnik nebyl nalezen.") {
+        ONTOLOGY_BY_SLUG("Slovník se slugem muj-slovnik nebyl nalezen.", OntologyNotFoundException.class) {
             void stub(OntologySecurityServiceTest t, Optional<String> owner) {
                 when(t.ontologies.findBySlug("muj-slovnik")).thenReturn(owner.map(OntologySecurityServiceTest::ontologyOwnedBy));
             }
@@ -69,7 +71,7 @@ class OntologySecurityServiceTest {
                 return s.belongsToUserBySlug("muj-slovnik");
             }
         },
-        CONCEPT("Pojem s id 8 nebyl nalezen.") {
+        CONCEPT("Pojem s id 8 nebyl nalezen.", ConceptNotFoundException.class) {
             void stub(OntologySecurityServiceTest t, Optional<String> owner) {
                 when(t.concepts.findById(8L)).thenReturn(owner.map(id -> {
                     ConceptMetadataEntity e = new ConceptMetadataEntity();
@@ -81,7 +83,7 @@ class OntologySecurityServiceTest {
                 return s.canModifyConcept(8L);
             }
         },
-        COMMENT("Komentář s id 9 nebyl nalezen.") {
+        COMMENT("Komentář s id 9 nebyl nalezen.", CommentNotFoundException.class) {
             void stub(OntologySecurityServiceTest t, Optional<String> owner) {
                 when(t.comments.findById(9L)).thenReturn(owner.map(id -> {
                     CommentEntity e = new CommentEntity();
@@ -95,9 +97,11 @@ class OntologySecurityServiceTest {
         };
 
         final String notFoundMessage;
+        final Class<? extends RuntimeException> notFoundType;
 
-        Check(String notFoundMessage) {
+        Check(String notFoundMessage, Class<? extends RuntimeException> notFoundType) {
             this.notFoundMessage = notFoundMessage;
+            this.notFoundType = notFoundType;
         }
 
         /** {@code owner} empty = no such resource; {@code ""} = resource with no owner. */
@@ -169,7 +173,7 @@ class OntologySecurityServiceTest {
         check.stub(this, Optional.empty());
 
         assertThatThrownBy(() -> check.call(service))
-                .isInstanceOf(EntityNotFoundException.class)
+                .isExactlyInstanceOf(check.notFoundType)
                 .hasMessage(check.notFoundMessage);
     }
 

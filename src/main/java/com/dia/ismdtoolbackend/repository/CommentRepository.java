@@ -17,5 +17,4 @@ public interface CommentRepository extends JpaRepository<CommentEntity, Long> {
     @EntityGraph(attributePaths = {"ontologyMetadata", "conceptMetadata"})
     List<CommentEntity> findByConceptMetadataId(Long conceptMetadataId);
 
-    List<CommentEntity> findByConceptMetadataIdIn(List<Long> conceptMetadataIds);
 }

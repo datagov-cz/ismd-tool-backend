@@ -14,9 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@code ConceptMetadataMapper}.
  *
  * <p>That mapper populates {@code ontologySlug} from the nested {@code ontologyMetadata.slug}, which
- * dereferences a LAZY proxy. Without the fetch graph each mapped row costs an extra SELECT, so
- * {@code /api/concept/list} over an unfiltered {@code findAll()} degrades to 1+N across the whole
- * concept table. The annotations are the only thing preventing that and are easy to drop silently —
+ * dereferences a LAZY proxy. Without the fetch graph each mapped row costs an extra SELECT. The annotations are the only thing preventing that and are easy to drop silently —
  * nothing else fails when they go.
  *
  * <p>Reflection rather than a query-count test on purpose: this asserts the declaration itself, so it
@@ -24,10 +22,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class ConceptMetadataFetchGraphTest {
 
-    /** Finders whose rows reach ConceptMetadataMapper.toDto — see ConceptServiceImpl.getAll. */
+    /** Finders whose rows reach ConceptMetadataMapper.toDto. */
     private static final List<String> FINDERS_REQUIRING_GRAPH =
-            List.of("findAll", "findAllByUserId", "findAllByIsPublished",
-                    "findAllByUserIdAndIsPublished", "findBySlug", "findByGraphName");
+            List.of("findBySlug", "findByGraphName");
 
     @Test
     void mappedFinders_declareOntologyMetadataFetchGraph() {

@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.controller;
 
+import com.dia.ismdtoolbackend.exception.RdfDataMissingException;
 import com.dia.ismdtoolbackend.models.OntologyRef;
 import com.dia.ismdtoolbackend.controller.dto.OntologyUploadResultDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyDetailMetadataDto;
@@ -679,6 +680,7 @@ class OntologyControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.errorCode").value("ONTOLOGY_NOT_FOUND"))
                 .andExpect(jsonPath("$.message").value("Slovník s ID 999 nebyl nalezen"));
     }
 
@@ -804,10 +806,42 @@ class OntologyControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(editModel)))
                 .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("ONTOLOGY_NOT_FOUND"))
                 .andExpect(jsonPath("$.message").value("Slovník nebyl nalezen"));
     }
 
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testEditOntology_RdfDataMissing() throws Exception {
+        Long ontologyId = 1L;
+        String message = "Slovník https://example.org/s je evidován, ale jeho data v úložišti RDF chybí.";
+
+        when(ontologyService.editOntology(eq(ontologyId), any()))
+                .thenThrow(new RdfDataMissingException(message));
+
+        mockMvc.perform(patch("/api/ontology/{ontologyId}/edit", ontologyId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new OntologyEditModel())))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.errorCode").value("RDF_DATA_MISSING"))
+                .andExpect(jsonPath("$.message").value(message));
+    }
+
     // ========== Download Ontology Tests ==========
+
+    @Test
+    void testDownloadOntology_RdfDataMissing() throws Exception {
+        String message = "Slovník https://example.org/s je evidován, ale jeho data v úložišti RDF chybí.";
+
+        when(ontologyDownloadService.downloadOntology(1L, "ttl"))
+                .thenThrow(new RdfDataMissingException(message));
+
+        mockMvc.perform(get("/api/ontology/{ontologyId}/download", 1L)
+                        .param("format", "ttl"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.errorCode").value("RDF_DATA_MISSING"))
+                .andExpect(jsonPath("$.message").value(message));
+    }
 
     @Test
     void testDownloadOntology_TurtleFormat() throws Exception {

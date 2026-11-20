@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.exception.RdfDataMissingException;
 import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -31,7 +32,8 @@ class OntologyTurtleExport {
 
             if (model == null || model.isEmpty()) {
                 log.warn("Model is empty or null for graph: {}", graphName);
-                throw new OntologyException("Ontology model not found or is empty");
+                throw new RdfDataMissingException("Slovník " + graphName
+                        + " je evidován, ale jeho data v úložišti RDF chybí.");
             }
 
             java.io.StringWriter writer = new java.io.StringWriter();
@@ -43,7 +45,7 @@ class OntologyTurtleExport {
 
             return ttlContent;
 
-        } catch (OntologyException e) {
+        } catch (OntologyException | RdfDataMissingException e) {
             throw e;
         } catch (Exception e) {
             log.error("Error retrieving TTL content from ontology: {}", e.getMessage(), e);

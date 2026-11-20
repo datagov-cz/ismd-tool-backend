@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.exception.RdfDataMissingException;
 import com.dia.ismdtoolbackend.models.OntologyRef;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import org.apache.jena.ontology.OntologyException;
@@ -61,21 +62,21 @@ class OntologyTurtleExportTest {
     }
 
     @Test
-    void emptyGraphIsNotFound() {
+    void emptyGraphIsMissingRdfData() {
         when(tdb2.fetchGraph(GRAPH)).thenReturn(ModelFactory.createDefaultModel());
 
         assertThatThrownBy(() -> export.getTtlContentFromOntology(metadata(GRAPH)))
-                .isInstanceOf(OntologyException.class)
-                .hasMessage("Ontology model not found or is empty");
+                .isInstanceOf(RdfDataMissingException.class)
+                .hasMessage("Slovník " + GRAPH + " je evidován, ale jeho data v úložišti RDF chybí.");
     }
 
     @Test
-    void absentGraphIsNotFound() {
+    void absentGraphIsMissingRdfData() {
         when(tdb2.fetchGraph(GRAPH)).thenReturn(null);
 
         assertThatThrownBy(() -> export.getTtlContentFromOntology(metadata(GRAPH)))
-                .isInstanceOf(OntologyException.class)
-                .hasMessage("Ontology model not found or is empty");
+                .isInstanceOf(RdfDataMissingException.class)
+                .hasMessage("Slovník " + GRAPH + " je evidován, ale jeho data v úložišti RDF chybí.");
     }
 
     @Test

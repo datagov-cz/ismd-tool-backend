@@ -91,6 +91,7 @@ public enum ErrorCode {
 
     // Storage and external services
     RDF_STORE_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "Operace nad úložištěm RDF selhala."),
+    RDF_DATA_MISSING(HttpStatus.INTERNAL_SERVER_ERROR, "Záznam existuje, ale jeho data v úložišti RDF chybí."),
     NKD_RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, "Záznam nebyl v Národním katalogu dat nalezen."),
     NKD_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "Národní katalog dat není momentálně dostupný."),
     SPARQL_ENDPOINT_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "Data nejsou momentálně dostupná."),

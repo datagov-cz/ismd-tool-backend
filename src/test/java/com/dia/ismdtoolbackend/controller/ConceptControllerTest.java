@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.controller;
 
+import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
+import com.dia.ismdtoolbackend.exception.RdfDataMissingException;
 import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
 import com.dia.ismdtoolbackend.exception.ConceptNotFoundException;
 import com.dia.ismdtoolbackend.exception.ConceptStorageException;
@@ -305,6 +307,33 @@ class ConceptControllerTest {
 
     @Test
     @WithMockSecurityUser(userId = "user123")
+    void testCreateConcept_OntologyNotFound() throws Exception {
+        String jsonRequest = """
+                {
+                    "conceptType": "TRIDA",
+                    "ontologyGraphName": "test-ontology",
+                    "namespace": "http://example.org/",
+                    "nameModel": {
+                        "name": {"cs": "TestConcept"},
+                        "languageTag": "cs"
+                    },
+                    "type": "entity"
+                }
+                """;
+
+        when(conceptService.createConcept(any(), eq("user123")))
+                .thenThrow(new OntologyNotFoundException("Slovník s názvem test-ontology nebyl nalezen."));
+
+        mockMvc.perform(post("/api/concept/{slug}/create", "test-ontology")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonRequest))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("ONTOLOGY_NOT_FOUND"))
+                .andExpect(jsonPath("$.message").value("Slovník s názvem test-ontology nebyl nalezen."));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
     void testCreateConcept_UnexpectedException() throws Exception {
         String userId = "user123";
         String slug = "test-ontology";
@@ -465,6 +494,7 @@ class ConceptControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.errorCode").value("CONCEPT_NOT_FOUND"))
                 .andExpect(jsonPath("$.message").value("Pojem s ID 999 nebyl nalezen"));
     }
 
@@ -651,121 +681,47 @@ class ConceptControllerTest {
                 .andExpect(jsonPath("$.message").value("Nastala neočekávaná chyba."));
     }
 
-    // ========== Get Concept List Tests ==========
-
     @Test
-    void testGetConceptList_AllConcepts() throws Exception {
-        ConceptMetadataModel concept1 = new ConceptMetadataModel();
-        concept1.setId(1L);
-        concept1.setConceptIri("http://example.org/concept1");
-        concept1.setConceptName("Concept1");
-        concept1.setConceptType(ConceptType.TRIDA);
+    @WithMockSecurityUser(userId = "user123")
+    void testEditConcept_NotFound() throws Exception {
+        String jsonRequest = """
+                {
+                    "conceptType": "TRIDA",
+                    "conceptIRI": "http://example.org/TestConcept"
+                }
+                """;
 
-        ConceptMetadataModel concept2 = new ConceptMetadataModel();
-        concept2.setId(2L);
-        concept2.setConceptIri("http://example.org/concept2");
-        concept2.setConceptName("Concept2");
-        concept2.setConceptType(ConceptType.TRIDA);
+        when(conceptService.editConcept(anyLong(), any()))
+                .thenThrow(new ConceptNotFoundException("Metadata pojmu s ID 999 nebyla nalezena."));
 
-        when(conceptService.getAll(null, null))
-                .thenReturn(java.util.List.of(concept1, concept2));
-
-        mockMvc.perform(get("/api/concept/list"))
-                .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data").isArray())
-                .andExpect(jsonPath("$.data.length()").value(2))
-                .andExpect(jsonPath("$.data[0].id").value(1))
-                .andExpect(jsonPath("$.data[0].conceptIri").value("http://example.org/concept1"))
-                .andExpect(jsonPath("$.data[0].conceptName").value("Concept1"))
-                .andExpect(jsonPath("$.data[1].id").value(2))
-                .andExpect(jsonPath("$.data[1].conceptIri").value("http://example.org/concept2"))
-                .andExpect(jsonPath("$.message").value("Žádost o seznam pojmů proběhla úspěšně."));
+        mockMvc.perform(patch("/api/concept/{conceptId}/edit", 999L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonRequest))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("CONCEPT_NOT_FOUND"))
+                .andExpect(jsonPath("$.message").value("Metadata pojmu s ID 999 nebyla nalezena."));
     }
 
     @Test
-    void testGetConceptList_ByUserId() throws Exception {
-        String userId = "user123";
-        ConceptMetadataModel concept1 = new ConceptMetadataModel();
-        concept1.setId(1L);
-        concept1.setConceptIri("http://example.org/concept1");
-        concept1.setConceptName("Concept1");
-        concept1.setConceptType(ConceptType.TRIDA);
-        concept1.setUser(new UserModel(userId));
+    @WithMockSecurityUser(userId = "user123")
+    void testEditConcept_RdfDataMissing() throws Exception {
+        String jsonRequest = """
+                {
+                    "conceptType": "TRIDA",
+                    "conceptIRI": "http://example.org/TestConcept"
+                }
+                """;
+        String message = "Pojem http://example.org/TestConcept je evidován, ale ve slovníku http://example.org/ chybí.";
 
-        when(conceptService.getAll(userId, null))
-                .thenReturn(java.util.List.of(concept1));
+        when(conceptService.editConcept(anyLong(), any()))
+                .thenThrow(new RdfDataMissingException(message));
 
-        mockMvc.perform(get("/api/concept/list")
-                        .param("userId", userId))
-                .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data").isArray())
-                .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].id").value(1))
-                .andExpect(jsonPath("$.data[0].user.userId").value(userId))
-                .andExpect(jsonPath("$.message").value("Žádost o seznam pojmů proběhla úspěšně."));
-    }
-
-    @Test
-    void testGetConceptList_ByPublishedStatus() throws Exception {
-        ConceptMetadataModel concept1 = new ConceptMetadataModel();
-        concept1.setId(1L);
-        concept1.setConceptIri("http://example.org/concept1");
-        concept1.setConceptName("Concept1");
-        concept1.setConceptType(ConceptType.TRIDA);
-        concept1.setIsPublished(true);
-
-        when(conceptService.getAll(null, true))
-                .thenReturn(java.util.List.of(concept1));
-
-        mockMvc.perform(get("/api/concept/list")
-                        .param("isPublished", "true"))
-                .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data").isArray())
-                .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].isPublished").value(true))
-                .andExpect(jsonPath("$.message").value("Žádost o seznam pojmů proběhla úspěšně."));
-    }
-
-    @Test
-    void testGetConceptList_EmptyResult() throws Exception {
-        when(conceptService.getAll(null, null))
-                .thenReturn(java.util.List.of());
-
-        mockMvc.perform(get("/api/concept/list"))
-                .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data").isArray())
-                .andExpect(jsonPath("$.data.length()").value(0))
-                .andExpect(jsonPath("$.message").value("Žádost o seznam pojmů proběhla úspěšně."));
-    }
-
-    @Test
-    void testGetConceptList_CombinedFilters() throws Exception {
-        String userId = "user123";
-        ConceptMetadataModel concept1 = new ConceptMetadataModel();
-        concept1.setId(1L);
-        concept1.setConceptIri("http://example.org/concept1");
-        concept1.setConceptName("Concept1");
-        concept1.setConceptType(ConceptType.TRIDA);
-        concept1.setUser(new UserModel(userId));
-        concept1.setIsPublished(true);
-
-        when(conceptService.getAll(userId, true))
-                .thenReturn(java.util.List.of(concept1));
-
-        mockMvc.perform(get("/api/concept/list")
-                        .param("userId", userId)
-                        .param("isPublished", "true"))
-                .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data").isArray())
-                .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].user.userId").value(userId))
-                .andExpect(jsonPath("$.data[0].isPublished").value(true))
-                .andExpect(jsonPath("$.message").value("Žádost o seznam pojmů proběhla úspěšně."));
+        mockMvc.perform(patch("/api/concept/{conceptId}/edit", 1L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonRequest))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.errorCode").value("RDF_DATA_MISSING"))
+                .andExpect(jsonPath("$.message").value(message));
     }
 
     // ========== Get Concept Detail Tests ==========
@@ -820,7 +776,21 @@ class ConceptControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.errorCode").value("CONCEPT_NOT_FOUND"))
                 .andExpect(jsonPath("$.message").value("Pojem nebyl nalezen"));
+    }
+
+    @Test
+    void testGetConceptDetail_RdfDataMissing() throws Exception {
+        String message = "Pojem http://example.org/c je evidován, ale ve slovníku http://example.org/ chybí.";
+
+        when(conceptService.getConceptDetail("c"))
+                .thenThrow(new RdfDataMissingException(message));
+
+        mockMvc.perform(get("/api/concept/{slug}/detail", "c"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.errorCode").value("RDF_DATA_MISSING"))
+                .andExpect(jsonPath("$.message").value(message));
     }
 
     @Test
