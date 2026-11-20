@@ -3,12 +3,14 @@ package com.dia.ismdtoolbackend.service.impl;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
+import com.dia.ismdtoolbackend.controller.dto.PageDto;
+import com.dia.ismdtoolbackend.models.OntologyListQuery;
+import com.dia.ismdtoolbackend.utility.paging.PageParams;
 import com.dia.ismdtoolbackend.models.OntologyRef;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.ontology.OntologyException;
 import java.util.List;
 import org.springframework.stereotype.Component;
 
@@ -22,34 +24,20 @@ class OntologyMetadataReader {
     private final OntologyMetadataMapper ontologyMetadataMapper;
     private final OntologyMetadataEnricher metadataEnricher;
 
-    List<OntologySummaryDto> getAll(String userId, Boolean isPublished) {
-        List<OntologyMetadataEntity> ontologyMetadataEntities;
+    /** Visited-vocabulary lookups pass a handful of slugs; more is not a lookup. */
+    static final int MAX_SLUGS = 6;
 
-        if (userId != null && isPublished != null) {
-            ontologyMetadataEntities = ontologyMetadataRepository.findAllByUserIdAndIsPublished(userId, isPublished);
-        } else if (userId != null) {
-            ontologyMetadataEntities = ontologyMetadataRepository.findAllByUserId(userId);
-        } else if (isPublished != null) {
-            ontologyMetadataEntities = ontologyMetadataRepository.findAllByIsPublished(isPublished);
-        } else {
-            ontologyMetadataEntities = ontologyMetadataRepository.findAll();
+    PageDto<OntologySummaryDto> list(OntologyListQuery query, PageParams page) {
+        if (query.slugs().size() > MAX_SLUGS) {
+            throw new IllegalArgumentException("Maximální počet slugů je " + MAX_SLUGS + ".");
         }
+        boolean anySlug = query.slugs().isEmpty();
+        List<OntologyMetadataEntity> entities = ontologyMetadataRepository.findForList(
+                query.userId(), query.isPublished(), query.graphName(), anySlug,
+                anySlug ? List.of("") : query.slugs());
 
-        return metadataEnricher.enrichEntitiesWithBatchMetadata(ontologyMetadataEntities);
-    }
-
-    List<OntologySummaryDto> getBySlugs(List<String> slugs) {
-        if (slugs == null || slugs.isEmpty()) {
-            throw new OntologyException("Seznam slugů je prázdný");
-        }
-
-        if (slugs.size() > 6) {
-            throw new OntologyException("Maximální počet slugů je 6");
-        }
-
-        List<OntologyMetadataEntity> ontologyMetadataEntities = ontologyMetadataRepository.findBySlugIn(slugs);
-
-        return metadataEnricher.enrichEntitiesWithBatchMetadata(ontologyMetadataEntities);
+        List<OntologySummaryDto> rows = metadataEnricher.enrichEntitiesWithBatchMetadata(entities);
+        return page.slice(OntologyListOrdering.filterAndSort(rows, query.q(), query.sort()));
     }
 
     OntologyRef getOntologyMetadata(Long ontologyId) {

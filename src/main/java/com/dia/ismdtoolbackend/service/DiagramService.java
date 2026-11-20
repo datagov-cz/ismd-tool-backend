@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.service;
 
+import com.dia.ismdtoolbackend.utility.paging.PageParams;
+import com.dia.ismdtoolbackend.controller.dto.PageDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramSummaryDto;
@@ -15,12 +17,12 @@ import java.util.List;
 public interface DiagramService {
 
     /**
-     * Every diagram's identity and node count, for a diagram picker.
+     * One page of diagrams (identity and node count), most recently updated first.
      *
      * @param userId when non-null and non-blank, keeps only diagrams whose OWNING SLOVNÍK belongs to
      *               that user — a diagram has no owner of its own. Null or blank returns them all.
      */
-    List<DiagramSummaryDto> listAll(String userId);
+    PageDto<DiagramSummaryDto> listAll(String userId, PageParams page);
 
     /** The ontology's diagrams, oldest first; identity and node count only. */
     List<DiagramSummaryDto> listForOntology(String ontologySlug);

@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.diagram;
 
+import com.dia.ismdtoolbackend.utility.paging.PageParams;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramSummaryDto;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.service.OntologyLabelLookup;
@@ -58,7 +59,7 @@ class DiagramLabelLookupTransactionIntegrationTest extends PostgresIntegrationTe
 
     @Test
     void listAll_resolvesLabelsAfterItsTransaction() {
-        List<DiagramSummaryDto> result = service.listAll(null);
+        List<DiagramSummaryDto> result = service.listAll(null, new PageParams(20, 0)).items();
 
         assertThat(result).singleElement().extracting(DiagramSummaryDto::ontologyLabel).isEqualTo(LABEL);
         assertThat(transactionOpenDuringLookup.get()).isFalse();

@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.repository;
 
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Page;
 import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -48,6 +50,27 @@ public interface DiagramRepository extends JpaRepository<DiagramEntity, Long> {
             """)
     List<DiagramSummaryRow> findSummaries(@Param("ontologyMetadataId") Long ontologyMetadataId,
                                           @Param("userId") String userId);
+
+    /**
+     * One page of the all-diagrams list, most recently updated first; {@code userId} as in
+     * {@link #findSummaries}. The id ends the order so diagrams saved in the same instant page stably.
+     */
+    @Query(value = """
+            select d.id as diagramId, d.name as name, o.slug as slug, o.graphName as graphName,
+                   d.updatedAt as updatedAt, count(n.id) as nodeCount
+            from DiagramEntity d
+            join d.ontologyMetadata o
+            left join d.nodes n
+            where (:userId is null or o.userId = :userId)
+            group by d.id, d.name, o.slug, o.graphName, d.updatedAt
+            order by d.updatedAt desc nulls last, d.id desc
+            """,
+            countQuery = """
+            select count(d) from DiagramEntity d
+            join d.ontologyMetadata o
+            where (:userId is null or o.userId = :userId)
+            """)
+    Page<DiagramSummaryRow> findSummaryPage(@Param("userId") String userId, Pageable pageable);
 
     /**
      * A diagram, resolved only if it belongs to the given ontology. The endpoints authorize the slug and
