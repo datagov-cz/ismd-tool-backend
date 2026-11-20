@@ -25,6 +25,42 @@ import org.springframework.util.StringUtils;
 @EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
+
+    /** Served by the search chain: anonymous allowed, a token is validated when sent. */
+    public static final String[] SEARCH_PATHS = {"/api/search/**"};
+
+    /** Served by the public chain without authentication. Everything else needs a valid token. */
+    public static final String[] PUBLIC_PATHS = {
+            "/actuator/health",
+            "/actuator/health/*",
+            "/actuator/info",
+            "/api/ontology/*/download",
+            "/api/ontology/*/detail",
+            "/api/ontology/*/validation-report",
+            "/api/ontology/concepts",
+            "/api/ontology/concepts/resolve",
+            "/api/ontology/list",
+            "/api/concept/*/detail",
+            "/api/nkd/ontology/list",
+            "/api/nkd/ontology/detail",
+            "/api/nkd/ontology/all",
+            "/api/nkd/ontology/download",
+            "/api/nkd/concept/detail",
+            "/api/nkod/dataset/all",
+            "/api/nkod/dataset/detail",
+            "/api/nkod/concept/datasets",
+            "/api/rpp/agenda/search",
+            "/api/rpp/ais/search",
+            "/api/eli/law/search/grouped",
+            "/api/eli/law/versions",
+            "/api/eli/law/content",
+            "/api/eli/resolve",
+            "/api/codelist/**",
+            "/v3/api-docs/**",
+            "/swagger-ui/**",
+            "/swagger-ui.html",
+    };
+
     private final JwtAuthenticationConverter jwtAuthenticationConverter;
     private final org.springframework.web.cors.CorsConfigurationSource corsConfigurationSource;
 
@@ -83,7 +119,7 @@ public class SecurityConfig {
 
         http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
-                .securityMatcher("/api/search/**")
+                .securityMatcher(SEARCH_PATHS)
                 .authorizeHttpRequests(auth -> auth
                         .anyRequest().permitAll()
                 )
@@ -134,37 +170,7 @@ public class SecurityConfig {
                 // CORS configuration
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 // Only apply this chain to public endpoints
-                .securityMatcher(
-                        "/actuator/health",
-                        "/actuator/health/*",
-                        "/actuator/info",
-                        "/api/ontology/*/download",
-                        "/api/ontology/*/detail",
-                        "/api/ontology/*/validation-report",
-                        "/api/ontology/concepts",
-                        "/api/ontology/concepts/resolve",
-                        "/api/ontology/list",
-                        "/api/concept/list",
-                        "/api/concept/*/detail",
-                        "/api/nkd/ontology/list",
-                        "/api/nkd/ontology/detail",
-                        "/api/nkd/ontology/all",
-                        "/api/nkd/ontology/download",
-                        "/api/nkd/concept/detail",
-                        "/api/nkod/dataset/all",
-                        "/api/nkod/dataset/detail",
-                        "/api/nkod/concept/datasets",
-                        "/api/rpp/agenda/search",
-                        "/api/rpp/ais/search",
-                        "/api/eli/law/search/grouped",
-                        "/api/eli/law/versions",
-                        "/api/eli/law/content",
-                        "/api/eli/resolve",
-                        "/api/codelist/**",
-                        "/v3/api-docs/**",
-                        "/swagger-ui/**",
-                        "/swagger-ui.html"
-                )
+                .securityMatcher(PUBLIC_PATHS)
                 // Allow all requests to these endpoints
                 .authorizeHttpRequests(auth -> auth
                         .anyRequest().permitAll()

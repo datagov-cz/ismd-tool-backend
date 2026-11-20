@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
 import com.dia.ismdtoolbackend.exception.OntologyCreationConflictException;
@@ -10,7 +11,6 @@ import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.NkdSnapshotService;
-import org.apache.jena.ontology.OntologyException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -96,8 +96,8 @@ class OntologyDeleteOperationTest {
         when(ontologyMetadataRepository.findById(ONTOLOGY_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> operation.deleteOntology(ONTOLOGY_ID))
-                .isInstanceOf(OntologyException.class)
-                .hasMessageContaining("nebyl nalezen");
+                .isInstanceOf(OntologyNotFoundException.class)
+                .hasMessage("Slovník s id " + ONTOLOGY_ID + " nebyl nalezen.");
         verify(ontologyMetadataRepository, never()).deleteById(any());
         verifyNoInteractions(outboxWriter, nkdSnapshotService);
     }

@@ -96,14 +96,6 @@ class ConceptServiceImplTest {
     }
 
     @Test
-    void getAllDelegates() {
-        List<ConceptMetadataModel> all = List.of(metadata("a"));
-        when(detailReader.getAll(USER_ID, true)).thenReturn(all);
-
-        assertThat(service.getAll(USER_ID, true)).isSameAs(all);
-    }
-
-    @Test
     void getConceptDetailDelegates() {
         GetConceptDto detail = new GetConceptDto();
         when(detailReader.getConceptDetail(SLUG)).thenReturn(detail);

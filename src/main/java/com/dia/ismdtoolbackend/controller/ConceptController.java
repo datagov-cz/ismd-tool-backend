@@ -113,21 +113,6 @@ public class ConceptController {
     }
 
     @Operation(
-            summary = "Seznam pojmů",
-            description = "Vrací seznam pojmů s možností filtrování podle uživatele nebo stavu publikace. Veřejný endpoint."
-    )
-    @GetMapping("/list")
-    public ResponseEntity<ApiResponseDto<List<ConceptMetadataModel>>> getConceptList(
-            @RequestParam(required = false) String userId,
-            @RequestParam(required = false) Boolean isPublished
-    ) {
-        log.info("Concept list requested, userId: {}, isPublished: {}", userId, isPublished);
-
-        List<ConceptMetadataModel> concepts = conceptService.getAll(userId, isPublished);
-        return ResponseEntity.ok().body(ApiResponseDto.success(concepts, "Žádost o seznam pojmů proběhla úspěšně."));
-    }
-
-    @Operation(
             summary = "Detail pojmu",
             description = "Vrací kompletní detail pojmu včetně všech vlastností, vztahů, definic a dalších metadat. Obsahuje také informace o odchylkách od publikované verze. Veřejný endpoint."
     )

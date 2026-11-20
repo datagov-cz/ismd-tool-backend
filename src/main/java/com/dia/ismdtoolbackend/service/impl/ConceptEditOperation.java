@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.exception.RdfDataMissingException;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
@@ -135,7 +136,8 @@ class ConceptEditOperation {
         Model model = jenaTDB2Repository.fetchGraph(graphName);
         if (model.isEmpty()) {
             log.error("Graph {} is empty or not found", graphName);
-            throw new OntologyException("Slovník " + graphName + " je prázdný nebo nebyl nalezen.");
+            throw new RdfDataMissingException("Slovník " + graphName
+                    + " je evidován, ale jeho data v úložišti RDF chybí.");
         }
         return model;
     }
@@ -144,7 +146,8 @@ class ConceptEditOperation {
         Resource conceptResource = model.getResource(conceptIRI);
         if (conceptResource == null || !model.containsResource(conceptResource)) {
             log.error("Concept {} not found in graph {}", conceptIRI, graphName);
-            throw new OntologyException("Pojem s IRI " + conceptIRI + " nebyl nalezen ve slovníku.");
+            throw new RdfDataMissingException("Pojem " + conceptIRI
+                    + " je evidován, ale ve slovníku " + graphName + " chybí.");
         }
     }
 

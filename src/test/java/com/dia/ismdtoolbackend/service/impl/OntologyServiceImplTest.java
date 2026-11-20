@@ -1,5 +1,8 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.utility.paging.PageParams;
+import com.dia.ismdtoolbackend.models.OntologyListQuery;
+import com.dia.ismdtoolbackend.controller.dto.PageDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsRequestDto;
@@ -102,17 +105,16 @@ class OntologyServiceImplTest {
         void metadataReads() {
             OntologyRef byId = new OntologyRef(ONTOLOGY_ID, SLUG, GRAPH, false);
             OntologyRef bySlug = new OntologyRef(ONTOLOGY_ID, SLUG, GRAPH, false);
-            List<OntologySummaryDto> all = List.of(new OntologySummaryDto());
-            List<OntologySummaryDto> bySlugs = List.of(new OntologySummaryDto());
+            OntologyListQuery query = new OntologyListQuery(USER_ID, true, List.of(SLUG), null, null, null);
+            PageParams page = new PageParams(20, 0);
+            PageDto<OntologySummaryDto> listed = new PageDto<>(List.of(new OntologySummaryDto()), 1, 20, 0);
             when(metadataReader.getOntologyMetadata(ONTOLOGY_ID)).thenReturn(byId);
             when(metadataReader.getOntologyMetadataBySlug(SLUG)).thenReturn(bySlug);
-            when(metadataReader.getAll(USER_ID, true)).thenReturn(all);
-            when(metadataReader.getBySlugs(List.of(SLUG))).thenReturn(bySlugs);
+            when(metadataReader.list(query, page)).thenReturn(listed);
 
             assertThat(service.getOntologyMetadata(ONTOLOGY_ID)).isSameAs(byId);
             assertThat(service.getOntologyMetadataBySlug(SLUG)).isSameAs(bySlug);
-            assertThat(service.getAll(USER_ID, true)).isSameAs(all);
-            assertThat(service.getBySlugs(List.of(SLUG))).isSameAs(bySlugs);
+            assertThat(service.list(query, page)).isSameAs(listed);
         }
 
         @Test
@@ -148,7 +150,7 @@ class OntologyServiceImplTest {
 
         @ParameterizedTest
         @ValueSource(strings = {"getOntologyDetail", "getOntologyDetailModel", "getConceptsByIri", "checkIri",
-                "getAll", "getBySlugs", "getOntologyMetadata", "getOntologyMetadataBySlug"})
+                "list", "getOntologyMetadata", "getOntologyMetadataBySlug"})
         void readsRunReadOnly_andEvictNothing(String name) {
             Method method = method(name);
 

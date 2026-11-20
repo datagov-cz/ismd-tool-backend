@@ -1,5 +1,9 @@
 package com.dia.ismdtoolbackend.controller;
 
+import com.dia.ismdtoolbackend.utility.paging.PageParams;
+import com.dia.ismdtoolbackend.models.OntologyListSort;
+import com.dia.ismdtoolbackend.models.OntologyListQuery;
+import com.dia.ismdtoolbackend.controller.dto.PageDto;
 import com.dia.ismdtoolbackend.models.OntologyRef;
 import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyUploadResultDto;
@@ -362,24 +366,33 @@ public class OntologyController {
 
     @Operation(
             summary = "Seznam slovníků",
-            description = "Vrací seznam slovníků s možností filtrování podle uživatele, stavu publikace nebo konkrétních slugů. Veřejný endpoint."
+            description = "Vrací stránku slovníků. Filtry jsou volitelné a kombinují se: uživatel, stav publikace, "
+                    + "konkrétní slugy (nejvýše 6), IRI grafu a text `q`, který se hledá v názvu, popisu a slugu "
+                    + "bez ohledu na velikost písmen a diakritiku. `totalCount` počítá všechny vyhovující slovníky. "
+                    + "Veřejný endpoint."
     )
     @GetMapping("/list")
-    public ResponseEntity<ApiResponseDto<List<OntologySummaryDto>>> getOntologyList(
+    public ResponseEntity<ApiResponseDto<PageDto<OntologySummaryDto>>> getOntologyList(
             @RequestParam(required = false) String userId,
             @RequestParam(required = false) Boolean isPublished,
-            @RequestParam(required = false) List<String> slugs
+            @Parameter(description = "Jen slovníky s těmito slugy (nejvýše 6)")
+            @RequestParam(required = false) List<String> slugs,
+            @Parameter(description = "Jen slovník s tímto IRI grafu")
+            @RequestParam(required = false) String graphName,
+            @Parameter(description = "Text hledaný v názvu, popisu a slugu")
+            @RequestParam(required = false) String q,
+            @Parameter(description = "Řazení: NAME (podle českého názvu, výchozí) nebo UPDATED (naposledy upravené první)")
+            @RequestParam(defaultValue = "NAME") OntologyListSort sort,
+            @Parameter(description = "Maximální počet výsledků na stránku (1-100)")
+            @RequestParam(defaultValue = "20") int limit,
+            @Parameter(description = "Offset pro stránkování")
+            @RequestParam(defaultValue = "0") int offset
     ) {
-
-        if (slugs != null && !slugs.isEmpty()) {
-            log.info("Ontology list by slugs requested, slugs: {}", slugs);
-            List<OntologySummaryDto> ontologies = ontologyService.getBySlugs(slugs);
-            return ResponseEntity.ok().body(ApiResponseDto.success(ontologies, "Žádost o seznam slovníků proběhla úspěšně."));
-        }
-
-        log.info("Ontology list requested, userId: {}, isPublished: {}", userId, isPublished);
-        List<OntologySummaryDto> ontologies = ontologyService.getAll(userId, isPublished);
-        return ResponseEntity.ok().body(ApiResponseDto.success(ontologies, "Žádost o seznam slovníků proběhla úspěšně."));
+        log.info("Ontology list requested, userId: {}, isPublished: {}, slugs: {}, graphName: {}, q: {}, sort: {}, "
+                + "limit: {}, offset: {}", userId, isPublished, slugs, graphName, q, sort, limit, offset);
+        PageDto<OntologySummaryDto> page = ontologyService.list(
+                new OntologyListQuery(userId, isPublished, slugs, graphName, q, sort), new PageParams(limit, offset));
+        return ResponseEntity.ok().body(ApiResponseDto.success(page, "Žádost o seznam slovníků proběhla úspěšně."));
     }
 
     @Operation(

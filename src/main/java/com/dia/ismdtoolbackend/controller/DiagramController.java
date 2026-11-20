@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.controller;
 
+import com.dia.ismdtoolbackend.utility.paging.PageParams;
+import com.dia.ismdtoolbackend.controller.dto.PageDto;
 import com.dia.ismdtoolbackend.config.security.SecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramConceptUsageDto;
@@ -50,20 +52,26 @@ public class DiagramController {
 
     @Operation(
             summary = "Seznam diagramů",
-            description = "Vrací odlehčený seznam všech diagramů (identita + počet uzlů), např. pro výběr diagramu. "
+            description = "Vrací stránku diagramů (identita + počet uzlů), naposledy upravené první. "
                     + "Volitelný parametr `userId` omezí výsledek na diagramy slovníků daného uživatele; "
-                    + "bez něj se vrací všechny. Vyžaduje oprávnění přihlášeného uživatele."
+                    + "bez něj se vrací všechny. `totalCount` počítá všechny vyhovující diagramy. "
+                    + "Vyžaduje oprávnění přihlášeného uživatele."
     )
     @GetMapping("/all")
     @PreAuthorize("@ontologySecurityService.canViewResource()")
-    public ResponseEntity<ApiResponseDto<List<DiagramSummaryDto>>> getAllDiagrams(
+    public ResponseEntity<ApiResponseDto<PageDto<DiagramSummaryDto>>> getAllDiagrams(
             @Parameter(description = "Vrátí jen diagramy slovníků tohoto uživatele. Bez parametru se vrací všechny.")
             @RequestParam(required = false) String userId,
+            @Parameter(description = "Maximální počet výsledků na stránku (1-100)")
+            @RequestParam(defaultValue = "20") int limit,
+            @Parameter(description = "Offset pro stránkování")
+            @RequestParam(defaultValue = "0") int offset,
             @AuthenticationPrincipal SecurityUser securityUser
     ) {
-        log.info("Diagram list requested by userId: {}, filter userId: {}", securityUser.getUserId(), userId);
+        log.info("Diagram list requested by userId: {}, filter userId: {}, limit: {}, offset: {}",
+                securityUser.getUserId(), userId, limit, offset);
 
-        List<DiagramSummaryDto> diagrams = diagramService.listAll(userId);
+        PageDto<DiagramSummaryDto> diagrams = diagramService.listAll(userId, new PageParams(limit, offset));
         return ResponseEntity.ok().body(ApiResponseDto.success(diagrams, "Seznam diagramů byl úspěšně načten."));
     }
 

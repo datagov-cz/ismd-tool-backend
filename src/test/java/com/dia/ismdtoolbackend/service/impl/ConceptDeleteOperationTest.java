@@ -1,11 +1,11 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.exception.ConceptNotFoundException;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
-import org.apache.jena.ontology.OntologyException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -97,8 +97,8 @@ class ConceptDeleteOperationTest {
         when(conceptMetadataRepository.findWithLockById(CONCEPT_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> operation.deleteConcept(CONCEPT_ID))
-                .isInstanceOf(OntologyException.class)
-                .hasMessageContaining("nebyla nalezena");
+                .isInstanceOf(ConceptNotFoundException.class)
+                .hasMessage("Metadata pojmu s id " + CONCEPT_ID + " nebyla nalezena.");
         verify(jenaTDB2Repository, never()).deleteConceptsFromGraph(anyList(), anyString());
         verify(conceptMetadataRepository, never()).deleteAll(any());
     }

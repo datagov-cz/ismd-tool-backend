@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.exception.RdfDataMissingException;
+import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.exception.OfnConformanceException;
@@ -254,8 +256,8 @@ class OntologyEditOperationTest {
             when(ontologyMetadataRepository.findById(ONTOLOGY_ID)).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> operation.editOntology(ONTOLOGY_ID, editModel))
-                    .isInstanceOf(OntologyException.class)
-                    .hasMessageContaining("nebyl nalezen");
+                    .isInstanceOf(OntologyNotFoundException.class)
+                    .hasMessage("Slovník s ID " + ONTOLOGY_ID + " nebyl nalezen.");
         }
 
         @Test
@@ -264,7 +266,8 @@ class OntologyEditOperationTest {
             when(jenaTDB2Repository.fetchGraph(GRAPH)).thenReturn(ModelFactory.createDefaultModel());
 
             assertThatThrownBy(() -> operation.editOntology(ONTOLOGY_ID, editModel))
-                    .isInstanceOf(OntologyException.class);
+                    .isInstanceOf(RdfDataMissingException.class)
+                    .hasMessageContaining(GRAPH);
             verify(jenaTDB2Repository, never()).saveOntologyModel(anyString(), any(Model.class));
         }
     }

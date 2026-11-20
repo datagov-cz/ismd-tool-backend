@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.exception.RdfDataMissingException;
+import com.dia.ismdtoolbackend.exception.ConceptNotFoundException;
 import com.dia.ismdtoolbackend.config.NkdConfig;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.LinkSnapshotDto;
@@ -25,9 +27,7 @@ import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
 
 /** Reads concepts: the metadata list, and one concept's detail with references, deviation and link snapshots. */
@@ -49,43 +49,11 @@ class ConceptDetailReader {
     private final NkdConfig nkdConfig;
     private final com.dia.ismdtoolbackend.service.WorkingCopyDeviationService workingCopyDeviationService;
 
-    List<ConceptMetadataModel> getAll(String userId, Boolean isPublished) {
-        List<ConceptMetadataEntity> conceptMetadataEntities;
-
-        if (userId != null && isPublished != null) {
-            conceptMetadataEntities = conceptMetadataRepository.findAllByUserIdAndIsPublished(userId, isPublished);
-        } else if (userId != null) {
-            conceptMetadataEntities = conceptMetadataRepository.findAllByUserId(userId);
-        } else if (isPublished != null) {
-            conceptMetadataEntities = conceptMetadataRepository.findAllByIsPublished(isPublished);
-        } else {
-            conceptMetadataEntities = conceptMetadataRepository.findAll();
-        }
-
-        List<Long> conceptIds = conceptMetadataEntities.stream()
-                .map(ConceptMetadataEntity::getId)
-                .toList();
-        Map<Long, List<CommentEntity>> commentsByConceptId = conceptIds.isEmpty()
-                ? Map.of()
-                : commentRepository.findByConceptMetadataIdIn(conceptIds).stream()
-                        .collect(Collectors.groupingBy(c -> c.getConceptMetadata().getId()));
-
-        return conceptMetadataEntities.stream()
-                .map(entity -> {
-                    ConceptMetadataModel model = conceptMetadataMapper.toDto(entity);
-                    List<CommentEntity> commentEntities =
-                            commentsByConceptId.getOrDefault(entity.getId(), List.of());
-                    model.setComments(conceptMetadataMapper.commentEntitiesToModels(commentEntities));
-                    return model;
-                })
-                .toList();
-    }
-
     GetConceptDto getConceptDetail(String conceptSlug) {
         Optional<ConceptMetadataEntity> conceptMetadataOpt = conceptMetadataRepository.findBySlug(conceptSlug);
         if (conceptMetadataOpt.isEmpty()) {
             log.error("conceptSlug {} not found", conceptSlug);
-            throw new OntologyException("Metadata pojmu s názvem " + conceptSlug + " nebyla nalezena.");
+            throw new ConceptNotFoundException("Metadata pojmu s názvem " + conceptSlug + " nebyla nalezena.");
         }
 
         ConceptMetadataEntity metadataEntity = conceptMetadataOpt.get();
@@ -96,7 +64,8 @@ class ConceptDetailReader {
 
         if (rawModel.isEmpty()) {
             log.error("Ontology model is empty for graph: {}", graphName);
-            throw new OntologyException("Slovník je prázdný, nebo nebyl nalezen.");
+            throw new RdfDataMissingException("Slovník " + graphName
+                    + " je evidován, ale jeho data v úložišti RDF chybí.");
         }
 
         // The canonical deviation projection is defined over this graph ALONE, so it is computed here,
@@ -117,7 +86,8 @@ class ConceptDetailReader {
 
         if (conceptDetail == null) {
             log.error("Concept detail not found for IRI: {}", conceptIri);
-            throw new OntologyException("Detail pojmu s IRI " + conceptIri + " nebyl nalezen.");
+            throw new RdfDataMissingException("Pojem " + conceptIri
+                    + " je evidován, ale ve slovníku " + graphName + " chybí.");
         }
 
         referencedConceptsEnricher.enrich(conceptDetail);

@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.repository;
 
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Page;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -89,13 +91,49 @@ public interface OntologyMetadataRepository extends JpaRepository<OntologyMetada
 
     List<OntologyMetadataEntity> findAllByGraphNameIn(List<String> graphNames);
 
-    List<OntologyMetadataEntity> findAllByUserId(String userId);
-
-    List<OntologyMetadataEntity> findAllByIsPublished(Boolean isPublished);
-
-    List<OntologyMetadataEntity> findAllByUserIdAndIsPublished(String userId, Boolean isPublished);
-
     Optional<OntologyMetadataEntity> findBySlug(String slug);
 
-    List<OntologyMetadataEntity> findBySlugIn(List<String> slugs);
+    /**
+     * The ontology list's PostgreSQL filters; null means unfiltered. {@code slugs} applies only when
+     * {@code anySlug} is false, since an empty {@code in} list is not portable.
+     */
+    @Query("""
+            select o from OntologyMetadataEntity o
+            where (:userId is null or o.userId = :userId)
+              and (:isPublished is null or o.isPublished = :isPublished)
+              and (:graphName is null or o.graphName = :graphName)
+              and (:anySlug = true or o.slug in :slugs)
+            """)
+    List<OntologyMetadataEntity> findForList(@Param("userId") String userId,
+                                             @Param("isPublished") Boolean isPublished,
+                                             @Param("graphName") String graphName,
+                                             @Param("anySlug") boolean anySlug,
+                                             @Param("slugs") List<String> slugs);
+
+    /**
+     * {@link #findForList} as one page, most recently updated first, the id ending the order. The
+     * {@code UPDATED} order without a text filter is all PostgreSQL, so the page is cut here rather than
+     * after reading every row's RDF.
+     */
+    @Query(value = """
+            select o from OntologyMetadataEntity o
+            where (:userId is null or o.userId = :userId)
+              and (:isPublished is null or o.isPublished = :isPublished)
+              and (:graphName is null or o.graphName = :graphName)
+              and (:anySlug = true or o.slug in :slugs)
+            order by o.updatedAt desc nulls last, o.id desc
+            """,
+            countQuery = """
+            select count(o) from OntologyMetadataEntity o
+            where (:userId is null or o.userId = :userId)
+              and (:isPublished is null or o.isPublished = :isPublished)
+              and (:graphName is null or o.graphName = :graphName)
+              and (:anySlug = true or o.slug in :slugs)
+            """)
+    Page<OntologyMetadataEntity> findForListByUpdated(@Param("userId") String userId,
+                                                      @Param("isPublished") Boolean isPublished,
+                                                      @Param("graphName") String graphName,
+                                                      @Param("anySlug") boolean anySlug,
+                                                      @Param("slugs") List<String> slugs,
+                                                      Pageable pageable);
 }

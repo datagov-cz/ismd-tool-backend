@@ -1,12 +1,17 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import org.springframework.data.domain.PageImpl;
+import com.dia.ismdtoolbackend.utility.paging.OffsetPageable;
+import com.dia.ismdtoolbackend.models.OntologyListSort;
+import com.dia.ismdtoolbackend.utility.paging.PageParams;
+import com.dia.ismdtoolbackend.models.OntologyListQuery;
+import com.dia.ismdtoolbackend.controller.dto.PageDto;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
 import com.dia.ismdtoolbackend.models.OntologyRef;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
-import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.vocabulary.SKOS;
@@ -14,18 +19,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.MethodSource;
-import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
-import java.util.function.Function;
-import java.util.stream.Stream;
 
 import static com.dia.ismdtoolbackend.service.impl.OntologyTestData.GRAPH;
 import static com.dia.ismdtoolbackend.service.impl.OntologyTestData.ONTOLOGY_ID;
@@ -35,13 +34,15 @@ import static com.dia.ismdtoolbackend.service.impl.OntologyTestData.ontologyEnti
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
-/** Vocabulary metadata reads: single rows, filtered lists and slug batches. */
+/** Vocabulary metadata reads: single rows and the paged, filtered list. */
 @ExtendWith(MockitoExtension.class)
 class OntologyMetadataReaderTest {
 
@@ -97,77 +98,94 @@ class OntologyMetadataReaderTest {
     }
 
     @Nested
-    class All {
+    class ListPage {
 
-        static Stream<Arguments> filters() {
-            return Stream.of(
-                    Arguments.of(null, null, finder(OntologyMetadataRepository::findAll)),
-                    Arguments.of(USER_ID, null, finder(repo -> repo.findAllByUserId(USER_ID))),
-                    Arguments.of(null, true, finder(repo -> repo.findAllByIsPublished(true))),
-                    Arguments.of(USER_ID, false, finder(repo -> repo.findAllByUserIdAndIsPublished(USER_ID, false))));
+        private static final PageParams FIRST_PAGE = new PageParams(20, 0);
+
+        private OntologyListQuery query(String userId, Boolean isPublished, List<String> slugs, String q) {
+            return new OntologyListQuery(userId, isPublished, slugs, null, q, null);
         }
 
-        private static Function<OntologyMetadataRepository, List<OntologyMetadataEntity>> finder(
-                Function<OntologyMetadataRepository, List<OntologyMetadataEntity>> call) {
-            return call;
-        }
+        @Test
+        void withoutSlugs_passesTheScalarFiltersAndAPlaceholderSlug() {
+            when(ontologyMetadataRepository.findForList(USER_ID, true, null, true, List.of(""))).thenReturn(List.of());
 
-        @ParameterizedTest(name = "userId={0}, isPublished={1}")
-        @MethodSource("filters")
-        void eachFilterCombination_usesOnlyItsFinder(String userId, Boolean isPublished,
-                                                     Function<OntologyMetadataRepository, List<OntologyMetadataEntity>> finder) {
-            when(finder.apply(ontologyMetadataRepository)).thenReturn(List.of());
+            PageDto<OntologySummaryDto> page = reader.list(query(USER_ID, true, null, null), FIRST_PAGE);
 
-            assertThat(reader.getAll(userId, isPublished)).isEmpty();
-
-            finder.apply(verify(ontologyMetadataRepository));
+            assertThat(page).isEqualTo(new PageDto<>(List.of(), 0, 20, 0));
+            verify(ontologyMetadataRepository).findForList(USER_ID, true, null, true, List.of(""));
             verifyNoMoreInteractions(ontologyMetadataRepository);
-        }
-    }
-
-    @Nested
-    class BySlugs {
-
-        @ParameterizedTest
-        @NullAndEmptySource
-        void noSlugs_throws(List<String> slugs) {
-            assertThatThrownBy(() -> reader.getBySlugs(slugs))
-                    .isInstanceOf(OntologyException.class)
-                    .hasMessageContaining("prázdný");
-            verifyNoInteractions(ontologyMetadataRepository);
-        }
-
-        @Test
-        void moreThanSix_throws() {
-            assertThatThrownBy(() -> reader.getBySlugs(List.of("a", "b", "c", "d", "e", "f", "g")))
-                    .isInstanceOf(OntologyException.class)
-                    .hasMessageContaining("6");
-            verifyNoInteractions(ontologyMetadataRepository);
-        }
-
-        @Test
-        void foundRows_areEnrichedFromOneBatchFetch() {
-            String graph = "http://example.org/o/1";
-            when(ontologyMetadataRepository.findBySlugIn(List.of("slug-1")))
-                    .thenReturn(List.of(ontologyEntity(1L, graph)));
-            Model batch = ModelFactory.createDefaultModel();
-            batch.add(batch.createResource(graph), SKOS.prefLabel, "Slovník 1");
-            when(jenaTDB2Repository.fetchMetadataProperties(List.of(graph))).thenReturn(batch);
-
-            List<OntologySummaryDto> out = reader.getBySlugs(List.of("slug-1"));
-
-            assertThat(out).singleElement().satisfies(model -> {
-                assertThat(model.getGraphName()).isEqualTo(graph);
-                assertThat(model.getName()).isEqualTo(Map.of("cs", "Slovník 1"));
-            });
-        }
-
-        @Test
-        void noRows_returnsEmptyWithoutFetchingRdf() {
-            when(ontologyMetadataRepository.findBySlugIn(List.of("missing"))).thenReturn(List.of());
-
-            assertThat(reader.getBySlugs(List.of("missing"))).isEmpty();
             verify(jenaTDB2Repository, never()).fetchMetadataProperties(anyList());
+        }
+
+        @Test
+        void withSlugs_restrictsToThem() {
+            when(ontologyMetadataRepository.findForList(null, null, null, false, List.of("a", "b")))
+                    .thenReturn(List.of());
+
+            reader.list(query(null, null, List.of("a", "b"), null), FIRST_PAGE);
+
+            verify(ontologyMetadataRepository).findForList(null, null, null, false, List.of("a", "b"));
+        }
+
+        @Test
+        void newestFirstWithoutText_pagesInPostgresAndEnrichesOnlyThePage() {
+            OntologyMetadataEntity onPage = ontologyEntity(7L, "http://example.org/o/7");
+            when(ontologyMetadataRepository.findForListByUpdated(
+                    USER_ID, null, null, true, List.of(""), new OffsetPageable(8, 0)))
+                    .thenReturn(new PageImpl<>(List.of(onPage), new OffsetPageable(8, 0), 30));
+            when(jenaTDB2Repository.fetchMetadataProperties(anyList())).thenReturn(ModelFactory.createDefaultModel());
+
+            PageDto<OntologySummaryDto> page = reader.list(
+                    new OntologyListQuery(USER_ID, null, null, null, null, OntologyListSort.UPDATED),
+                    new PageParams(8, 0));
+
+            assertThat(page.totalCount()).isEqualTo(30);
+            assertThat(page.items()).extracting(OntologySummaryDto::getId).containsExactly(7L);
+            verify(jenaTDB2Repository).fetchMetadataProperties(List.of("http://example.org/o/7"));
+            verify(ontologyMetadataRepository, never())
+                    .findForList(any(), any(), any(), anyBoolean(), anyList());
+        }
+
+        @Test
+        void newestFirstWithText_filtersInMemory() {
+            when(ontologyMetadataRepository.findForList(null, null, null, true, List.of(""))).thenReturn(List.of());
+
+            reader.list(new OntologyListQuery(null, null, null, null, "x", OntologyListSort.UPDATED), FIRST_PAGE);
+
+            verify(ontologyMetadataRepository, never())
+                    .findForListByUpdated(any(), any(), any(), anyBoolean(), anyList(), any());
+        }
+
+        @Test
+        void moreThanSixSlugs_isABadArgument() {
+            List<String> seven = List.of("a", "b", "c", "d", "e", "f", "g");
+
+            assertThatThrownBy(() -> reader.list(query(null, null, seven, null), FIRST_PAGE))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("Maximální počet slugů je 6.");
+            verifyNoInteractions(ontologyMetadataRepository);
+        }
+
+        @Test
+        void filtersOnTheRdfName_thenSortsAndCountsBeforeCutting() {
+            List<OntologyMetadataEntity> rows = List.of(
+                    ontologyEntity(1L, "http://example.org/o/1"),
+                    ontologyEntity(2L, "http://example.org/o/2"),
+                    ontologyEntity(3L, "http://example.org/o/3"));
+            when(ontologyMetadataRepository.findForList(null, null, null, true, List.of(""))).thenReturn(rows);
+            Model batch = ModelFactory.createDefaultModel();
+            batch.add(batch.createResource("http://example.org/o/1"), SKOS.prefLabel, "Životní prostředí");
+            batch.add(batch.createResource("http://example.org/o/2"), SKOS.prefLabel, "Silniční provoz");
+            batch.add(batch.createResource("http://example.org/o/3"), SKOS.prefLabel, "Školství");
+            when(jenaTDB2Repository.fetchMetadataProperties(anyList())).thenReturn(batch);
+
+            // "i" (no diacritics) matches "Životní", "Silniční" and "Školství"; the page holds the second of three.
+            PageDto<OntologySummaryDto> page = reader.list(query(null, null, null, "I"), new PageParams(1, 1));
+
+            assertThat(page.totalCount()).isEqualTo(3);
+            assertThat(page.items()).singleElement()
+                    .satisfies(row -> assertThat(row.getName()).isEqualTo(Map.of("cs", "Školství")));
         }
     }
 }
