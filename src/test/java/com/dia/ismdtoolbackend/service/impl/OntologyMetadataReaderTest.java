@@ -1,5 +1,8 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import org.springframework.data.domain.PageImpl;
+import com.dia.ismdtoolbackend.utility.paging.OffsetPageable;
+import com.dia.ismdtoolbackend.models.OntologyListSort;
 import com.dia.ismdtoolbackend.utility.paging.PageParams;
 import com.dia.ismdtoolbackend.models.OntologyListQuery;
 import com.dia.ismdtoolbackend.controller.dto.PageDto;
@@ -31,6 +34,8 @@ import static com.dia.ismdtoolbackend.service.impl.OntologyTestData.ontologyEnti
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -121,6 +126,35 @@ class OntologyMetadataReaderTest {
             reader.list(query(null, null, List.of("a", "b"), null), FIRST_PAGE);
 
             verify(ontologyMetadataRepository).findForList(null, null, null, false, List.of("a", "b"));
+        }
+
+        @Test
+        void newestFirstWithoutText_pagesInPostgresAndEnrichesOnlyThePage() {
+            OntologyMetadataEntity onPage = ontologyEntity(7L, "http://example.org/o/7");
+            when(ontologyMetadataRepository.findForListByUpdated(
+                    USER_ID, null, null, true, List.of(""), new OffsetPageable(8, 0)))
+                    .thenReturn(new PageImpl<>(List.of(onPage), new OffsetPageable(8, 0), 30));
+            when(jenaTDB2Repository.fetchMetadataProperties(anyList())).thenReturn(ModelFactory.createDefaultModel());
+
+            PageDto<OntologySummaryDto> page = reader.list(
+                    new OntologyListQuery(USER_ID, null, null, null, null, OntologyListSort.UPDATED),
+                    new PageParams(8, 0));
+
+            assertThat(page.totalCount()).isEqualTo(30);
+            assertThat(page.items()).extracting(OntologySummaryDto::getId).containsExactly(7L);
+            verify(jenaTDB2Repository).fetchMetadataProperties(List.of("http://example.org/o/7"));
+            verify(ontologyMetadataRepository, never())
+                    .findForList(any(), any(), any(), anyBoolean(), anyList());
+        }
+
+        @Test
+        void newestFirstWithText_filtersInMemory() {
+            when(ontologyMetadataRepository.findForList(null, null, null, true, List.of(""))).thenReturn(List.of());
+
+            reader.list(new OntologyListQuery(null, null, null, null, "x", OntologyListSort.UPDATED), FIRST_PAGE);
+
+            verify(ontologyMetadataRepository, never())
+                    .findForListByUpdated(any(), any(), any(), anyBoolean(), anyList(), any());
         }
 
         @Test
