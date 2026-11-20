@@ -16,6 +16,7 @@ import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
@@ -38,7 +39,13 @@ import org.springframework.web.multipart.support.MissingServletRequestPartExcept
 
 import java.util.List;
 import java.io.IOException;
+import java.util.concurrent.RejectedExecutionException;
 
+import static com.dia.ismdtoolbackend.config.ErrorResponses.craftedError;
+import static com.dia.ismdtoolbackend.config.ErrorResponses.error;
+import static com.dia.ismdtoolbackend.config.ErrorResponses.ownMessage;
+
+/** Maps exceptions to {@link ApiResponseDto} errors; {@link ErrorResponses} decides which message the client gets. */
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -46,7 +53,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(EntityNotFoundException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleEntityNotFound(EntityNotFoundException e) {
         log.error("Entity not found: {}", e.getMessage());
-        return error(ErrorCode.RESOURCE_NOT_FOUND, e.getMessage());
+        return error(ErrorCode.RESOURCE_NOT_FOUND, ownMessage(e));
     }
 
     @ExceptionHandler(AccessDeniedException.class)
@@ -151,6 +158,13 @@ public class GlobalExceptionHandler {
         return error(ErrorCode.EXTERNAL_SERVICE_INVALID_RESPONSE);
     }
 
+    /** A full executor (search, for one): the caller may retry, unlike after the 500 a generic failure gives. */
+    @ExceptionHandler(RejectedExecutionException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleRejected(RejectedExecutionException e) {
+        log.warn("Task rejected, executor full: {}", e.getMessage());
+        return error(ErrorCode.SERVER_BUSY);
+    }
+
     @ExceptionHandler(JenaTDB2Exception.class)
     public ResponseEntity<ApiResponseDto<Void>> handleJenaTDB2Exception(JenaTDB2Exception e) {
         log.error("Database operation failed: {}", e.getMessage(), e);
@@ -245,7 +259,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleIllegalArgumentException(IllegalArgumentException e) {
         log.warn("Illegal argument: {}", e.getMessage());
-        return error(ErrorCode.INVALID_ARGUMENT, e.getMessage());
+        return error(ErrorCode.INVALID_ARGUMENT, ownMessage(e));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -267,13 +281,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(TypeMismatchException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleTypeMismatch(TypeMismatchException e) {
         log.warn("Bad request: {}", e.getMessage());
-        return error(ErrorCode.INVALID_PARAMETER, e.getMessage());
+        return error(ErrorCode.INVALID_PARAMETER);
     }
 
     @ExceptionHandler(SecurityException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleSecurityException(SecurityException e) {
         log.warn("Unauthorized: {}", e.getMessage());
-        return error(ErrorCode.UNAUTHORIZED, e.getMessage());
+        return error(ErrorCode.UNAUTHORIZED, ownMessage(e));
     }
 
     @ExceptionHandler(ConceptNotFoundException.class)
@@ -309,7 +323,9 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(OntologyException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleOntologyException(OntologyException e) {
         log.error("Operation failed: {}", e.getMessage(), e);
-        return error(ErrorCode.ONTOLOGY_PROCESSING_FAILED, e.getMessage());
+        // Jena's type doubles as this application's: its own messages (several are "not found") reach the
+        // client on a 500, Jena's do not.
+        return craftedError(ErrorCode.ONTOLOGY_PROCESSING_FAILED, ownMessage(e));
     }
 
     /** The tool's own {@link ValidationException}: a failure to store or read a validation report. */
@@ -421,13 +437,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(SparqlEndpointUnavailableException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleSparqlEndpointUnavailable(SparqlEndpointUnavailableException e) {
         log.error("{} unavailable: {}", e.getEndpointLabel(), e.getMessage(), e);
-        return error(ErrorCode.SPARQL_ENDPOINT_UNAVAILABLE, e.getEndpointLabel() + " data nejsou momentálně dostupná.");
+        return craftedError(ErrorCode.SPARQL_ENDPOINT_UNAVAILABLE, e.getEndpointLabel() + " data nejsou momentálně dostupná.");
     }
 
     @ExceptionHandler(ValidationServiceUnavailableException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleValidationServiceUnavailable(ValidationServiceUnavailableException e) {
         log.error("{} unavailable: {}", e.getEndpointLabel(), e.getMessage(), e);
-        return error(ErrorCode.VALIDATION_SERVICE_UNAVAILABLE, e.getEndpointLabel() + " není momentálně dostupná.");
+        return craftedError(ErrorCode.VALIDATION_SERVICE_UNAVAILABLE, e.getEndpointLabel() + " není momentálně dostupná.");
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
@@ -455,18 +471,5 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponseDto<Void>> handleNotReadable(HttpMessageNotReadableException e) {
         log.warn("Request body unreadable: {}", e.getMessage());
         return error(ErrorCode.MALFORMED_REQUEST);
-    }
-
-    private static ResponseEntity<ApiResponseDto<Void>> error(ErrorCode code) {
-        return error(code, null, null);
-    }
-
-    private static ResponseEntity<ApiResponseDto<Void>> error(ErrorCode code, String message) {
-        return error(code, message, null);
-    }
-
-    /** The status comes from the code, so the two cannot disagree. */
-    private static <T> ResponseEntity<ApiResponseDto<T>> error(ErrorCode code, String message, T data) {
-        return ResponseEntity.status(code.getStatus()).body(ApiResponseDto.error(code, message, data));
     }
 }

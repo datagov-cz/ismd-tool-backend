@@ -13,12 +13,6 @@ import static com.dia.ismdtoolbackend.utility.editor.RdfLangValues.removeAllByPr
 /** Edits the links of a concept to other resources: exact matches, hierarchy, domain and range. */
 class ConceptRelationUpdater {
 
-    private final ConceptIriFactory iriFactory;
-
-    ConceptRelationUpdater(ConceptIriFactory iriFactory) {
-        this.iriFactory = iriFactory;
-    }
-
     void updateExactMatch(Resource newConcept, List<String> exactMatchList, Resource oldConcept,
                           Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
         if (exactMatchList == null) return;
@@ -80,7 +74,8 @@ class ConceptRelationUpdater {
             return;
         }
 
-        String newURI = iriFactory.isUri(newValue) ? newValue : iriFactory.generateConceptURI(newValue, null);
+        // ConceptInputValidator has rejected any reference that is not a safe IRI.
+        String newURI = newValue.trim();
 
         if (!Objects.equals(oldURI, newURI)) {
             removeAllByPredicate(newConcept, property, toRemove, toAdd);
@@ -127,9 +122,7 @@ class ConceptRelationUpdater {
         for (String prop : superProperties) {
             String trimmed = prop.trim();
             if (!trimmed.isEmpty()) {
-                String uri = iriFactory.isUri(trimmed) ? trimmed :
-                        iriFactory.generateConceptURI(trimmed, null);
-                result.add(uri);
+                result.add(trimmed);
             }
         }
         return result;
@@ -141,9 +134,7 @@ class ConceptRelationUpdater {
         for (String concept : broaderConcept) {
             String trimmed = concept.trim();
             if (!trimmed.isEmpty()) {
-                String uri = iriFactory.isUri(trimmed) ? trimmed :
-                            iriFactory.generateConceptURI(trimmed, null);
-                result.add(uri);
+                result.add(trimmed);
             }
         }
         return result;

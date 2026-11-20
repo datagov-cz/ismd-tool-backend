@@ -65,13 +65,15 @@ class ConceptEditorPropertyConceptTest extends ConceptEditorTestBase {
     }
 
     @Test
-    void domainGivenAsANameResolvesToTheConceptIriInTheNamespace() {
+    void domainGivenAsANameIsRejected_notTurnedIntoAnIri() {
         seedProperty("");
         propertyConceptEditModel.setDomain("Osoba");
 
-        conceptEditor.editConcept(CONCEPT, propertyConceptEditModel, model, null);
-
-        assertThat(iris(model, CONCEPT, RDFS.domain)).containsExactly(DEFAULT_NS + "pojem/osoba");
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> conceptEditor.editConcept(CONCEPT, propertyConceptEditModel, model, null))
+                .isInstanceOf(com.dia.ismdtoolbackend.exception.ConceptValidationException.class)
+                .hasMessageContaining("domain='Osoba'");
+        assertThat(iris(model, CONCEPT, RDFS.domain)).isEmpty();
     }
 
     @ParameterizedTest(name = "data type \"{0}\" → range {1}")

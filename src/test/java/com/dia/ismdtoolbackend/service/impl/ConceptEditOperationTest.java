@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.testsupport.security.SignedInAdmin;
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
@@ -66,6 +67,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@ExtendWith(SignedInAdmin.class)
 class ConceptEditOperationTest {
 
     private static final String NKD_SUPERCLASS = "https://slovník.gov.cz/agendový/104/pojem/nadrazena";
@@ -174,7 +176,7 @@ class ConceptEditOperationTest {
                 OwnerChangeSet changeSet = inv.getArgument(3);
                 changeSet.toAdd.add(copyTriple);
                 return null;
-            }).when(nkdSnapshotService).createOrRefreshSnapshot(any(), eq(NKD_SUPERCLASS), anyString(), any());
+            }).when(nkdSnapshotService).createOrRefreshSnapshot(any(), eq(NKD_SUPERCLASS), anyString(), any(), any());
 
             editCommitting(unchanged());
 
@@ -186,7 +188,7 @@ class ConceptEditOperationTest {
         void enqueuesAndSavesNothingWhenTheLinkReconcileRejects() {
             graph.add(conceptResource, RDFS.domain, graph.createResource(NKD_SUPERCLASS));
             givenEditorReturns(unchanged());
-            when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(List.of(NKD_SUPERCLASS));
+            when(nkdSparqlClient.findPublishedAmong(anyList())).thenReturn(java.util.Optional.of(java.util.Set.of(NKD_SUPERCLASS)));
 
             assertThatThrownBy(() -> operation.editConcept(CONCEPT_ID, editModel))
                     .isInstanceOf(OntologyValidationException.class);
@@ -407,7 +409,7 @@ class ConceptEditOperationTest {
                 OwnerChangeSet changeSet = inv.getArgument(3);
                 changeSet.toAdd.add(copyTriple);
                 return null;
-            }).when(nkdSnapshotService).createOrRefreshSnapshot(any(), eq(NKD_SUPERCLASS), anyString(), any());
+            }).when(nkdSnapshotService).createOrRefreshSnapshot(any(), eq(NKD_SUPERCLASS), anyString(), any(), any());
             AtomicBoolean gateSawTheNkdDelta = new AtomicBoolean();
             doAnswer(inv -> {
                 Model checked = inv.getArgument(0);
@@ -551,6 +553,35 @@ class ConceptEditOperationTest {
             assertThatThrownBy(() -> operation.editConcept(CONCEPT_ID, editModel))
                     .isInstanceOf(OntologyException.class)
                     .hasMessageContaining("Nepodařilo se aktualizovat metadata pojmu");
+        }
+    }
+
+    /** The edit's NKD answers are fetched before its transaction, for every link the reconcile will check. */
+    @Nested
+    class NkdPrefetch {
+
+        /** A field the edit leaves null keeps its stored link; the prefetch must cover that link too. */
+        @Test
+        void coversTheConceptsCurrentLinks_notOnlyTheIrisTheEditNames() {
+            when(conceptMetadataRepository.findById(CONCEPT_ID)).thenReturn(java.util.Optional.of(concept));
+            when(jenaTDB2Repository.fetchLinkTargets(CONCEPT_IRI, GRAPH_NAME)).thenReturn(List.of(NKD_SUPERCLASS));
+            when(nkdSparqlClient.findPublishedAmong(anyList()))
+                    .thenReturn(java.util.Optional.of(Set.of(NKD_SUPERCLASS)));
+
+            com.dia.ismdtoolbackend.service.snapshot.NkdLookup nkd = operation.prefetchNkd(CONCEPT_ID, editModel);
+
+            assertThat(nkd.publishedAmong(List.of(NKD_SUPERCLASS))).contains(Set.of(NKD_SUPERCLASS));
+            verify(nkdSparqlClient).fetchPublishedConceptWithScheme(NKD_SUPERCLASS);
+        }
+
+        @Test
+        void aMissingConceptRowAnswersNothing() {
+            when(conceptMetadataRepository.findById(CONCEPT_ID)).thenReturn(java.util.Optional.empty());
+
+            com.dia.ismdtoolbackend.service.snapshot.NkdLookup nkd = operation.prefetchNkd(CONCEPT_ID, editModel);
+
+            assertThat(nkd.publishedAmong(List.of(NKD_SUPERCLASS))).isEmpty();
+            org.mockito.Mockito.verifyNoInteractions(nkdSparqlClient);
         }
     }
 }

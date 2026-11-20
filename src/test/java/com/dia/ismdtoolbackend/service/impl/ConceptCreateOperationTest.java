@@ -70,6 +70,7 @@ class ConceptCreateOperationTest {
     private OutboxWriter outboxWriter;
     private OutboxRelayTrigger outboxRelayTrigger;
     private OfnWriteGate ofnWriteGate;
+    private com.dia.ismdtoolbackend.client.NkdSparqlClient nkdSparqlClient;
     private ConceptCreateOperation operation;
 
     @Captor private ArgumentCaptor<Set<Statement>> addedCaptor;
@@ -91,6 +92,7 @@ class ConceptCreateOperationTest {
         jenaTDB2Repository = fixture.jenaTDB2Repository();
         outboxWriter = fixture.outboxWriter();
         outboxRelayTrigger = fixture.outboxRelayTrigger();
+        nkdSparqlClient = fixture.nkdSparqlClient();
         operation = fixture.buildCreateOperation();
 
         savedConcept = ConceptServiceTestData.concept();
@@ -351,6 +353,145 @@ class ConceptCreateOperationTest {
             // Only the collision read; the triples reach TDB2 through the outbox.
             verify(jenaTDB2Repository).conceptFoundInGraph(CONCEPT_IRI, GRAPH_NAME);
             verifyNoMoreInteractions(jenaTDB2Repository);
+        }
+
+        /** The IRI is free at the check but a concurrent create inserts it first: the same 400 as the check. */
+        @Test
+        void aLostInsertRaceIsTheSameConflictAsTheCheck() {
+            givenCreatableConcept();
+            when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class)))
+                    .thenThrow(new org.springframework.dao.DataIntegrityViolationException("uk_concept_iri"));
+
+            assertThatThrownBy(() -> operation.createConcept(createModel, USER_ID))
+                    .isInstanceOf(com.dia.ismdtoolbackend.exception.ConceptValidationException.class)
+                    .hasMessage("Pojem se stejným názvem již v ontologii existuje: " + CONCEPT_IRI);
+            verify(outboxRelayTrigger, never()).nudgeAfterCommit();
+        }
+    }
+
+    /** The create half of the NKD domain/range rule (edit and upload enforce the same). */
+    @Nested
+    class NkdDomainRange {
+
+        private static final String NKD_CLASS = "https://slovník.gov.cz/generický/veřejný-sektor/pojem/adresa";
+        private static final String NKD_PROPERTY = "https://slovník.gov.cz/generický/veřejný-sektor/pojem/má-název";
+        private static final String OWN_CLASS = GRAPH_NAME + "/pojem/own-class";
+
+        /** The creator returns {@code model}'s concept carrying the given domain/range triples. */
+        private void givenCreatable(com.dia.ismdtoolbackend.models.concept.ConceptCreateModel model,
+                                    String domain, String range) {
+            model.setOntologyGraphName(GRAPH_NAME);
+            model.setNamespace(GRAPH_NAME);
+            if (domain != null) {
+                createdResource.addProperty(org.apache.jena.vocabulary.RDFS.domain, createdModel.createResource(domain));
+            }
+            if (range != null) {
+                createdResource.addProperty(org.apache.jena.vocabulary.RDFS.range, createdModel.createResource(range));
+            }
+            when(conceptCreator.createSingleConcept(model)).thenReturn(createdResource);
+            when(conceptMetadataRepository.findByConceptIri(CONCEPT_IRI)).thenReturn(Optional.empty());
+        }
+
+        private void givenSaves() {
+            when(ontologyMetadataRepository.findByGraphName(GRAPH_NAME))
+                    .thenReturn(Optional.of(ConceptServiceTestData.ontology()));
+            when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(savedConcept);
+        }
+
+        @Test
+        void rejectsADomainOnAPublishedNkdConcept_andWritesNothing() {
+            var model = com.dia.ismdtoolbackend.testsupport.fixtures.ConceptModels.vlastnost(CONCEPT_NAME,
+                    m -> m.setDomain(NKD_CLASS));
+            givenCreatable(model, NKD_CLASS, null);
+            when(nkdSparqlClient.findPublishedAmong(List.of(NKD_CLASS))).thenReturn(Optional.of(Set.of(NKD_CLASS)));
+
+            assertThatThrownBy(() -> operation.createConcept(model, USER_ID))
+                    .isInstanceOf(com.dia.ismdtoolbackend.exception.OntologyValidationException.class)
+                    .hasMessageContaining(NKD_CLASS);
+            verify(conceptMetadataRepository, never()).save(any());
+            verifyNoInteractions(outboxWriter);
+        }
+
+        @Test
+        void allowsADomainNkdDoesNotPublish() {
+            var model = com.dia.ismdtoolbackend.testsupport.fixtures.ConceptModels.vlastnost(CONCEPT_NAME,
+                    m -> m.setDomain(NKD_CLASS));
+            givenCreatable(model, NKD_CLASS, null);
+            givenSaves();
+            when(nkdSparqlClient.findPublishedAmong(List.of(NKD_CLASS))).thenReturn(Optional.of(Set.of()));
+
+            assertThat(operation.createConcept(model, USER_ID).getId()).isEqualTo(CONCEPT_ID);
+        }
+
+        /** Fail-open: NKD not answering never blocks a create. */
+        @Test
+        void allowsTheCreateWhenNkdDoesNotAnswer() {
+            var model = com.dia.ismdtoolbackend.testsupport.fixtures.ConceptModels.vlastnost(CONCEPT_NAME,
+                    m -> m.setDomain(NKD_CLASS));
+            givenCreatable(model, NKD_CLASS, null);
+            givenSaves();
+            when(nkdSparqlClient.findPublishedAmong(List.of(NKD_CLASS))).thenReturn(Optional.empty());
+
+            assertThat(operation.createConcept(model, USER_ID).getId()).isEqualTo(CONCEPT_ID);
+        }
+
+        /** Diagram: own class → new Vztah → NKD class. A Vztah range is a link, not a rejection. */
+        @Test
+        void relationshipRangeOnAPublishedNkdClassIsAllowed() {
+            var model = com.dia.ismdtoolbackend.testsupport.fixtures.ConceptModels.vztah(CONCEPT_NAME, m -> {
+                m.setDomain(OWN_CLASS);
+                m.setRange(NKD_CLASS);
+            });
+            givenCreatable(model, OWN_CLASS, NKD_CLASS);
+            givenSaves();
+
+            assertThat(operation.createConcept(model, USER_ID).getId()).isEqualTo(CONCEPT_ID);
+            verify(nkdSparqlClient, never()).findPublishedAmong(org.mockito.ArgumentMatchers.anyList());
+        }
+
+        @Test
+        void exemptsAWorkingCopyInTheOwnGraph() {
+            var model = com.dia.ismdtoolbackend.testsupport.fixtures.ConceptModels.vlastnost(CONCEPT_NAME,
+                    m -> m.setDomain(NKD_CLASS));
+            givenCreatable(model, NKD_CLASS, null);
+            givenSaves();
+            ConceptMetadataEntity workingCopy = new ConceptMetadataEntity();
+            workingCopy.setConceptIri(NKD_CLASS);
+            when(conceptMetadataRepository.findByGraphNameAndConceptIriIn(GRAPH_NAME, List.of(NKD_CLASS)))
+                    .thenReturn(List.of(workingCopy));
+
+            assertThat(operation.createConcept(model, USER_ID).getId()).isEqualTo(CONCEPT_ID);
+            verify(nkdSparqlClient, never()).findPublishedAmong(org.mockito.ArgumentMatchers.anyList());
+        }
+
+        /** Before the transaction: one publication check over domain and range only, no concept fetches. */
+        @Test
+        void prefetchAsksOnlyWhetherTheDomainIsPublished() {
+            var model = com.dia.ismdtoolbackend.testsupport.fixtures.ConceptModels.vlastnost(CONCEPT_NAME, m -> {
+                m.setOntologyGraphName(GRAPH_NAME);
+                m.setDomain(NKD_CLASS);
+                m.setSuperProperty(List.of(NKD_PROPERTY));
+            });
+            when(nkdSparqlClient.findPublishedAmong(List.of(NKD_CLASS))).thenReturn(Optional.of(Set.of(NKD_CLASS)));
+
+            operation.prefetchNkd(model);
+
+            verify(nkdSparqlClient).findPublishedAmong(List.of(NKD_CLASS));
+            verifyNoMoreInteractions(nkdSparqlClient);
+        }
+
+        @Test
+        void createWithAPrefetchedAnswerAsksNkdNothing_andStillRejects() {
+            var model = com.dia.ismdtoolbackend.testsupport.fixtures.ConceptModels.vlastnost(CONCEPT_NAME,
+                    m -> m.setDomain(NKD_CLASS));
+            givenCreatable(model, NKD_CLASS, null);
+            when(nkdSparqlClient.findPublishedAmong(List.of(NKD_CLASS))).thenReturn(Optional.of(Set.of(NKD_CLASS)));
+            var nkd = operation.prefetchNkd(model);
+            org.mockito.Mockito.clearInvocations(nkdSparqlClient);
+
+            assertThatThrownBy(() -> operation.createConcept(model, USER_ID, nkd))
+                    .isInstanceOf(com.dia.ismdtoolbackend.exception.OntologyValidationException.class);
+            verifyNoInteractions(nkdSparqlClient);
         }
     }
 }

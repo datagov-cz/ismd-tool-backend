@@ -5,6 +5,8 @@ import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.QueryHints;
+import jakarta.persistence.QueryHint;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
@@ -31,6 +33,7 @@ public interface OntologyMetadataRepository extends JpaRepository<OntologyMetada
      * never reach this method (they are forced to NKD at
      * {@code SearchServiceImpl.resolveSource}).
      */
+    @QueryHints(@QueryHint(name = SearchQueries.TIMEOUT_HINT, value = SearchQueries.TIMEOUT_MS))
     @Query(value = """
             SELECT * FROM ismd_schema.ontologies o
             WHERE ismd_schema.unaccent(o.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
@@ -52,6 +55,7 @@ public interface OntologyMetadataRepository extends JpaRepository<OntologyMetada
      * <p>
      * Anonymous callers are rejected upstream and never reach this method.
      */
+    @QueryHints(@QueryHint(name = SearchQueries.TIMEOUT_HINT, value = SearchQueries.TIMEOUT_MS))
     @Query(value = """
             SELECT * FROM ismd_schema.ontologies o
             WHERE ismd_schema.unaccent(o.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
@@ -69,6 +73,7 @@ public interface OntologyMetadataRepository extends JpaRepository<OntologyMetada
             """, nativeQuery = true)
     List<String> findAllGraphNames();
 
+    @QueryHints(@QueryHint(name = SearchQueries.TIMEOUT_HINT, value = SearchQueries.TIMEOUT_MS))
     @Query(value = """
             SELECT COUNT(*) FROM ismd_schema.ontologies o
             WHERE ismd_schema.unaccent(o.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
@@ -79,6 +84,7 @@ public interface OntologyMetadataRepository extends JpaRepository<OntologyMetada
      * Count companion to {@link #searchByTextUnpublished}. Carries the identical
      * predicate so the reported total and the returned rows agree.
      */
+    @QueryHints(@QueryHint(name = SearchQueries.TIMEOUT_HINT, value = SearchQueries.TIMEOUT_MS))
     @Query(value = """
             SELECT COUNT(*) FROM ismd_schema.ontologies o
             WHERE ismd_schema.unaccent(o.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))

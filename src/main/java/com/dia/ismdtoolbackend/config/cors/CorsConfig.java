@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
+import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
@@ -12,6 +13,10 @@ import org.springframework.web.filter.CorsFilter;
 import java.util.Arrays;
 import java.util.List;
 
+/**
+ * Production, test and dev allow only {@code cors.allowed-origins} ({@code CORS_ALLOWED_ORIGINS});
+ * local and junit add the developer-machine origins.
+ */
 @Configuration
 @Slf4j
 public class CorsConfig {
@@ -29,13 +34,13 @@ public class CorsConfig {
         String activeProfile = DomainApplicationProfile.getProfile(env);
         log.info("Configuring CORS for profile: {}", activeProfile);
 
-        if (DomainApplicationProfile.isActive(env, DomainApplicationProfile.PRODUCTION)) {
-            return productionCorsConfigurationSource();
-        } else if (DomainApplicationProfile.isActive(env, DomainApplicationProfile.TEST)) {
-            return testCorsConfigurationSource();
-        } else {
-            return localCorsConfigurationSource();
-        }
+        CorsConfigUtil util = new CorsConfigUtil();
+        CorsConfiguration config = isDeployed(activeProfile)
+                ? util.createDeployedCorsConfiguration(allowedOrigins())
+                : util.createLocalCorsConfiguration(allowedOrigins());
+        var source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return source;
     }
 
     @Bean
@@ -43,31 +48,16 @@ public class CorsConfig {
         return new CorsFilter(corsConfigurationSource);
     }
 
-    private CorsConfigurationSource productionCorsConfigurationSource() {
-        var config = new CorsConfigUtil().createProductionCorsConfiguration(productionAllowedOrigins());
-        var source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", config);
-        return source;
+    private static boolean isDeployed(String profile) {
+        return DomainApplicationProfile.PRODUCTION.equals(profile)
+                || DomainApplicationProfile.TEST.equals(profile)
+                || DomainApplicationProfile.DEV.equals(profile);
     }
 
-    private List<String> productionAllowedOrigins() {
+    private List<String> allowedOrigins() {
         return Arrays.stream(env.getProperty(ALLOWED_ORIGINS_PROPERTY, "").split(","))
                 .map(String::trim)
                 .filter(origin -> !origin.isEmpty())
                 .toList();
-    }
-
-    private CorsConfigurationSource testCorsConfigurationSource() {
-        var config = new CorsConfigUtil().createTestCorsConfiguration();
-        var source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", config);
-        return source;
-    }
-
-    private CorsConfigurationSource localCorsConfigurationSource() {
-        var config = new CorsConfigUtil().createLocalCorsConfiguration();
-        var source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", config);
-        return source;
     }
 }

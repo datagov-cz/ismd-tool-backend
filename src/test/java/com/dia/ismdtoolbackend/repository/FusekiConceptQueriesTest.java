@@ -94,6 +94,34 @@ class FusekiConceptQueriesTest {
     }
 
     @Test
+    @DisplayName("fetchLinkTargets: domain, range, super-class/-property and exact match IRIs; nothing else")
+    void linkTargetsAreTheLinkPredicatesOnly() {
+        store(GRAPH, """
+                pojem:osoba rdfs:domain pojem:subjekt ; rdfs:range pojem:adresa ;
+                    rdfs:subClassOf <https://slovník.gov.cz/veřejný-sektor/pojem/osoba>, [] ;
+                    rdfs:subPropertyOf pojem:subjekt ;
+                    skos:exactMatch <https://slovník.gov.cz/agendový/104/pojem/osoba> ;
+                    skos:inScheme <https://slovník.gov.cz/datový/test-slovník> ;
+                    a owl:Class ; skos:prefLabel "Osoba"@cs .
+                """);
+        store(OTHER_GRAPH, "pojem:osoba rdfs:domain <https://example.org/elsewhere> .");
+
+        assertThat(queries.fetchLinkTargets(OSOBA, GRAPH)).containsExactlyInAnyOrder(
+                SUBJEKT, ADRESA,
+                "https://slovník.gov.cz/veřejný-sektor/pojem/osoba",
+                "https://slovník.gov.cz/agendový/104/pojem/osoba");
+    }
+
+    @Test
+    @DisplayName("fetchLinkTargets: null or unsafe input returns no targets without querying")
+    void linkTargetsGuards() {
+        assertThat(queries.fetchLinkTargets(null, GRAPH)).isEmpty();
+        assertThat(queries.fetchLinkTargets(OSOBA, null)).isEmpty();
+        assertThat(queries.fetchLinkTargets(UNSAFE, GRAPH)).isEmpty();
+        assertThat(connections).hasValue(0);
+    }
+
+    @Test
     @DisplayName("fetchConceptHierarchy: null or unsafe input returns empty links without querying")
     void hierarchyGuards() {
         assertThat(queries.fetchConceptHierarchy(null, GRAPH)).isEqualTo(ConceptHierarchyLinks.empty());

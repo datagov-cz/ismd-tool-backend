@@ -95,6 +95,7 @@ public enum ErrorCode {
     NKD_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "Národní katalog dat není momentálně dostupný."),
     SPARQL_ENDPOINT_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "Data nejsou momentálně dostupná."),
     EXTERNAL_SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "Externí služba není momentálně dostupná."),
+    SERVER_BUSY(HttpStatus.SERVICE_UNAVAILABLE, "Server je momentálně přetížený, zkuste to prosím za chvíli znovu."),
     EXTERNAL_SERVICE_REJECTED(HttpStatus.BAD_GATEWAY, "Externí služba požadavek odmítla."),
     EXTERNAL_SERVICE_INVALID_RESPONSE(HttpStatus.BAD_GATEWAY, "Externí služba vrátila neplatnou odpověď."),
 

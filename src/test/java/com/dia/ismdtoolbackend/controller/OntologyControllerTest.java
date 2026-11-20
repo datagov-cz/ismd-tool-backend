@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.controller;
 
+import com.dia.ismdtoolbackend.enums.ErrorCode;
+import com.dia.ismdtoolbackend.controller.dto.ResolveConceptsRequest;
 import com.dia.ismdtoolbackend.models.OntologyRef;
 import com.dia.ismdtoolbackend.controller.dto.OntologyUploadResultDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyDetailMetadataDto;
@@ -605,7 +607,7 @@ class OntologyControllerTest {
                 .andExpect(status().isBadGateway())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.errorCode").value("UPLOAD_RDF_STORE_FAILED"))
-                .andExpect(jsonPath("$.message").value("Uložení slovníku do RDF úložiště (TDB2) selhalo: connection refused"));
+                .andExpect(jsonPath("$.message").value(ErrorCode.UPLOAD_RDF_STORE_FAILED.getDefaultMessage()));
     }
 
     @Test
@@ -620,7 +622,7 @@ class OntologyControllerTest {
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.errorCode").value("UPLOAD_METADATA_SAVE_FAILED"))
-                .andExpect(jsonPath("$.message").value("Uložení metadat slovníku selhalo: DB failure"));
+                .andExpect(jsonPath("$.message").value(ErrorCode.UPLOAD_METADATA_SAVE_FAILED.getDefaultMessage()));
     }
 
     @Test
@@ -650,7 +652,7 @@ class OntologyControllerTest {
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.errorCode").value("UPLOAD_FAILED"))
-                .andExpect(jsonPath("$.message").value("Zpracování RDF souboru bylo přerušeno."));
+                .andExpect(jsonPath("$.message").value(ErrorCode.UPLOAD_FAILED.getDefaultMessage()));
     }
 
     @Test
@@ -1126,7 +1128,7 @@ class OntologyControllerTest {
 
         mockMvc.perform(get("/api/ontology/{slug}/validation-report", slug))
                 .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.message").value("Během načítání zprávy z kontroly došlo k chybě"));
+                .andExpect(jsonPath("$.message").value(ErrorCode.VALIDATION_REPORT_FAILED.getDefaultMessage()));
     }
 
     // ========== Get Ontology List Tests ==========
@@ -1643,5 +1645,28 @@ class OntologyControllerTest {
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_VALIDATION_FAILED"));
 
         verifyNoInteractions(referencedConceptResolutionEngine);
+    }
+
+    @Test
+    void resolveConcepts_batchAtTheCap_isAccepted_andOneOver_returns400() throws Exception {
+        when(referencedConceptResolutionEngine.resolveAllForDisplay(org.mockito.ArgumentMatchers.anyList()))
+                .thenReturn(java.util.Map.of());
+
+        mockMvc.perform(post(RESOLVE_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(irisBody(ResolveConceptsRequest.MAX_IRIS)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post(RESOLVE_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(irisBody(ResolveConceptsRequest.MAX_IRIS + 1)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("REQUEST_VALIDATION_FAILED"));
+    }
+
+    private static String irisBody(int count) {
+        return java.util.stream.IntStream.range(0, count)
+                .mapToObj(i -> "\"https://x/pojem/p" + i + "\"")
+                .collect(java.util.stream.Collectors.joining(",", "{\"iris\":[", "]}"));
     }
 }

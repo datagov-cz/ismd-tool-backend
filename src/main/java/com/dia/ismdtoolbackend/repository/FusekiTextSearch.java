@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.repository;
 
+import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import com.dia.ismdtoolbackend.ofn.OfnIris;
 
 import com.dia.ismdtoolbackend.config.DomainApplicationProfile;
@@ -293,13 +294,22 @@ final class FusekiTextSearch {
         if (conceptIris == null || conceptIris.isEmpty() || relationTypes == null || relationTypes.isEmpty()) {
             return Set.of();
         }
+        // Each IRI is interpolated between < and >; an unsafe one is dropped, not sanitised.
+        List<String> safeIris = conceptIris.stream().filter(SparqlIriValidator::isSafeHttpIri).toList();
+        if (safeIris.size() != conceptIris.size()) {
+            log.warn("Dropped {} invalid concept IRI(s) from the relation type filter",
+                    conceptIris.size() - safeIris.size());
+        }
+        if (safeIris.isEmpty()) {
+            return Set.of();
+        }
 
         return executor.execute(
-                "filtering " + conceptIris.size() + " concepts by relation types " + relationTypes,
+                "filtering " + safeIris.size() + " concepts by relation types " + relationTypes,
                 "Failed to filter concepts by relation types",
                 conn -> {
                     StringBuilder valuesClause = new StringBuilder();
-                    for (String iri : conceptIris) {
+                    for (String iri : safeIris) {
                         valuesClause.append("<").append(iri).append("> ");
                     }
                     StringBuilder unionClauses = new StringBuilder();
@@ -325,7 +335,7 @@ final class FusekiTextSearch {
                         }
                     }
                     log.debug("Relation type filter: {} of {} concepts matched relation types {}",
-                            matchingIris.size(), conceptIris.size(), relationTypes);
+                            matchingIris.size(), safeIris.size(), relationTypes);
                     return matchingIris;
                 });
     }

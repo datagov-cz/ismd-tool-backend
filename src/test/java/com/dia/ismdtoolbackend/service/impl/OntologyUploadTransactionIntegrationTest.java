@@ -5,6 +5,8 @@ import com.dia.ismdtoolbackend.ofn.OfnWriteGate;
 import com.dia.ismdtoolbackend.IsmdToolBackendApplication;
 import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.config.AsyncConfig;
+import com.dia.ismdtoolbackend.controller.dto.OntologyUploadResultDto;
+import com.dia.ismdtoolbackend.controller.dto.RejectedConceptDto;
 import com.dia.ismdtoolbackend.config.JpaAuditingConfig;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
@@ -23,6 +25,9 @@ import com.dia.ismdtoolbackend.testsupport.pg.TransactionTemplateConfig;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
 import org.apache.jena.ontology.OntModel;
+import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.ModelFactory;
+import org.apache.jena.vocabulary.SKOS;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -80,7 +85,7 @@ import static org.mockito.Mockito.when;
         OntologyUploadServiceImpl.class, UploadFileReader.class, UploadVocabularyLock.class,
         OfnConfiguration.class, OfnWriteGate.class,
         UploadConceptRoleResolver.class, UploadConceptGate.class, UploadMetadataWriter.class,
-        UploadValidationRunner.class, OntologyUploadTransactions.class,
+        UploadValidationRunner.class, OntologyUploadTransactions.class, UploadGraphGuard.class,
         OntologyUploadTransactionIntegrationTest.Beans.class})
 // NOT_SUPPORTED: the upload opens its own transactions, as it does behind a real request.
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -98,6 +103,8 @@ class OntologyUploadTransactionIntegrationTest extends PostgresIntegrationTestBa
     @Autowired private OntologyMetadataRepository ontologyRepository;
     @Autowired private ConceptMetadataRepository conceptRepository;
     @Autowired private TransactionTemplate txTemplate;
+    /** Outbox state is not under test here; no unapplied rows. */
+    @MockitoBean private com.dia.ismdtoolbackend.outbox.OutboxEntryRepository outboxRepository;
     @MockitoBean private JenaTDB2Repository jenaTDB2Repository;
     @MockitoBean private ValidationClient validationClient;
     @MockitoBean private PublishedResourceUtil publishedResourceUtil;
@@ -230,6 +237,36 @@ class OntologyUploadTransactionIntegrationTest extends PostgresIntegrationTestBa
                 .isInstanceOf(OntologyAlreadyExistsException.class);
 
         verify(jenaTDB2Repository).deleteGraph(VOCABULARY);
+    }
+
+    /**
+     * The metadata loop reads only {@code slovníky:pojem} subjects. An owned subject with {@code skos:inScheme} but
+     * without that type is rejected by the OFN gate and pruned, so no owned RDF is stored without a Postgres row.
+     */
+    @Test
+    void ownedSubjectWithoutPojemType_isRejectedAndNotStoredAsOwned() throws Exception {
+        String skosOnly = VOCABULARY + "/pojem/jen-skos";
+        String owlOnly = VOCABULARY + "/pojem/jen-owl";
+        String turtle = TURTLE
+                + " <" + skosOnly + "> a skos:Concept, owl:Class ; skos:inScheme <" + VOCABULARY + "> ."
+                + " <" + owlOnly + "> a owl:Class ; skos:inScheme <" + VOCABULARY + "> .";
+        AtomicReference<Model> stored = new AtomicReference<>();
+        doAnswer(invocation -> {
+            stored.set(ModelFactory.createDefaultModel().add((Model) invocation.getArgument(1)));
+            return null;
+        }).when(jenaTDB2Repository).putOntologyModel(anyString(), any(OntModel.class));
+
+        OntologyUploadResultDto result = uploadService.uploadFromFile(
+                new MockMultipartFile("file", "slovnik.ttl", "text/turtle", turtle.getBytes(StandardCharsets.UTF_8)),
+                "user", null, null);
+
+        assertThat(result.rejectedConcepts()).extracting(RejectedConceptDto::iri)
+                .containsExactlyInAnyOrder(skosOnly, owlOnly);
+        for (String iri : List.of(skosOnly, owlOnly)) {
+            assertThat(stored.get().contains(stored.get().getResource(iri), SKOS.inScheme)).as(iri).isFalse();
+            assertThat(conceptRepository.findByConceptIri(iri)).as(iri).isEmpty();
+        }
+        assertThat(conceptRepository.findByConceptIri(CONCEPT)).isPresent();
     }
 
     /** Another writer commits a vocabulary row after this upload's existence check, during the graph write. */

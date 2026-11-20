@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.service.snapshot.NkdLookup;
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.controller.dto.NkdConceptRefDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
@@ -13,7 +14,6 @@ import com.dia.ismdtoolbackend.repository.NkdConceptSnapshotRepository;
 import com.dia.ismdtoolbackend.service.NkdSnapshotService;
 import com.dia.ismdtoolbackend.service.snapshot.OwnerChangeSet;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
-import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
 import com.dia.ismdtoolbackend.utility.published.NkdSnapshotMaterializer;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import lombok.RequiredArgsConstructor;
@@ -41,15 +41,14 @@ import java.util.Set;
 public class NkdSnapshotServiceImpl implements NkdSnapshotService {
 
     private final NkdConceptSnapshotRepository snapshotRepository;
-    private final NkdSparqlClient nkdSparqlClient;
     private final NkdSnapshotMaterializer materializer;
     private final ConceptDeviationComparator conceptDeviationComparator;
-    private final DeviationResolutionEnricher deviationEnricher;
 
     @Override
     @Transactional
     public NkdConceptSnapshotEntity createOrRefreshSnapshot(ConceptMetadataEntity owner, String nkdIri,
-                                                            String linkType, OwnerChangeSet ownerChangeSet) {
+                                                            String linkType, OwnerChangeSet ownerChangeSet,
+                                                            NkdLookup nkd) {
         if (!SnapshotLinkType.isAllowed(linkType)) {
             throw new OntologyValidationException("Link to a published NKD concept is allowed only for "
                     + java.util.Arrays.toString(SnapshotLinkType.values()) + ", not '" + linkType + "'.");
@@ -65,21 +64,19 @@ public class NkdSnapshotServiceImpl implements NkdSnapshotService {
         // Outage (unreachable) vs confirmed-absent (reachable, returns nothing) are different: an outage
         // must leave the existing snapshot intact and not roll back the edit, whereas a confirmed-absent
         // concept means the link target is gone upstream and the tracked copy should be removed.
-        Optional<NkdSparqlClient.PublishedConcept> publishedOpt;
-        try {
-            publishedOpt = nkdSparqlClient.fetchPublishedConceptWithScheme(nkdIri);
-        } catch (SparqlEndpointUnavailableException e) {
-            log.warn("NKD unavailable while snapshotting {} — skipping, existing snapshot kept: {}",
-                    nkdIri, e.getMessage());
+        Optional<NkdLookup.Fetched> fetched = nkd.concept(nkdIri);
+        if (fetched.isEmpty()) {
+            log.warn("NKD copy of {} not available — skipping, existing snapshot kept", nkdIri);
             return existingOpt.orElse(null);
         }
+        Optional<NkdSparqlClient.PublishedConcept> publishedOpt = fetched.get().published();
         if (publishedOpt.isEmpty()) {
             existingOpt.ifPresent(this::removeSnapshotRow);
             log.info("NKD has no concept {} — no snapshot created (existing removed if any)", nkdIri);
             return null;
         }
 
-        Optional<Model> rawOpt = nkdSparqlClient.fetchPublishedConceptRaw(nkdIri);
+        Optional<Model> rawOpt = fetched.get().raw();
         if (rawOpt.isEmpty()) {
             log.warn("NKD concept {} resolved but raw triples unavailable — skipping materialization", nkdIri);
             return existingOpt.orElse(null);
@@ -112,47 +109,45 @@ public class NkdSnapshotServiceImpl implements NkdSnapshotService {
     @Override
     @Transactional
     public void refreshOrSeedForWarming(ConceptMetadataEntity owner, String nkdIri, String linkType,
-                                        OwnerChangeSet ownerChangeSet) {
+                                        OwnerChangeSet ownerChangeSet, NkdLookup nkd) {
         Optional<NkdConceptSnapshotEntity> existingOpt =
                 snapshotRepository.findByOwningConceptIdAndNkdIri(owner.getId(), nkdIri);
         if (existingOpt.isPresent()) {
             // A copy already exists — a read must not overwrite it. Re-evaluate only, so upstream drift
             // surfaces as HAS_DEVIATIONS instead of being silently adopted (and NO_DEVIATION-by-construction).
-            evaluateDeviation(existingOpt.get());
+            evaluateDeviation(existingOpt.get(), nkd);
             return;
         }
         // First time this link is seen: no frozen copy exists yet, so materialize it.
-        createOrRefreshSnapshot(owner, nkdIri, linkType, ownerChangeSet);
+        createOrRefreshSnapshot(owner, nkdIri, linkType, ownerChangeSet, nkd);
     }
 
     @Override
     @Transactional
-    public PublishedConceptDeviationModel evaluateDeviation(NkdConceptSnapshotEntity snapshot) {
-        PublishedConceptDeviationModel result = computeDeviation(snapshot);
+    public PublishedConceptDeviationModel evaluateDeviation(NkdConceptSnapshotEntity snapshot, NkdLookup nkd) {
+        PublishedConceptDeviationModel result = computeDeviation(snapshot, nkd);
         snapshot.setLastDeviationStatus(result.getStatus());
         snapshot.setLastCheckedAt(Instant.now());
         snapshotRepository.save(snapshot);
         return result;
     }
 
-    private PublishedConceptDeviationModel computeDeviation(NkdConceptSnapshotEntity snapshot) {
+    private PublishedConceptDeviationModel computeDeviation(NkdConceptSnapshotEntity snapshot, NkdLookup nkd) {
         ConceptDetailModel local = snapshot.getSnapshot();
         if (local == null) {
             return error(snapshot, DeviationStatus.QUERY_ERROR, "Stored snapshot detail unavailable");
         }
+        Optional<NkdLookup.Fetched> fetched = nkd.concept(snapshot.getNkdIri());
+        if (fetched.isEmpty()) {
+            return error(snapshot, DeviationStatus.ENDPOINT_UNAVAILABLE, "NKD unavailable");
+        }
+        if (fetched.get().published().isEmpty()) {
+            return error(snapshot, DeviationStatus.CONCEPT_NOT_FOUND_IN_NKD, "Concept not found in NKD");
+        }
         try {
-            Optional<ConceptDetailModel> publishedOpt = nkdSparqlClient.fetchPublishedConcept(snapshot.getNkdIri());
-            if (publishedOpt.isEmpty()) {
-                return error(snapshot, DeviationStatus.CONCEPT_NOT_FOUND_IN_NKD, "Concept not found in NKD");
-            }
             // LINK_TARGET: the stored copy is compared against the foreign NKD concept it was copied from.
-            PublishedConceptDeviationModel deviation = conceptDeviationComparator.compareConceptDetails(
-                    local, publishedOpt.get(), snapshot.getOrigin(), snapshot.getNkdIri());
-            deviationEnricher.enrich(deviation);
-            return deviation;
-        } catch (SparqlEndpointUnavailableException e) {
-            log.error("NKD unavailable for snapshot {}: {}", snapshot.getNkdIri(), e.getMessage());
-            return error(snapshot, DeviationStatus.ENDPOINT_UNAVAILABLE, "NKD unavailable: " + e.getMessage());
+            return conceptDeviationComparator.compareConceptDetails(
+                    local, fetched.get().published().get().detail(), snapshot.getOrigin(), snapshot.getNkdIri());
         } catch (Exception e) {
             // Not an upstream outage: a bug or bad stored data. QUERY_ERROR keeps the comparison untrusted
             // without blaming NKD for a fault on our side.

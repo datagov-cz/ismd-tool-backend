@@ -12,6 +12,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -24,6 +25,8 @@ import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -115,6 +118,42 @@ class ConsistencyReconcilerTest {
         assertThat(r.mismatches())
                 .extracting(Mismatch::category, Mismatch::conceptIri)
                 .containsExactly(tuple(MismatchCategory.PG_MISSING_RDF, iri));
+    }
+
+    @Test
+    void pgRowWithTriplesButNotOwned_isRdfNotOwnedResolvable() {
+        when(jenaTDB2Repository.listNamedGraphs()).thenReturn(List.of(GRAPH));
+        when(jenaTDB2Repository.listOwnedConceptIrisInGraph(GRAPH)).thenReturn(List.of());
+        String lostScheme = GRAPH + "/pojem/lost-scheme";
+        String gone = GRAPH + "/pojem/gone";
+        stubPg(List.of(pgConcept(lostScheme, GRAPH, "lost-scheme", false), pgConcept(gone, GRAPH, "gone", false)),
+                List.of(GRAPH));
+        when(jenaTDB2Repository.findSubjectsInGraph(GRAPH, List.of(lostScheme, gone))).thenReturn(Set.of(lostScheme));
+
+        ReconciliationReport r = reconciler.reconcile("TEST");
+
+        assertThat(r.mismatches())
+                .extracting(Mismatch::category, Mismatch::conceptIri)
+                .containsExactlyInAnyOrder(
+                        tuple(MismatchCategory.RDF_NOT_OWNED_RESOLVABLE, lostScheme),
+                        tuple(MismatchCategory.PG_MISSING_RDF, gone));
+    }
+
+    /** Rows consumed by a rename pair are not looked up again. */
+    @Test
+    void renamePairedRow_isNotReclassified() {
+        when(jenaTDB2Repository.listNamedGraphs()).thenReturn(List.of(GRAPH));
+        String newIri = GRAPH + "/pojem/new-name";
+        String oldIri = GRAPH + "/pojem/old-name";
+        when(jenaTDB2Repository.listOwnedConceptIrisInGraph(GRAPH)).thenReturn(List.of(newIri));
+        stubPg(List.of(pgConcept(oldIri, GRAPH, "budova", false)), List.of(GRAPH));
+        when(jenaTDB2Repository.fetchConceptLabels(anyList())).thenReturn(labelModel(newIri, "Budova"));
+
+        ReconciliationReport r = reconciler.reconcile("TEST");
+
+        assertThat(r.mismatches()).extracting(Mismatch::category)
+                .containsExactly(MismatchCategory.SUSPECTED_RENAME);
+        verify(jenaTDB2Repository, never()).findSubjectsInGraph(any(), any());
     }
 
     @Test

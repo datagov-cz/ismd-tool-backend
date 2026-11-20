@@ -4,6 +4,7 @@ import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.Clock;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
@@ -17,9 +18,9 @@ import java.util.function.Supplier;
  *   <li><strong>Open</strong> — after {@link #failureThreshold} consecutive failures,
  *       calls fail fast for {@link #cooldownMillis} so a thundering herd doesn't slam
  *       an already-dead endpoint.</li>
- *   <li><strong>Half-open</strong> (implicit) — once cooldown expires, one trial call
- *       passes through. Success closes the breaker; failure re-opens it for another
- *       cooldown window.</li>
+ *   <li><strong>Half-open</strong> (implicit) — once cooldown expires, exactly one trial call
+ *       passes through; concurrent calls fail fast until it finishes. Success closes the
+ *       breaker; failure re-opens it for another cooldown window.</li>
  * </ul>
  *
  * <p>Only {@link SparqlEndpointUnavailableException} counts as a failure — domain
@@ -37,6 +38,7 @@ public final class SparqlCircuitBreaker {
 
     private final AtomicInteger consecutiveFailures = new AtomicInteger(0);
     private final AtomicLong openedAt = new AtomicLong(0);
+    private final AtomicBoolean trialInFlight = new AtomicBoolean(false);
 
     public SparqlCircuitBreaker(String endpointLabel, int failureThreshold, long cooldownMillis) {
         this(endpointLabel, failureThreshold, cooldownMillis, Clock.systemUTC());
@@ -63,8 +65,20 @@ public final class SparqlCircuitBreaker {
                 throw new SparqlEndpointUnavailableException(endpointLabel,
                         endpointLabel + " circuit breaker open (last failure " + elapsed + "ms ago)");
             }
-            // cooldown expired — let one call through as a trial
+            if (!trialInFlight.compareAndSet(false, true)) {
+                throw new SparqlEndpointUnavailableException(endpointLabel,
+                        endpointLabel + " circuit breaker half-open (trial call in progress)");
+            }
+            try {
+                return attempt(action);
+            } finally {
+                trialInFlight.set(false);
+            }
         }
+        return attempt(action);
+    }
+
+    private <T> T attempt(Supplier<T> action) {
         try {
             T result = action.get();
             onSuccess();

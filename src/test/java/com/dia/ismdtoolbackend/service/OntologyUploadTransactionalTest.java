@@ -77,7 +77,7 @@ class OntologyUploadTransactionalTest {
         when(file.isEmpty()).thenReturn(false);
         when(file.getSize()).thenReturn((long) content.length());
         when(file.getOriginalFilename()).thenReturn("test-ontology.ttl");
-        when(file.getBytes()).thenReturn(content.getBytes(StandardCharsets.UTF_8));
+        when(file.getInputStream()).thenAnswer(inv -> new java.io.ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8)));
         return file;
     }
 

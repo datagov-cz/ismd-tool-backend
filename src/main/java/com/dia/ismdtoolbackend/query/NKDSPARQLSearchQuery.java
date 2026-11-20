@@ -5,6 +5,7 @@ import com.dia.ismdtoolbackend.enums.RelationType;
 import com.dia.ismdtoolbackend.ofn.OfnIris;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import java.util.List;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 
@@ -22,6 +23,9 @@ public class NKDSPARQLSearchQuery {
     private static final String OWL_CLASS = OfnIris.OWL_CLASS;
     private static final String OWL_OBJECT_PROPERTY = OfnIris.OWL_OBJECT_PROPERTY;
     private static final String OWL_DATATYPE_PROPERTY = OfnIris.OWL_DATATYPE_PROPERTY;
+
+    /** Anything that is not part of a word in the {@code bif:contains} phrase. */
+    private static final Pattern NON_WORD = Pattern.compile("[^\\p{L}\\p{M}\\p{N}]+");
 
     /**
      * Builds a SPARQL SELECT query that lists every {@code owl:Ontology} IRI in NKD.
@@ -359,15 +363,15 @@ public class NKDSPARQLSearchQuery {
     }
 
     /**
-     * Sanitizes the search term for use in bif:contains.
-     * Removes characters that could break the SPARQL query or enable injection.
+     * Reduces the search term to words (letters, digits, combining marks) separated by single spaces. The term
+     * lands inside a quoted {@code bif:contains} phrase, so quotes and backslashes would break the SPARQL literal
+     * and characters such as {@code * ( ) & | ~ ,} are free-text operators that make Virtuoso reject the query.
      */
     static String sanitizeSearchTerm(String term) {
         if (term == null) {
             return "";
         }
-        // Remove quotes, backslashes, and other SPARQL-dangerous characters
-        return term.replaceAll("[\"'\\\\<>{}|^`]", "").trim();
+        return NON_WORD.matcher(term).replaceAll(" ").trim();
     }
 
     /**

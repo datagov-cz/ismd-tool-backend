@@ -23,7 +23,10 @@ import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.StmtIterator;
 import org.apache.jena.vocabulary.RDF;
+import com.dia.ismdtoolbackend.service.snapshot.NkdLookup;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Objects;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
@@ -50,13 +53,20 @@ class WorkingCopySyncOperation {
     private final ConceptEditOperation editOperation;
     private final ConceptDetailReader detailReader;
 
-    /** Returns the concept's slug; the caller reads the detail once this transaction has committed. */
-    String syncWorkingCopy(Long conceptId, List<String> fieldsToAccept) {
-        ConceptMetadataEntity metadata = accessGuard.fetchAndValidateMetadata(conceptId, true);
-        if (!Boolean.TRUE.equals(metadata.getIsPublished())) {
-            throw new OntologyValidationException(
-                    "Pojem není pracovní kopií publikovaného pojmu v NKD — není co synchronizovat.");
-        }
+    /**
+     * What a sync will write, decided before its transaction: everything that reads NKD (the twin, the
+     * current detail and its deviation, the edit's NKD answers) runs here, holding no lock.
+     *
+     * @param updatedAt the concept row's {@code updatedAt} the plan was made against
+     * @param sever     whether the user accepted only some of what deviates
+     */
+    record SyncPlan(LocalDateTime updatedAt, String slug, ConceptEditModel editModel, boolean sever,
+                    int accepted, int deviating, NkdLookup nkd) {
+    }
+
+    SyncPlan planSync(Long conceptId, List<String> fieldsToAccept) {
+        ConceptMetadataEntity metadata = accessGuard.fetchAndValidateMetadata(conceptId);
+        requireWorkingCopy(metadata);
 
         // ONE read of the NKD twin, used for BOTH the deviation and the values written. Reading twice
         // would decide the (irreversible) sever against one snapshot of NKD and write another, so a
@@ -85,29 +95,52 @@ class WorkingCopySyncOperation {
         // Going private requires a valid provision; accepting the flag pulls the twin's provisions in.
         Set<String> effectiveAccepted = resolvePublicPrivateSync(accepted, nkdConcept);
 
-        String slug = metadata.getSlug();   // an edit never changes the slug, only conceptIri/name
         ConceptEditModel editModel = buildEditModelFromAcceptedFields(metadata, effectiveAccepted, nkdConcept);
-        // false: a name/identifier sync relocates the IRI too, but sync owns the sever decision below —
-        // accepting ALL deviating fields must leave the concept a faithful, still-tracked working copy.
-        editOperation.editConcept(conceptId, editModel, false);
-
         // Sever iff the user took only SOME of what deviates: they have chosen to diverge, so the concept
         // stops being a working copy. Accepting everything leaves it a faithful copy, still tracked.
         // Uses the EFFECTIVE accepted set: a privacy provision co-synced by accepting public/private is
         // part of that one coupled decision, so it counts as accepted (a private twin whose only other
         // deviation is its own required provision stays a faithful working copy, not severed).
+        Set<String> acceptedForSever = intersect(effectiveAccepted, deviatingKeys);
+        return new SyncPlan(metadata.getUpdatedAt(), metadata.getSlug(), editModel,
+                acceptedForSever.size() < deviatingKeys.size(), acceptedForSever.size(), deviatingKeys.size(),
+                editOperation.prefetchNkd(conceptId, editModel));
+    }
+
+    /**
+     * Writes {@code plan} inside the caller's transaction. The row lock comes first; a concept changed since
+     * the plan was made is refused, since the plan's deviation and carried values describe the old state.
+     *
+     * @return the concept's slug; the caller reads the detail once this transaction has committed
+     */
+    String applySync(Long conceptId, SyncPlan plan) {
+        ConceptMetadataEntity locked = accessGuard.fetchAndValidateMetadata(conceptId, true);
+        requireWorkingCopy(locked);
+        if (!Objects.equals(locked.getUpdatedAt(), plan.updatedAt())) {
+            throw new OntologyValidationException(
+                    "Pojem byl mezitím upraven. Načtěte jej znovu a synchronizaci zopakujte.");
+        }
+        // false: a name/identifier sync relocates the IRI too, but sync owns the sever decision below —
+        // accepting ALL deviating fields must leave the concept a faithful, still-tracked working copy.
+        editOperation.editConcept(conceptId, plan.editModel(), false, plan.nkd());
+
         // Re-read after the edit: editConcept may have relocated the IRI (a name/identifier sync renames),
         // and this must flip the flag on the post-edit row, in the same transaction as the RDF delta.
-        Set<String> acceptedForSever = intersect(effectiveAccepted, deviatingKeys);
-        if (acceptedForSever.size() < deviatingKeys.size()) {
+        if (plan.sever()) {
             ConceptMetadataEntity postEdit = accessGuard.fetchAndValidateMetadata(conceptId);
             postEdit.setIsPublished(false);
             conceptMetadataRepository.save(postEdit);
             log.info("Working copy {} severed: {} of {} deviating field(s) accepted → now a draft",
-                    postEdit.getConceptIri(), acceptedForSever.size(), deviatingKeys.size());
+                    postEdit.getConceptIri(), plan.accepted(), plan.deviating());
         }
+        return plan.slug();   // an edit never changes the slug, only conceptIri/name
+    }
 
-        return slug;
+    private static void requireWorkingCopy(ConceptMetadataEntity metadata) {
+        if (!Boolean.TRUE.equals(metadata.getIsPublished())) {
+            throw new OntologyValidationException(
+                    "Pojem není pracovní kopií publikovaného pojmu v NKD — není co synchronizovat.");
+        }
     }
 
     /** Every accepted key must be both known and actually deviating; {@code typ} is never acceptable. */
@@ -208,10 +241,10 @@ class WorkingCopySyncOperation {
      * {@code updateDataClassification} reads it, so a sync that does not accept these fields is a no-op on
      * them instead of a deletion. An accepted key overwrites the seed afterwards.
      *
-     * <p>This graph read is separate from the one {@link ConceptEditOperation#editConcept} performs, which is safe:
-     * both run inside the caller's transaction, and {@code editConcept} takes the concept
-     * row lock before its own read, so a concurrent edit of this concept cannot land between them.
-     * Do not reuse this read-then-edit shape where that lock is not held.
+     * <p>This graph read runs before the sync's transaction, separate from the one
+     * {@link ConceptEditOperation#editConcept} performs. That is safe because {@link #applySync} takes the row
+     * lock and refuses a concept whose {@code updatedAt} moved since, which every change of its RDF bumps.
+     * Do not reuse this read-then-edit shape without that check.
      */
     void carryCurrentDataClassification(
             ConceptEditModel editModel, ConceptMetadataEntity metadata) {

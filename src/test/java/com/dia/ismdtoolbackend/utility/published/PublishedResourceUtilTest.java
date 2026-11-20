@@ -214,15 +214,37 @@ class PublishedResourceUtilTest {
             model.createResource(CONCEPT_B).addProperty(RDF.type, model.createResource(POJEM));
             model.createResource(GRAPH + "/pojem/not-a-concept").addProperty(RDF.type, OWL2.Class);
             model.createResource().addProperty(RDF.type, model.createResource(POJEM));
-            when(nkd.getPublishedResourcesList(anyList())).thenReturn(List.of(CONCEPT_A));
+            when(nkd.findPublishedAmong(anyList())).thenReturn(java.util.Optional.of(java.util.Set.of(CONCEPT_A)));
 
             List<String> published = util.checkPublishedResourcesInNKD(model, List.of(CONCEPT_A, OTHER_GRAPH));
 
             assertThat(published).containsExactly(CONCEPT_A);
             ArgumentCaptor<List<String>> asked = ArgumentCaptor.captor();
-            verify(nkd).getPublishedResourcesList(asked.capture());
+            verify(nkd).findPublishedAmong(asked.capture());
             assertThat(asked.getValue()).first().isEqualTo(GRAPH);
             assertThat(asked.getValue()).containsExactlyInAnyOrder(GRAPH, CONCEPT_A, CONCEPT_B, OTHER_GRAPH);
+        }
+
+        @Test
+        void nkdNotAnsweringReportsNothingPublished() {
+            OntModel model = ModelFactory.createOntologyModel();
+            model.createResource(GRAPH).addProperty(RDF.type, OWL2.Ontology);
+            when(nkd.findPublishedAmong(anyList())).thenReturn(java.util.Optional.empty());
+            ch.qos.logback.classic.Logger logger =
+                    (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(PublishedResourceUtil.class);
+            ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> logs =
+                    new ch.qos.logback.core.read.ListAppender<>();
+            logs.start();
+            logger.addAppender(logs);
+            try {
+                assertThat(util.checkPublishedResourcesInNKD(model, List.of(CONCEPT_A))).isEmpty();
+            } finally {
+                logger.detachAppender(logs);
+            }
+            assertThat(logs.list)
+                    .filteredOn(e -> e.getLevel() == ch.qos.logback.classic.Level.WARN)
+                    .singleElement()
+                    .satisfies(e -> assertThat(e.getFormattedMessage()).contains("checks skipped").contains(GRAPH));
         }
 
         @Test
@@ -235,7 +257,7 @@ class PublishedResourceUtilTest {
         void anonymousOntologyIsNotSent() {
             OntModel model = ModelFactory.createOntologyModel();
             model.createResource().addProperty(RDF.type, OWL2.Ontology);
-            when(nkd.getPublishedResourcesList(List.of(OTHER_GRAPH))).thenReturn(List.of());
+            when(nkd.findPublishedAmong(List.of(OTHER_GRAPH))).thenReturn(java.util.Optional.of(java.util.Set.of()));
 
             assertThat(util.checkPublishedResourcesInNKD(model, List.of(OTHER_GRAPH))).isEmpty();
         }

@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.exception.OntologyExceptions;
 import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsResponseDto;
@@ -13,7 +14,12 @@ import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
 import com.dia.ismdtoolbackend.utility.creator.VocabularyConceptBuilder;
 import org.springframework.dao.DataIntegrityViolationException;
+import com.dia.ismdtoolbackend.controller.dto.ai.AiConceptReferenceDto;
+import com.dia.ismdtoolbackend.enums.ConceptType;
+import com.dia.ismdtoolbackend.service.snapshot.NkdLookup;
+import com.dia.ismdtoolbackend.utility.validation.ConceptIriNormalizer;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.HashSet;
 import java.util.Set;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
@@ -58,6 +64,7 @@ class OntologyCreateOperation {
     private final OutboxRelayTrigger outboxRelayTrigger;
     private final OntologyMetadataEnricher metadataEnricher;
     private final OfnWriteGate ofnWriteGate;
+    private final NkdLinkReconciler nkdLinkReconciler;
 
     OntologySummaryDto createOntology(OntologyCreateModel ontologyCreateModel, String userId) {
         validateOntologyCreateModel(ontologyCreateModel);
@@ -101,7 +108,7 @@ class OntologyCreateOperation {
                 metadataEntity = createOntologyMetadata(ontologyIRI, userId);
                 ontologyMetadataRepository.flush();
             } catch (Exception e) {
-                throw new OntologyException("Nepodařilo se uložit metadata slovníku: " + e.getMessage());
+                throw OntologyExceptions.withCause("Nepodařilo se uložit metadata slovníku.", e);
             }
             outboxWriter.enqueueCreateGraph(ontologyIRI, graphModel);
             outboxRelayTrigger.nudgeAfterCommit();
@@ -115,6 +122,30 @@ class OntologyCreateOperation {
     }
 
     OntologyCreateWithConceptsResponseDto createWithConcepts(OntologyCreateWithConceptsRequestDto request, String userId) {
+        return createWithConcepts(request, userId, nkdLinkReconciler.live());
+    }
+
+    /**
+     * Which external domain targets of the request NKD publishes, asked now, before the create's transaction.
+     * Only attributes and relationship sources carry one; a relationship target is a range, never rejected.
+     */
+    NkdLookup prefetchNkd(OntologyCreateWithConceptsRequestDto request) {
+        List<String> domains = new ArrayList<>();
+        request.attributes().forEach(a -> addExternal(domains, a.associatedClass()));
+        request.relationships().forEach(r -> addExternal(domains, r.sourceClass()));
+        // A new vocabulary holds no working copies, so no graph narrows the exemption.
+        return nkdLinkReconciler.prefetchPublished(null, domains);
+    }
+
+    private static void addExternal(List<String> iris, AiConceptReferenceDto reference) {
+        if (reference != null && reference.iri() != null) {
+            iris.add(ConceptIriNormalizer.iri(reference.iri()));
+        }
+    }
+
+    /** The create, reading NKD only through {@code nkd}; a domain on a published NKD concept fails it whole. */
+    OntologyCreateWithConceptsResponseDto createWithConcepts(OntologyCreateWithConceptsRequestDto request, String userId,
+                                                            NkdLookup nkd) {
         validateOntologyCreateModel(request.ontology());
         if (userId == null || userId.isBlank()) throw new OntologyValidationException("ID uživatele je povinné.");
         String graph = generateOntologyIri(request.ontology().getNameModel(), request.ontology().getNamespace());
@@ -139,6 +170,9 @@ class OntologyCreateOperation {
                 resource.getModel().close();
             }
             ofnWriteGate.requireWritableVocabulary(graphModel, graph);
+            Map<String, ConceptType> types = new LinkedHashMap<>();
+            prepared.concepts().forEach(c -> types.put(c.getIdentifier(), c.getConceptTypeEnum()));
+            nkdLinkReconciler.rejectPublishedDomainRange(graph, types, graphModel, nkd);
             // Metadata and the serialized graph task commit together. The unique slug arbitrates concurrent creates.
             OntologyMetadataEntity ontology;
             try {

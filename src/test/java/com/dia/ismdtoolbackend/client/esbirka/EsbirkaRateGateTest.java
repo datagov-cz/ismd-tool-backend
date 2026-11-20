@@ -97,4 +97,18 @@ class EsbirkaRateGateTest {
         gate.release();
         gate.acquire(EsbirkaDeadline.after(Duration.ofMillis(150)));
     }
+
+    /** The slot wait stops at maxWait even when the request deadline has time left. */
+    @Test
+    void slotWaitIsCappedBelowALongerRequestDeadline() throws Exception {
+        EsbirkaRateGate gate = new EsbirkaRateGate(0, 1, Duration.ofMillis(150));
+        gate.acquire(EsbirkaDeadline.after(Duration.ofSeconds(10)));
+
+        long t0 = System.nanoTime();
+        assertThatThrownBy(() -> gate.acquire(EsbirkaDeadline.after(Duration.ofSeconds(10))))
+                .isInstanceOf(EsbirkaRateGate.DeadlineExceeded.class);
+        long waitedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0);
+        assertThat(waitedMs >= 100 && waitedMs < 2_000).as("waited " + waitedMs + " ms").isTrue();
+        gate.release();
+    }
 }

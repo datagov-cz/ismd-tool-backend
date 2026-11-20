@@ -1,10 +1,12 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.controller.dto.ConceptSummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.service.ConceptService;
+import com.dia.ismdtoolbackend.service.snapshot.NkdLookup;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
@@ -25,21 +27,24 @@ public class ConceptServiceImpl implements ConceptService {
     private final ConceptDeleteOperation deleteOperation;
     private final WorkingCopySyncOperation syncOperation;
     private final ConceptDetailReader detailReader;
+    private final ConceptWriteTransaction writeTransaction;
 
+    /** NKD first, outside any transaction, then the create in a bounded one, as for {@link #editConcept}. */
     @Override
-    @Transactional
     @CacheEvict(cacheNames = WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, allEntries = true)
     public ConceptMetadataModel createConcept(ConceptCreateModel createModel, String userId) {
-        return createOperation.createConcept(createModel, userId);
+        NkdLookup nkd = createOperation.prefetchNkd(createModel);
+        return writeTransaction.run(() -> createOperation.createConcept(createModel, userId, nkd));
     }
 
+    /** All or nothing: one transaction for the batch, NKD asked for each concept before it. */
     @Override
-    @Transactional
     @CacheEvict(cacheNames = WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, allEntries = true)
     public List<ConceptMetadataModel> createConcepts(List<? extends ConceptCreateModel> createModels, String userId) {
-        return createModels.stream()
-                .map(createModel -> createOperation.createConcept(createModel, userId))
-                .toList();
+        List<NkdLookup> lookups = createModels.stream().map(createOperation::prefetchNkd).toList();
+        return writeTransaction.run(() -> java.util.stream.IntStream.range(0, createModels.size())
+                .mapToObj(i -> createOperation.createConcept(createModels.get(i), userId, lookups.get(i)))
+                .toList());
     }
 
     @Override
@@ -49,23 +54,39 @@ public class ConceptServiceImpl implements ConceptService {
         deleteOperation.deleteConcept(conceptId);
     }
 
+    /**
+     * NKD first, outside any transaction, then the edit in a bounded one ({@link ConceptWriteTransaction}), so
+     * NKD latency never holds the row lock or a connection.
+     */
     @Override
-    @Transactional
     @CacheEvict(cacheNames = WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, allEntries = true)
     public ConceptMetadataModel editConcept(Long conceptId, ConceptEditModel conceptEditModel) {
-        return editOperation.editConcept(conceptId, conceptEditModel);
+        NkdLookup nkd = prefetchEdit(conceptId, conceptEditModel);
+        return editConcept(conceptId, conceptEditModel, nkd);
     }
 
     @Override
-    @Transactional
+    public NkdLookup prefetchEdit(Long conceptId, ConceptEditModel conceptEditModel) {
+        return editOperation.prefetchNkd(conceptId, conceptEditModel);
+    }
+
+    @Override
+    @CacheEvict(cacheNames = WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, allEntries = true)
+    public ConceptMetadataModel editConcept(Long conceptId, ConceptEditModel conceptEditModel, NkdLookup nkd) {
+        return writeTransaction.run(() -> editOperation.editConcept(conceptId, conceptEditModel, nkd));
+    }
+
+    /** NKD first, outside any transaction (the twin, the deviation, the edit's answers), then the write. */
+    @Override
     @CacheEvict(cacheNames = WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, allEntries = true)
     public String syncWorkingCopy(Long conceptId, List<String> fieldsToAccept) {
-        return syncOperation.syncWorkingCopy(conceptId, fieldsToAccept);
+        WorkingCopySyncOperation.SyncPlan plan = syncOperation.planSync(conceptId, fieldsToAccept);
+        return writeTransaction.run(() -> syncOperation.applySync(conceptId, plan));
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<ConceptMetadataModel> getAll(String userId, Boolean isPublished) {
+    public List<ConceptSummaryDto> getAll(String userId, Boolean isPublished) {
         return detailReader.getAll(userId, isPublished);
     }
 

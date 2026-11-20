@@ -84,22 +84,26 @@ class ConceptEditorRelationshipConceptTest extends ConceptEditorTestBase {
     }
 
     @Test
-    void rangeGivenAsANameResolvesToTheConceptIriInTheNamespace() {
+    void rangeGivenAsANameIsRejected_notTurnedIntoAnIri() {
         seedRelationship("");
         relationshipConceptEditModel.setRange("Adresa");
 
-        conceptEditor.editConcept(CONCEPT, relationshipConceptEditModel, model, null);
-
-        assertThat(iris(model, CONCEPT, RDFS.range)).containsExactly(DEFAULT_NS + "pojem/adresa");
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> conceptEditor.editConcept(CONCEPT, relationshipConceptEditModel, model, null))
+                .isInstanceOf(com.dia.ismdtoolbackend.exception.ConceptValidationException.class)
+                .hasMessageContaining("range='Adresa'");
+        assertThat(iris(model, CONCEPT, RDFS.range)).isEmpty();
     }
 
     @Test
-    void superRelationGivenAsANameResolvesToTheConceptIri() {
+    void superRelationGivenAsANameIsRejected_andTheOldOneStays() {
         seedRelationship("; rdfs:subPropertyOf <https://example.com/old-super>");
         relationshipConceptEditModel.setSuperRelation(List.of("Nadřazený vztah", " "));
 
-        conceptEditor.editConcept(CONCEPT, relationshipConceptEditModel, model, null);
-
-        assertThat(iris(model, CONCEPT, RDFS.subPropertyOf)).containsExactly(DEFAULT_NS + "pojem/nadřazený-vztah");
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> conceptEditor.editConcept(CONCEPT, relationshipConceptEditModel, model, null))
+                .isInstanceOf(com.dia.ismdtoolbackend.exception.ConceptValidationException.class)
+                .hasMessageContaining("superRelation='Nadřazený vztah'");
+        assertThat(iris(model, CONCEPT, RDFS.subPropertyOf)).containsExactly("https://example.com/old-super");
     }
 }

@@ -39,8 +39,11 @@ public interface DiagramService {
      */
     DiagramSummaryDto renameDiagram(String ontologySlug, Long diagramId, String name);
 
-    /** Layout joined to live concept content, each node's overlay applied and edges projected. */
-    DiagramDto getDiagram(String ontologySlug, Long diagramId);
+    /**
+     * Layout joined to live concept content, each node's overlay applied and edges projected. Without
+     * {@code withPendingEdits} the diagram renders live content only and lists no staged edits.
+     */
+    DiagramDto getDiagram(String ontologySlug, Long diagramId, boolean withPendingEdits);
 
     /**
      * Save: the diagram's only layout write, PG only. Layout is a full replace — the node set is canvas

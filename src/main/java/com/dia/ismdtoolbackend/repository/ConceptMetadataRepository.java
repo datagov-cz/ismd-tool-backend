@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.QueryHints;
+import jakarta.persistence.QueryHint;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
@@ -36,6 +38,7 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
      * never reach this method (forced to NKD at
      * {@code SearchServiceImpl.resolveSource}).
      */
+    @QueryHints(@QueryHint(name = SearchQueries.TIMEOUT_HINT, value = SearchQueries.TIMEOUT_MS))
     @Query(value = """
             SELECT * FROM ismd_schema.concepts c
             WHERE (ismd_schema.unaccent(c.concept_name) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
@@ -66,6 +69,7 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
      * because they answer different response slots and only this one is reachable by
      * the {@code UNPUBLISHED} source. Anonymous callers are rejected upstream.
      */
+    @QueryHints(@QueryHint(name = SearchQueries.TIMEOUT_HINT, value = SearchQueries.TIMEOUT_MS))
     @Query(value = """
             SELECT * FROM ismd_schema.concepts c
             WHERE (ismd_schema.unaccent(c.concept_name) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
@@ -80,6 +84,7 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
                                                          @Param("hasTypeFilter") boolean hasTypeFilter,
                                                          @Param("conceptType") String conceptType);
 
+    @QueryHints(@QueryHint(name = SearchQueries.TIMEOUT_HINT, value = SearchQueries.TIMEOUT_MS))
     @Query(value = """
             SELECT COUNT(*) FROM ismd_schema.concepts c
             WHERE (ismd_schema.unaccent(c.concept_name) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
@@ -97,6 +102,7 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
      * Count companion to {@link #searchByTextUnpublished}. Carries the identical
      * predicate so the reported total and the returned rows agree.
      */
+    @QueryHints(@QueryHint(name = SearchQueries.TIMEOUT_HINT, value = SearchQueries.TIMEOUT_MS))
     @Query(value = """
             SELECT COUNT(*) FROM ismd_schema.concepts c
             WHERE (ismd_schema.unaccent(c.concept_name) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
@@ -135,6 +141,8 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
     Optional<ConceptMetadataEntity> findByConceptIri(String conceptIri);
 
     List<ConceptMetadataEntity> findByConceptIriIn(List<String> conceptIris);
+
+    List<ConceptMetadataEntity> findByGraphNameAndConceptIriIn(String graphName, List<String> conceptIris);
 
     @EntityGraph(attributePaths = "ontologyMetadata")
     Optional<ConceptMetadataEntity> findBySlug(String slug);

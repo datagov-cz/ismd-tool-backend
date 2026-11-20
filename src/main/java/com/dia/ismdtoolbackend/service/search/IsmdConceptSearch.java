@@ -25,7 +25,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Concept rows of an ISMD search: PG and Fuseki in parallel, merged by IRI, backfilled and filtered. */
@@ -45,7 +44,7 @@ class IsmdConceptSearch {
                       JenaTDB2Repository jenaTDB2Repository,
                       IsmdFusekiSearch fusekiSearch,
                       VisibleGraphResolver visibleGraphs,
-                      @Qualifier("searchExecutor") Executor searchExecutor,
+                      @Qualifier("searchQueryExecutor") Executor searchExecutor,
                       @Value("${search.fuseki-timeout-ms:10000}") long fusekiTimeoutMs,
                       @Value("${search.pg-timeout-ms:10000}") long pgTimeoutMs) {
         this.conceptMetadataRepository = conceptMetadataRepository;
@@ -115,7 +114,7 @@ class IsmdConceptSearch {
         boolean hasTypeFilter = roleFilter != null;
         String conceptTypeName = roleFilter != null ? roleFilter.name() : null;
 
-        CompletableFuture<List<SearchResultDto>> pgFuture = CompletableFuture.supplyAsync(() -> {
+        CompletableFuture<List<SearchResultDto>> pgFuture = SearchTasks.supply(searchExecutor, pgTimeoutMs, () -> {
             List<ConceptMetadataEntity> entities = unpublishedOnly
                     ? conceptMetadataRepository.searchByTextUnpublished(
                             query, filter.hasGraphFilter(), filter.graphNames(),
@@ -126,11 +125,10 @@ class IsmdConceptSearch {
             return entities.stream()
                     .map(this::mapConceptEntity)
                     .toList();
-        }, searchExecutor).orTimeout(pgTimeoutMs, TimeUnit.MILLISECONDS);
+        });
 
-        CompletableFuture<List<SearchResultDto>> fusekiFuture = CompletableFuture.supplyAsync(
-                        () -> fusekiSearch.searchFuseki(query, filter.searchGraphs(), limit, roleFilter), searchExecutor)
-                .orTimeout(fusekiTimeoutMs, TimeUnit.MILLISECONDS);
+        CompletableFuture<List<SearchResultDto>> fusekiFuture = SearchTasks.supply(searchExecutor, fusekiTimeoutMs,
+                () -> fusekiSearch.searchFuseki(query, filter.searchGraphs(), limit, roleFilter));
 
         List<SearchResultDto> pgResults;
         try {

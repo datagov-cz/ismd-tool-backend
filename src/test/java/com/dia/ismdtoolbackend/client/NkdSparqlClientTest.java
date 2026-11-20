@@ -15,6 +15,7 @@ import org.mockito.ArgumentMatchers;
 
 import java.net.http.HttpClient;
 import java.util.List;
+import java.util.Set;
 import java.util.Map;
 import java.util.Optional;
 
@@ -305,6 +306,45 @@ class NkdSparqlClientTest {
         stubEmptyTurtle();
         List<String> out = newClient(extractor).getPublishedResourcesList(List.of(CONCEPT_IRI));
         assertThat(out).isEmpty();
+    }
+
+    // ─── findPublishedAmong ─────────────────────────────────────────────────────
+
+    @Test
+    void findPublishedAmong_answeredWithNothingPublished_isAnEmptySet() {
+        stubEmptyTurtle();
+        assertThat(newClient(mock(OntologyDetailExtractor.class)).findPublishedAmong(List.of(CONCEPT_IRI)))
+                .contains(Set.of());
+    }
+
+    @Test
+    void findPublishedAmong_answeredWithAPublishedIri() {
+        stubTurtle("<" + CONCEPT_IRI + "> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> "
+                + "<http://www.w3.org/2004/02/skos/core#Concept> .");
+        assertThat(newClient(mock(OntologyDetailExtractor.class))
+                .findPublishedAmong(List.of(CONCEPT_IRI, CONCEPT_IRI_2)))
+                .contains(Set.of(CONCEPT_IRI));
+    }
+
+    @Test
+    void findPublishedAmong_upstreamFailure_isNoAnswer() {
+        WM.stubFor(any(anyUrl()).willReturn(com.github.tomakehurst.wiremock.client.WireMock.serverError()));
+        assertThat(newClient(mock(OntologyDetailExtractor.class)).findPublishedAmong(List.of(CONCEPT_IRI)))
+                .isEmpty();
+    }
+
+    @Test
+    void findPublishedAmong_endpointNotConfigured_isNoAnswer() {
+        assertThat(newUnconfiguredClient(mock(OntologyDetailExtractor.class))
+                .findPublishedAmong(List.of(CONCEPT_IRI)))
+                .isEmpty();
+    }
+
+    @Test
+    void getPublishedResourcesList_upstreamFailure_returnsEmptyList() {
+        WM.stubFor(any(anyUrl()).willReturn(com.github.tomakehurst.wiremock.client.WireMock.serverError()));
+        assertThat(newClient(mock(OntologyDetailExtractor.class)).getPublishedResourcesList(List.of(CONCEPT_IRI)))
+                .isEmpty();
     }
 
     // ─── executeSelect ──────────────────────────────────────────────────────────

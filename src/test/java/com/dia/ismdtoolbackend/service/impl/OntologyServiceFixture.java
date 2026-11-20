@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.config.NkdConfig;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapperImpl;
@@ -59,10 +60,14 @@ public final class OntologyServiceFixture {
     private NkdConfig nkdConfig = new NkdConfig();
     /** Real: pure, so every create and edit test also passes the OFN safety net. */
     private OfnWriteGate ofnWriteGate = OntologyUploadServiceFixture.ofnWriteGate();
+    private NkdSparqlClient nkdSparqlClient = mock(NkdSparqlClient.class);
+    /** Over a mock manager the write runs without a transaction; PG tests pass one over the real manager. */
+    private ConceptWriteTransaction writeTransaction =
+            new ConceptWriteTransaction(mock(org.springframework.transaction.PlatformTransactionManager.class));
 
     public OntologyServiceImpl build() {
         return new OntologyServiceImpl(createOperation(), editOperation(), deleteOperation(), detailReader(),
-                metadataReader(), new OntologyTurtleExport(jenaTDB2Repository));
+                metadataReader(), new OntologyTurtleExport(jenaTDB2Repository), writeTransaction);
     }
 
     OntologyMetadataEnricher metadataEnricher() {
@@ -71,7 +76,13 @@ public final class OntologyServiceFixture {
 
     OntologyCreateOperation createOperation() {
         return new OntologyCreateOperation(ontologyMetadataRepository, conceptMetadataRepository,
-                ontologyMetadataMapper, outboxWriter, outboxRepository, outboxRelayTrigger, metadataEnricher(), ofnWriteGate);
+                ontologyMetadataMapper, outboxWriter, outboxRepository, outboxRelayTrigger, metadataEnricher(), ofnWriteGate,
+                nkdLinkReconciler());
+    }
+
+    NkdLinkReconciler nkdLinkReconciler() {
+        return new NkdLinkReconciler(conceptMetadataRepository, nkdSparqlClient, nkdSnapshotService,
+                new com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector());
     }
 
     OntologyEditOperation editOperation() {

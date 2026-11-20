@@ -11,6 +11,7 @@ import org.springframework.mock.env.MockEnvironment;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -80,6 +81,32 @@ class EsbirkaContentCacheBudgetTest {
         assertThat(versionContent.estimatedSize()).as("0.5 MB holds two of the four ~0.2 MB entries").isEqualTo(2);
     }
 
+    @Test
+    void subtreeBodiesWeighTwoBytesPerCharacterOfEveryEntry() {
+        Map<String, String> bodies = Map.of("a", "x".repeat(10_000), "b", "y".repeat(10_000));
+
+        int weight = weigher.weigh("/sb/1997/49/2025-11-01", bodies);
+
+        assertThat(weight >= 40_000 && weight < 41_000).as("weight " + weight).isTrue();
+    }
+
+    @Test
+    void subtreeBodiesHaveTheirOwnBudget_andEvictByWeight() {
+        EsbirkaConfig esbirka = new EsbirkaConfig();
+        esbirka.setSubtreeCacheBudgetMb(1);
+        CacheManager manager = manager(esbirka, "rest");
+        Cache<Object, Object> subtree = nativeCache(manager, "esbirkaVersionSubtreeBodies");
+        Map<String, String> fourHundredKb = Map.of("root", "x".repeat(200_000));
+
+        for (int i = 0; i < 4; i++) {
+            manager.getCache("esbirkaVersionSubtreeBodies").put("/sb/" + i + "/1/2020-01-01", fourHundredKb);
+        }
+        subtree.cleanUp();
+
+        assertThat(subtree.policy().eviction().orElseThrow().getMaximum()).isEqualTo(1024 * 1024);
+        assertThat(subtree.estimatedSize()).as("1 MB holds two of the four ~0.4 MB entries").isEqualTo(2);
+    }
+
     /**
      * {@code getLawContent} (esbirkaLawContent) loads the version through esbirkaVersionContent inside
      * its own load. On one shared Caffeine instance this failed ~0.5 % of loads with "Recursive update"
@@ -124,6 +151,10 @@ class EsbirkaContentCacheBudgetTest {
     private static CacheManager manager(String provider, int budgetMb) {
         EsbirkaConfig esbirka = new EsbirkaConfig();
         esbirka.setCacheBudgetMb(budgetMb);
+        return manager(esbirka, provider);
+    }
+
+    private static CacheManager manager(EsbirkaConfig esbirka, String provider) {
         StaticListableBeanFactory beans = new StaticListableBeanFactory();
         beans.addBean("esbirkaConfig", esbirka);
         return new CacheConfig().cacheManager(beans.getBeanProvider(EsbirkaConfig.class),

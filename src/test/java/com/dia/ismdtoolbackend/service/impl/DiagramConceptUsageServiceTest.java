@@ -21,6 +21,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -38,6 +39,8 @@ import static org.mockito.Mockito.when;
  */
 @ExtendWith(MockitoExtension.class)
 class DiagramConceptUsageServiceTest {
+
+    private static final Predicate<String> ALL_VISIBLE = slug -> true;
 
     private static final String GRAPH = "https://x/slovnik";
     private static final String SELF = "https://x/pojem/self";
@@ -113,7 +116,7 @@ class DiagramConceptUsageServiceTest {
     void unknownSlug_isNotFound() {
         when(conceptMetadataRepository.findBySlug("missing")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.usageForSlug("missing"))
+        assertThatThrownBy(() -> service.usageForSlug("missing", ALL_VISIBLE))
                 .isInstanceOf(EntityNotFoundException.class)
                 .hasMessageContaining("missing");
     }
@@ -123,7 +126,7 @@ class DiagramConceptUsageServiceTest {
         concept(SELF, null);
         placedOn(SELF);
 
-        DiagramConceptUsageDto dto = service.usageForSlug("self");
+        DiagramConceptUsageDto dto = service.usageForSlug("self", ALL_VISIBLE);
 
         assertThat(dto.conceptIri()).isEqualTo(SELF);
         assertThat(dto.conceptName()).as("no PG name, no label").isEmpty();
@@ -138,7 +141,7 @@ class DiagramConceptUsageServiceTest {
         concept(odd, "Divný");
         when(diagramRepository.findConceptUsage(odd, "[\"https://x/pojem/a\\\"b\\\\c\"]")).thenReturn(List.of());
 
-        assertThat(service.usageForSlug("self").conceptName()).containsEntry("cs", "Divný");
+        assertThat(service.usageForSlug("self", ALL_VISIBLE).conceptName()).containsEntry("cs", "Divný");
     }
 
     @Test
@@ -149,7 +152,7 @@ class DiagramConceptUsageServiceTest {
         live(SELF, List.of(A, B), List.of());
         resolving(resolved(SELF), resolved(A));
 
-        DiagramConceptUsageDto dto = service.usageForSlug("self");
+        DiagramConceptUsageDto dto = service.usageForSlug("self", ALL_VISIBLE);
 
         assertThat(dto.placements()).singleElement().satisfies(p -> {
             assertThat(p.kind()).isEqualTo(DiagramConceptUsageKind.NODE);
@@ -180,7 +183,7 @@ class DiagramConceptUsageServiceTest {
         resolving(resolved(SELF, resolved(A), resolved(B)), resolved(A), resolved(B), resolved(C),
                 resolved(HOST));
 
-        DiagramConceptUsageDto dto = service.usageForSlug("self");
+        DiagramConceptUsageDto dto = service.usageForSlug("self", ALL_VISIBLE);
 
         verify(resolutionEngine).resolveAll(batch.capture());
         assertThat(batch.getValue()).as("one batch for every IRI any placement names; blanks skipped")
@@ -210,6 +213,40 @@ class DiagramConceptUsageServiceTest {
         });
     }
 
+    /** A diagram of an ontology the caller does not own renders live: its overlay is neither read nor applied. */
+    @Test
+    void hiddenOntology_placementIsLive_andItsOverlayIsNotRead() {
+        concept(SELF, "Pojem");
+        placedOn(SELF,
+                new Usage(1L, "D1", "muj", "EDGE", null),
+                new Usage(2L, "D2", "cizi", "EDGE", null));
+        overlays(SELF, List.of(1L), new Overlay(1L, "{\"range\":\"" + C + "\"}"));
+        live(SELF, List.of(), List.of());
+        resolving(resolved(SELF, null, resolved(B)), resolved(B), resolved(C));
+
+        DiagramConceptUsageDto dto = service.usageForSlug("self", "muj"::equals);
+
+        Map<Long, DiagramConceptUsageDto.Placement> byDiagram = new HashMap<>();
+        dto.placements().forEach(p -> byDiagram.put(p.diagramId(), p));
+        assertThat(byDiagram.get(1L).pending()).isTrue();
+        assertThat(byDiagram.get(1L).range().iri()).isEqualTo(C);
+        assertThat(byDiagram.get(2L).pending()).isFalse();
+        assertThat(byDiagram.get(2L).range().iri()).as("live range").isEqualTo(B);
+        verify(pendingEditRepository).findByConceptIriAcrossDiagrams(SELF, List.of(1L));
+    }
+
+    @Test
+    void noVisibleOntology_readsNoOverlays() {
+        concept(SELF, "Pojem");
+        placedOn(SELF, new Usage(1L, "D1", "cizi", "NODE", null));
+        live(SELF, List.of(), List.of());
+        resolving(resolved(SELF));
+
+        assertThat(service.usageForSlug("self", slug -> false).placements()).singleElement()
+                .satisfies(p -> assertThat(p.pending()).isFalse());
+        verifyNoInteractions(pendingEditRepository);
+    }
+
     @Test
     void blankOverlayJson_isNoOverlay_andAnUnresolvedSelfHasNoEndpoints() {
         concept(SELF, "Pojem");
@@ -218,7 +255,7 @@ class DiagramConceptUsageServiceTest {
         live(SELF, List.of(), List.of());
         resolving();
 
-        assertThat(service.usageForSlug("self").placements()).singleElement().satisfies(p -> {
+        assertThat(service.usageForSlug("self", ALL_VISIBLE).placements()).singleElement().satisfies(p -> {
             assertThat(p.pending()).isFalse();
             assertThat(p.domain()).isNull();
             assertThat(p.range()).isNull();
@@ -234,7 +271,7 @@ class DiagramConceptUsageServiceTest {
         live(SELF, List.of(), List.of());
         resolving(resolved(SELF));
 
-        assertThat(service.usageForSlug("self").placements()).singleElement()
+        assertThat(service.usageForSlug("self", ALL_VISIBLE).placements()).singleElement()
                 .satisfies(p -> assertThat(p.pending()).isFalse());
     }
 }

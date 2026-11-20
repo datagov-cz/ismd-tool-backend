@@ -29,7 +29,7 @@ class DiagramMaterializeServiceTest {
         DiagramPendingEditEntity row = new DiagramPendingEditEntity();
         row.setConceptIri(CONCEPT_IRI);
         when(pendingEdits.findByDiagramId(DIAGRAM_ID)).thenReturn(List.of(row));
-        when(applier.applyChange(DIAGRAM_ID, CONCEPT_IRI)).thenThrow(new OfnConformanceException(
+        when(applier.applyChange(org.mockito.ArgumentMatchers.eq(DIAGRAM_ID), org.mockito.ArgumentMatchers.eq(CONCEPT_IRI), org.mockito.ArgumentMatchers.any())).thenThrow(new OfnConformanceException(
                 OfnConformanceException.Context.WRITE, "https://slovník.gov.cz/test", List.of(
                 new ConformanceIssue(ConformanceIssue.Kind.VALUE_DROPPED, CONCEPT_IRI, "pojmy[a]/definice",
                         "očekáván text s jazykem"),
@@ -47,5 +47,24 @@ class DiagramMaterializeServiceTest {
                     .contains("pojmy[a]/definice: očekáván text s jazykem")
                     .contains("pojmy[a]: pojem nemá právě jeden druh");
         });
+    }
+
+    /** Each change: NKD first (outside any transaction), then the change applied with those answers. */
+    @Test
+    void eachChangeIsAppliedWithTheAnswersPrefetchedForIt() {
+        DiagramPendingEditEntity row = new DiagramPendingEditEntity();
+        row.setConceptIri(CONCEPT_IRI);
+        when(pendingEdits.findByDiagramId(DIAGRAM_ID)).thenReturn(List.of(row));
+        com.dia.ismdtoolbackend.service.snapshot.NkdLookup nkd =
+                mock(com.dia.ismdtoolbackend.service.snapshot.NkdLookup.class);
+        when(applier.prefetchNkd(DIAGRAM_ID, CONCEPT_IRI)).thenReturn(nkd);
+        when(applier.applyChange(DIAGRAM_ID, CONCEPT_IRI, nkd)).thenReturn(new DiagramChangeApplier.Outcome(
+                null, DiagramChangeApplier.Outcome.Kind.MATERIALIZED));
+
+        service.materialize(DIAGRAM_ID, 1L);
+
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(applier);
+        order.verify(applier).prefetchNkd(DIAGRAM_ID, CONCEPT_IRI);
+        order.verify(applier).applyChange(DIAGRAM_ID, CONCEPT_IRI, nkd);
     }
 }

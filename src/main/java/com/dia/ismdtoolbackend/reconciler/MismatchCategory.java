@@ -25,9 +25,9 @@ public enum MismatchCategory {
     RDF_ORPHAN(true),
 
     /**
-     * A Postgres concept row exists but its {@code conceptIri} is not owned-resolvable in its
-     * declared {@code graphName}. Two root causes that PG-authority cannot disambiguate:
-     * a failed create (PG committed, RDF never written) or — the common one, since deletes
+     * A Postgres concept row exists but its {@code conceptIri} is not owned-resolvable in any
+     * graph and is the subject of no triple in its declared {@code graphName}. Two root causes
+     * that PG-authority cannot disambiguate: a failed create (PG committed, RDF never written) or — the common one, since deletes
      * are TDB2-first — a failed delete (RDF gone, PG row leaked). Report-only; carries a
      * probable-cause hint.
      */
@@ -57,16 +57,10 @@ public enum MismatchCategory {
     SUSPECTED_RENAME(false),
 
     /**
-     * A subject whose IRI is under a graph's namespace but which carries no
-     * {@code skos:inScheme} — a deliberately "excluded" concept (user declined to normalize)
-     * or legacy data from before the upload-prune fix. Informational; never repaired.
-     */
-    EXCLUDED_NO_INSCHEME(false),
-
-    /**
-     * A Postgres row whose IRI has triples in its graph but is not ownership-resolvable
-     * (e.g. it lost its {@code skos:inScheme} — real corruption). Surfaced distinctly so it
-     * doesn't masquerade as {@link #PG_MISSING_RDF}. Report-only.
+     * A Postgres row whose IRI is the subject of triples in its declared graph but is not
+     * owned-resolvable in any graph (it lost its {@code skos:inScheme}, or the scheme does not
+     * prefix its IRI — real corruption). Emitted INSTEAD of {@link #PG_MISSING_RDF}, after
+     * rename pairing. Report-only.
      */
     RDF_NOT_OWNED_RESOLVABLE(false);
 

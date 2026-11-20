@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Predicate;
 
 /**
  * "Which diagrams draw this concept?" — the concept detail page's canvas cross-reference.
@@ -51,8 +52,11 @@ public class DiagramConceptUsageService {
      * Every canvas placement of one concept, addressed by the concept's slug, which is what the detail page
      * holds. The PG queries use projections rather than lazy associations, so the Fuseki calls that follow
      * need no open transaction and a slow external store never holds a database connection.
+     *
+     * @param pendingEditsVisible answers, per ontology slug, whether the caller sees that ontology's diagrams'
+     *                            staged edits; a hidden one renders live and is not marked {@code pending}
      */
-    public DiagramConceptUsageDto usageForSlug(String conceptSlug) {
+    public DiagramConceptUsageDto usageForSlug(String conceptSlug, Predicate<String> pendingEditsVisible) {
         ConceptMetadataEntity concept = conceptMetadataRepository.findBySlug(conceptSlug)
                 .orElseThrow(() -> new EntityNotFoundException(
                         "Pojem se slugem " + conceptSlug + " nebyl nalezen."));
@@ -64,9 +68,12 @@ public class DiagramConceptUsageService {
             return new DiagramConceptUsageDto(conceptIri, label(concept), concept.getSlug(), List.of());
         }
 
-        List<Long> diagramIds = rows.stream().map(DiagramRepository.ConceptUsageRow::getDiagramId)
+        Map<String, Boolean> visibleBySlug = new HashMap<>();
+        List<Long> visibleDiagramIds = rows.stream()
+                .filter(r -> visibleBySlug.computeIfAbsent(r.getOntologySlug(), pendingEditsVisible::test))
+                .map(DiagramRepository.ConceptUsageRow::getDiagramId)
                 .filter(Objects::nonNull).distinct().toList();
-        Map<Long, DiagramPendingEdit> overlays = overlays(conceptIri, diagramIds);
+        Map<Long, DiagramPendingEdit> overlays = overlays(conceptIri, visibleDiagramIds);
 
         // Live structure, fetched once; every placement layers its own overlay over it.
         ConceptHierarchyLinks live =
@@ -95,6 +102,9 @@ public class DiagramConceptUsageService {
      */
     private Map<Long, DiagramPendingEdit> overlays(String conceptIri, Collection<Long> diagramIds) {
         Map<Long, DiagramPendingEdit> byDiagram = new HashMap<>();
+        if (diagramIds.isEmpty()) {
+            return byDiagram;
+        }
         for (DiagramPendingEditRepository.ConceptOverlayRow row
                 : pendingEditRepository.findByConceptIriAcrossDiagrams(conceptIri, diagramIds)) {
             DiagramPendingEdit edit = deserialize(row);

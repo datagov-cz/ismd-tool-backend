@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.controller.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Size;
 
 import java.util.List;
 
@@ -17,8 +18,15 @@ import java.util.List;
  *
  * <p>Datatype IRIs are dropped rather than resolved — see
  * {@code OntologyController.resolveConceptReferences}.
+ *
+ * <p>The endpoint is public and each unresolved IRI costs a Fuseki and an NKD query, so a batch is capped
+ * at {@link #MAX_IRIS}.
  */
 public record ResolveConceptsRequest(
-        @NotEmpty List<@NotBlank String> iris
+        @NotEmpty
+        @Size(max = ResolveConceptsRequest.MAX_IRIS, message = "Najednou lze resolvovat nejvýše 1000 IRI.")
+        List<@NotBlank String> iris
 ) {
+
+    public static final int MAX_IRIS = 1000;
 }
