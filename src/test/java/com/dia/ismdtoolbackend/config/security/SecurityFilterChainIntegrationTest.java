@@ -124,7 +124,6 @@ class SecurityFilterChainIntegrationTest {
             "/api/ontology/concepts/resolve",
             "/api/ontology/list",
             // Concept read endpoints
-            "/api/concept/list",
             "/api/concept/test-slug/detail",
             // NKD read endpoints
             "/api/nkd/ontology/list",

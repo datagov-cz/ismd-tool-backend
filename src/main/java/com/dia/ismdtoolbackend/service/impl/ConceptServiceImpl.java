@@ -85,12 +85,6 @@ public class ConceptServiceImpl implements ConceptService {
     }
 
     @Override
-    @Transactional(readOnly = true)
-    public List<ConceptSummaryDto> getAll(String userId, Boolean isPublished) {
-        return detailReader.getAll(userId, isPublished);
-    }
-
-    @Override
     // Deliberately NOT @Transactional: PG reads interleave with Fuseki, NKD and RPP calls (10s
     // timeouts), so a request-wide transaction would pin a pool connection across them. Entities
     // read after their repository call returns are join-fetched instead.

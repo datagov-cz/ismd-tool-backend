@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.audit.DeleteAuditWriter;
+import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
@@ -37,7 +38,7 @@ class OntologyDeleteOperation {
         Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findById(ontologyId);
         if (ontologyMetadataOpt.isEmpty()) {
             log.error("ontologyId {} not found", ontologyId);
-            throw new OntologyException("Slovník s id " + ontologyId + "nebyl nalezen.");
+            throw new OntologyNotFoundException("Slovník s id " + ontologyId + " nebyl nalezen.");
         }
 
         OntologyMetadataEntity ontology = ontologyMetadataOpt.get();
