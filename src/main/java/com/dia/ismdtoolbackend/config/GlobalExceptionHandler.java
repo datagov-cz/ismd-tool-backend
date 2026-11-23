@@ -174,7 +174,8 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(RdfDataMissingException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleRdfDataMissing(RdfDataMissingException e) {
         log.error("PG record without RDF data: {}", e.getMessage());
-        return error(ErrorCode.RDF_DATA_MISSING, e.getMessage());
+        // The message names the missing vocabulary or concept, so it stays on this 500.
+        return craftedError(ErrorCode.RDF_DATA_MISSING, ownMessage(e));
     }
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
