@@ -39,7 +39,8 @@ COPY --from=builder /app/target/ismd-tool-backend-*.jar app.jar
 # (enable_app_insights_agent), so one image serves all envs and telemetry can be
 # flipped on/off without a rebuild. The agent reads APPLICATIONINSIGHTS_CONNECTION_STRING
 # (injected by TF) for its destination. The checksum must change with the version.
-ADD --checksum=sha256:e81ef99fd30444f6f1da70cd31db5e47f8e6906acbbc9199cac3b390dc6cfedf \
+# ADD from a URL defaults to mode 600, which the unprivileged runtime user cannot read.
+ADD --chmod=644 --checksum=sha256:e81ef99fd30444f6f1da70cd31db5e47f8e6906acbbc9199cac3b390dc6cfedf \
     https://github.com/microsoft/ApplicationInsights-Java/releases/download/3.6.2/applicationinsights-agent-3.6.2.jar /app/applicationinsights-agent.jar
 
 LABEL org.opencontainers.image.title="ISMD Tool Backend"
