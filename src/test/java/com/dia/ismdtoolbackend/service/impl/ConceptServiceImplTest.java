@@ -1,6 +1,5 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.controller.dto.ConceptSummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptModel;

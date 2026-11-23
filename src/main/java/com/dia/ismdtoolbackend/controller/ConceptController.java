@@ -1,6 +1,5 @@
 package com.dia.ismdtoolbackend.controller;
 
-import com.dia.ismdtoolbackend.controller.dto.ConceptSummaryDto;
 import com.dia.ismdtoolbackend.config.security.SecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;

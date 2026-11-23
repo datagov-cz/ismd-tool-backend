@@ -1,7 +1,6 @@
 package com.dia.ismdtoolbackend.controller;
 
 import com.dia.ismdtoolbackend.enums.ErrorCode;
-import com.dia.ismdtoolbackend.controller.dto.ConceptSummaryDto;
 import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.exception.RdfDataMissingException;
 import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;

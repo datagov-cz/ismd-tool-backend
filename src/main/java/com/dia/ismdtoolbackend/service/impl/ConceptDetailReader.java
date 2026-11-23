@@ -3,7 +3,6 @@ package com.dia.ismdtoolbackend.service.impl;
 import com.dia.ismdtoolbackend.exception.RdfDataMissingException;
 import com.dia.ismdtoolbackend.exception.ConceptNotFoundException;
 import com.dia.ismdtoolbackend.config.NkdConfig;
-import com.dia.ismdtoolbackend.controller.dto.ConceptSummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.LinkSnapshotDto;
 import com.dia.ismdtoolbackend.service.snapshot.LinkSnapshotAssembler;
