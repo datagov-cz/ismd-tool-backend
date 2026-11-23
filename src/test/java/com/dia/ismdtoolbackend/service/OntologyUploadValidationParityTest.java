@@ -328,7 +328,7 @@ class OntologyUploadValidationParityTest {
     // --- Domain/range pointing at a concept published in NKD ------------------
 
     private void nkdReportsPublished(String... iris) {
-        when(publishedResourceUtil.checkPublishedResourcesInNKD(any(), any())).thenReturn(List.of(iris));
+        when(publishedResourceUtil.checkPublishedResourcesInNKD(any(), any(), any())).thenReturn(List.of(iris));
     }
 
     @Test
@@ -350,9 +350,21 @@ class OntologyUploadValidationParityTest {
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Collection<String>> extra = ArgumentCaptor.forClass(Collection.class);
-        verify(publishedResourceUtil).checkPublishedResourcesInNKD(any(), extra.capture());
+        verify(publishedResourceUtil).checkPublishedResourcesInNKD(any(), extra.capture(), any());
         assertThat(extra.getValue()).contains(NKD_CLASS);
         verify(publishedResourceUtil, never()).checkPublishedResourcesInNKD(any());
+    }
+
+    @Test
+    void conceptsWithADomainRangeTargetAreTheOnesReportedIfNkdSkips() throws Exception {
+        upload(vocabulary()
+                + concept(GOOD, "owl:Class", "")
+                + concept(BAD, "owl:DatatypeProperty", "; rdfs:domain <" + NKD_CLASS + ">"));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Collection<String>> relying = ArgumentCaptor.forClass(Collection.class);
+        verify(publishedResourceUtil).checkPublishedResourcesInNKD(any(), any(), relying.capture());
+        assertThat(relying.getValue()).containsExactly(BAD);
     }
 
     @Test

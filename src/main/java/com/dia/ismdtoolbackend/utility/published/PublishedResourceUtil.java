@@ -141,13 +141,15 @@ public class PublishedResourceUtil {
     }
 
     public List<String> checkPublishedResourcesInNKD(OntModel model) {
-        return checkPublishedResourcesInNKD(model, List.of());
+        return checkPublishedResourcesInNKD(model, List.of(), List.of());
     }
 
     /**
-     * Checks the model's vocabulary and concepts plus {@code additionalIris} in one NKD query.
+     * Checks the model's vocabulary and concepts plus {@code additionalIris} in one NKD query. When NKD does
+     * not answer, {@code conceptsRelyingOnCheck} are reported as skipped.
      */
-    public List<String> checkPublishedResourcesInNKD(OntModel model, Collection<String> additionalIris) {
+    public List<String> checkPublishedResourcesInNKD(OntModel model, Collection<String> additionalIris,
+                                                     Collection<String> conceptsRelyingOnCheck) {
         List<String> resourceIris = new ArrayList<>();
 
         ResIterator ontologyIterator = model.listResourcesWithProperty(RDF.type, OWL2.Ontology);
@@ -184,6 +186,7 @@ public class PublishedResourceUtil {
         if (answer.isEmpty()) {
             log.warn("NKD did not answer; publication and domain/range checks skipped for {} IRI(s) of {}",
                     resourceIris.size(), resourceIris.get(0));
+            com.dia.ismdtoolbackend.service.snapshot.SkippedNkdChecks.record(conceptsRelyingOnCheck);
             return Collections.emptyList();
         }
         log.info("Found {} published resources in NKD out of {} total resources",

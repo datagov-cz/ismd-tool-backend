@@ -488,17 +488,21 @@ class ConceptCreateOperationTest {
 
         /** Before the transaction: one publication check over domain and range only, no concept fetches. */
         @Test
-        void prefetchAsksOnlyWhetherTheDomainIsPublished() {
+        void prefetchAsksAboutEveryLinkTarget_andFetchesOnlyPublishedOnes() {
             var model = com.dia.ismdtoolbackend.testsupport.fixtures.ConceptModels.vlastnost(CONCEPT_NAME, m -> {
                 m.setOntologyGraphName(GRAPH_NAME);
                 m.setDomain(NKD_CLASS);
                 m.setSuperProperty(List.of(NKD_PROPERTY));
             });
-            when(nkdSparqlClient.findPublishedAmong(List.of(NKD_CLASS))).thenReturn(Optional.of(Set.of(NKD_CLASS)));
+            when(nkdSparqlClient.findPublishedAmong(org.mockito.ArgumentMatchers.anyList()))
+                    .thenReturn(Optional.of(Set.of(NKD_PROPERTY)));
+            when(nkdSparqlClient.fetchPublishedConceptsWithRaw(List.of(NKD_PROPERTY))).thenReturn(java.util.Map.of());
 
             operation.prefetchNkd(model);
 
-            verify(nkdSparqlClient).findPublishedAmong(List.of(NKD_CLASS));
+            verify(nkdSparqlClient).findPublishedAmong(org.mockito.ArgumentMatchers.argThat(asked ->
+                    asked.size() == 2 && asked.containsAll(List.of(NKD_CLASS, NKD_PROPERTY))));
+            verify(nkdSparqlClient).fetchPublishedConceptsWithRaw(List.of(NKD_PROPERTY));
             verifyNoMoreInteractions(nkdSparqlClient);
         }
 

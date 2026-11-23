@@ -113,7 +113,7 @@ class OntologyUploadTransactionIntegrationTest extends PostgresIntegrationTestBa
 
     @BeforeEach
     void setUp() {
-        when(publishedResourceUtil.checkPublishedResourcesInNKD(any(), any())).thenReturn(List.of());
+        when(publishedResourceUtil.checkPublishedResourcesInNKD(any(), any(), any())).thenReturn(List.of());
         when(validationClient.requestValidationLenient(anyString(), anyString())).thenReturn(Optional.empty());
     }
 

@@ -347,12 +347,12 @@ class OntologyCreateOperationTest {
 
         /** Before the transaction: one publication check over the attribute domain; a relationship target is a range. */
         @Test
-        void prefetchAsksOnlyAboutExternalDomains() {
+        void prefetchAsksAboutExternalLinkTargets() {
             when(nkdSparqlClient.findPublishedAmong(anyList())).thenReturn(Optional.of(java.util.Set.of()));
 
             operation.prefetchNkd(request());
 
-            verify(nkdSparqlClient).findPublishedAmong(List.of(NKD_CLASS));
+            verify(nkdSparqlClient).findPublishedAmong(List.of(NKD_CLASS, NKD_TARGET));
             org.mockito.Mockito.verifyNoMoreInteractions(nkdSparqlClient);
         }
 

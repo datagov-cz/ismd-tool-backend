@@ -919,7 +919,7 @@ class OntologyUploadServiceImplTest {
                 <%3$s> a ofn:pojem, skos:Concept, owl:Class ; skos:inScheme <%1$s> .
                 """.formatted(graphName, published, draft)).getBytes()));
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
-        when(publishedResourceUtil.checkPublishedResourcesInNKD(any(), any())).thenReturn(List.of(published));
+        when(publishedResourceUtil.checkPublishedResourcesInNKD(any(), any(), any())).thenReturn(List.of(published));
 
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
         savedEntity.setGraphName(graphName);
@@ -950,7 +950,7 @@ class OntologyUploadServiceImplTest {
                 <%1$s/pojem/a> a ofn:pojem, skos:Concept, owl:Class ; skos:prefLabel "A"@cs ; skos:inScheme <%1$s> .
                 """.formatted(graphName)).getBytes()));
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
-        when(publishedResourceUtil.checkPublishedResourcesInNKD(any(), any())).thenReturn(List.of(graphName));
+        when(publishedResourceUtil.checkPublishedResourcesInNKD(any(), any(), any())).thenReturn(List.of(graphName));
 
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
         savedEntity.setGraphName(graphName);

@@ -79,10 +79,14 @@ public final class ConceptServiceFixture {
                 buildCreateOperation(),
                 editOperation,
                 buildDeleteOperation(),
-                new WorkingCopySyncOperation(conceptMetadataRepository, jenaTDB2Repository, nkdSparqlClient,
-                        deviationComparator, syncFields, accessGuard(), editOperation, detailReader),
+                buildSyncOperation(editOperation, detailReader),
                 detailReader,
                 writeTransaction);
+    }
+
+    WorkingCopySyncOperation buildSyncOperation(ConceptEditOperation editOperation, ConceptDetailReader detailReader) {
+        return new WorkingCopySyncOperation(conceptMetadataRepository, jenaTDB2Repository, nkdSparqlClient,
+                deviationComparator, syncFields, accessGuard(), editOperation, detailReader);
     }
 
     ConceptCreateOperation buildCreateOperation() {

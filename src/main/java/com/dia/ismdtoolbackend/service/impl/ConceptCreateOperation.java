@@ -9,6 +9,7 @@ import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
+import com.dia.ismdtoolbackend.models.concept.PropertyConceptModel;
 import com.dia.ismdtoolbackend.ofn.OfnWriteGate;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
@@ -29,7 +30,9 @@ import com.dia.ismdtoolbackend.service.snapshot.NkdLookup;
 import com.dia.ismdtoolbackend.utility.validation.ConceptInputView;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.springframework.stereotype.Component;
 
@@ -56,18 +59,38 @@ class ConceptCreateOperation {
     }
 
     /**
-     * Which of the concept's domain/range targets NKD publishes, asked now: runs before the create's
-     * transaction, so NKD latency never holds a database connection.
+     * What NKD holds about the concept's link targets, asked now: runs before the create's transaction, so
+     * NKD latency never holds a database connection.
      */
     NkdLookup prefetchNkd(ConceptCreateModel createModel) {
+        return prefetchNkd(List.of(createModel));
+    }
+
+    /** As above for a batch: one published check, and each published target fetched once. */
+    NkdLookup prefetchNkd(List<? extends ConceptCreateModel> createModels) {
+        Map<String, List<String>> referencedByGraph = new LinkedHashMap<>();
+        for (ConceptCreateModel createModel : createModels) {
+            referencedByGraph.computeIfAbsent(createModel.getOntologyGraphName(), graph -> new ArrayList<>())
+                    .addAll(referencedIris(createModel));
+        }
+        return nkdLinkReconciler.prefetchPublished(referencedByGraph);
+    }
+
+    /** The IRIs the concept links to. A Vlastnost's datatype is its range. */
+    private static List<String> referencedIris(ConceptCreateModel createModel) {
         ConceptIriNormalizer.normalize(createModel);
         ConceptInputView view = ConceptInputView.of(createModel);
         List<String> referenced = new ArrayList<>();
         if (view != null) {
-            referenced.addAll(view.references().getOrDefault("domain", List.of()));
-            referenced.addAll(view.references().getOrDefault("range", List.of()));
+            view.references().values().forEach(referenced::addAll);
+            if (view.exactMatch() != null) {
+                referenced.addAll(view.exactMatch());
+            }
         }
-        return nkdLinkReconciler.prefetchPublished(createModel.getOntologyGraphName(), referenced);
+        if (createModel instanceof PropertyConceptModel property) {
+            referenced.add(property.getDataType());
+        }
+        return referenced;
     }
 
     /** The create, reading NKD only through {@code nkd}. */
@@ -96,6 +119,7 @@ class ConceptCreateOperation {
         outboxWriter.enqueueUpsert(ontologyGraphName, conceptUri, java.util.Set.of(),
                 conceptResource.getModel().listStatements().toSet());
         ConceptMetadataEntity savedEntity = saveMetadata(createModel, userId, conceptUri);
+        nkdLinkReconciler.takeNkdCopies(savedEntity, conceptResource.getModel(), nkd);
         outboxRelayTrigger.nudgeAfterCommit();
         return conceptMetadataMapper.toDto(savedEntity);
     }

@@ -18,6 +18,7 @@ import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.rdf.model.StmtIterator;
 import com.dia.ismdtoolbackend.service.snapshot.NkdLookup;
+import com.dia.ismdtoolbackend.service.snapshot.SkippedNkdChecks;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -110,8 +111,7 @@ class NkdLinkReconciler {
 
     /**
      * The create half of the rule: rejects (400) a new concept whose {@code rdfs:domain} / {@code rdfs:range}
-     * is a concept NKD publishes. Working copies in {@code graphName} are exempt; a create has no prior link
-     * state, so there is nothing to snapshot or remove here (the warmer takes the copies).
+     * is a concept NKD publishes. Working copies in {@code graphName} are exempt.
      */
     void rejectPublishedDomainRange(String conceptIri, ConceptType conceptType, String graphName, Model model,
                                     NkdLookup nkd) {
@@ -136,15 +136,13 @@ class NkdLinkReconciler {
         if (candidates.isEmpty()) {
             return;
         }
-        Optional<Set<String>> answer = nkd.publishedAmong(candidates);
-        if (answer.isEmpty()) {
-            log.warn("NKD did not answer; domain/range check skipped for concept(s) {} (targets {})",
-                    targets.keySet(), candidates);
-            return;
-        }
+        NkdLookup.PublishedCheck answer = nkd.check(candidates);
         Map<String, List<String>> offending = new LinkedHashMap<>();
         targets.forEach((iri, found) -> {
-            List<String> published = found.stream().filter(answer.get()::contains).toList();
+            List<String> published = found.stream()
+                    .filter(candidates::contains)
+                    .filter(answer.published()::contains)
+                    .toList();
             if (!published.isEmpty()) {
                 offending.put(iri, published);
             }
@@ -153,6 +151,38 @@ class NkdLinkReconciler {
             throw new OntologyValidationException(
                     "Definiční obor / obor hodnot nesmí odkazovat na publikovaný pojem v NKD: " + offending);
         }
+        List<String> unchecked = targets.entrySet().stream()
+                .filter(e -> e.getValue().stream().anyMatch(answer.unanswered()::contains))
+                .map(Map.Entry::getKey)
+                .toList();
+        if (!unchecked.isEmpty()) {
+            log.warn("NKD did not answer; domain/range check skipped for concept(s) {} (targets {})",
+                    unchecked, answer.unanswered());
+            SkippedNkdChecks.record(unchecked);
+        }
+    }
+
+    /**
+     * Takes the local copies of a newly created concept's published NKD link targets. A target NKD did not
+     * answer about is left for the warmer.
+     */
+    void takeNkdCopies(ConceptMetadataEntity owner, Model model, NkdLookup nkd) {
+        List<NkdLinkDetector.LinkTarget> detected = nkdLinkDetector.allowedTargets(
+                owner.getConceptIri(), owner.getConceptType(), owner.getGraphName(), model);
+        if (detected.isEmpty()) {
+            return;
+        }
+        Set<String> owned = locallyOwnedAmong(owner.getGraphName(), List.of(), detected);
+        List<NkdLinkDetector.LinkTarget> foreign = detected.stream()
+                .filter(t -> !owned.contains(t.targetIri()))
+                .toList();
+        Set<String> published = nkd.check(foreign.stream().map(NkdLinkDetector.LinkTarget::targetIri).toList())
+                .published();
+        OwnerChangeSet unused = new OwnerChangeSet();
+        foreign.stream()
+                .filter(t -> published.contains(t.targetIri()))
+                .forEach(t -> nkdSnapshotService.createOrRefreshSnapshot(
+                        owner, t.targetIri(), t.linkType().value(), unused, nkd));
     }
 
     /** Throws when NKD publishes any of {@code foreignTargets}; NKD not answering skips the check with a warning. */
@@ -164,6 +194,7 @@ class NkdLinkReconciler {
         if (answer.isEmpty()) {
             log.warn("NKD did not answer; domain/range check skipped for concept {} (targets {})",
                     conceptIri, foreignTargets);
+            SkippedNkdChecks.record(List.of(conceptIri));
             return;
         }
         if (!answer.get().isEmpty()) {
@@ -216,9 +247,16 @@ class NkdLinkReconciler {
         return NkdLookup.prefetch(nkdSparqlClient, nkdCandidates(graphScheme, referencedIris));
     }
 
-    /** As {@link #prefetch}, asking only which IRIs are published (a create takes no copies). */
+    /** As {@link #prefetch}, fetching only the concepts NKD publishes. */
     NkdLookup prefetchPublished(String graphScheme, Collection<String> referencedIris) {
-        return NkdLookup.prefetchPublished(nkdSparqlClient, nkdCandidates(graphScheme, referencedIris));
+        return prefetchPublished(java.util.Collections.singletonMap(graphScheme, referencedIris));
+    }
+
+    /** As above for several graphs in one NKD question; each graph's working copies stay exempt at the check. */
+    NkdLookup prefetchPublished(Map<String, ? extends Collection<String>> referencedByGraph) {
+        Set<String> candidates = new LinkedHashSet<>();
+        referencedByGraph.forEach((graph, iris) -> candidates.addAll(nkdCandidates(graph, iris)));
+        return NkdLookup.prefetchPublished(nkdSparqlClient, candidates);
     }
 
     /**

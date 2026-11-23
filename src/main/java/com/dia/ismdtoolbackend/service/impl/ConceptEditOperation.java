@@ -80,6 +80,9 @@ class ConceptEditOperation {
                 referenced.addAll(view.exactMatch());
             }
         }
+        if (conceptEditModel instanceof com.dia.ismdtoolbackend.models.concept.PropertyConceptEditModel property) {
+            referenced.add(property.getDataType());
+        }
         return nkdLinkReconciler.prefetch(metadata.get().getGraphName(), referenced);
     }
 

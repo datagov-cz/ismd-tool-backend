@@ -334,6 +334,123 @@ class NkdLinkReconcilerTest {
                     .contains("domain/range check skipped").contains(NKD_SUPERCLASS));
         }
 
+        @Test
+        void nkdNotAnswering_recordsTheConceptAsSkipped() {
+            org.springframework.web.context.request.RequestContextHolder.setRequestAttributes(
+                    new org.springframework.web.context.request.ServletRequestAttributes(
+                            new org.springframework.mock.web.MockHttpServletRequest()));
+            try {
+                when(nkdSparqlClient.findPublishedAmong(anyList())).thenReturn(Optional.empty());
+                var nkd = reconciler.prefetch(GRAPH_NAME, List.of(FOREIGN));
+                link(RDFS.domain, FOREIGN);
+
+                reconciler.reconcileNkdLinks(owner, graph, nkd);
+
+                assertThat(com.dia.ismdtoolbackend.service.snapshot.SkippedNkdChecks.current())
+                        .containsExactly(CONCEPT_IRI);
+            } finally {
+                org.springframework.web.context.request.RequestContextHolder.resetRequestAttributes();
+            }
+        }
+
+        @Test
+        void nkdAnsweringEmpty_recordsNothing() {
+            org.springframework.web.context.request.RequestContextHolder.setRequestAttributes(
+                    new org.springframework.web.context.request.ServletRequestAttributes(
+                            new org.springframework.mock.web.MockHttpServletRequest()));
+            try {
+                when(nkdSparqlClient.findPublishedAmong(anyList())).thenReturn(Optional.of(Set.of()));
+                var nkd = reconciler.prefetch(GRAPH_NAME, List.of(FOREIGN));
+                link(RDFS.domain, FOREIGN);
+
+                reconciler.reconcileNkdLinks(owner, graph, nkd);
+
+                assertThat(com.dia.ismdtoolbackend.service.snapshot.SkippedNkdChecks.current()).isEmpty();
+            } finally {
+                org.springframework.web.context.request.RequestContextHolder.resetRequestAttributes();
+            }
+        }
+
+        @Test
+        void takeNkdCopies_snapshotsOnlyPublishedTargets() {
+            owner.setConceptType(ConceptType.VZTAH);
+            String unpublished = FOREIGN + "-unpublished";
+            when(nkdSparqlClient.findPublishedAmong(anyList())).thenReturn(Optional.of(Set.of(FOREIGN)));
+            var nkd = reconciler.prefetchPublished(GRAPH_NAME, List.of(FOREIGN, unpublished));
+            link(RDFS.range, FOREIGN);
+            link(org.apache.jena.vocabulary.SKOS.exactMatch, unpublished);
+
+            reconciler.takeNkdCopies(owner, graph, nkd);
+
+            verify(nkdSnapshotService).createOrRefreshSnapshot(eq(owner), eq(FOREIGN),
+                    eq(SnapshotLinkType.RANGE_TARGET.value()), any(), eq(nkd));
+            verify(nkdSnapshotService, never()).createOrRefreshSnapshot(any(), eq(unpublished), any(), any(), any());
+        }
+
+        @Test
+        void aPartialAnswer_stillRejectsAConfirmedPublishedDomain() {
+            String unanswered = FOREIGN + "-unanswered";
+            var nkd = new com.dia.ismdtoolbackend.service.snapshot.NkdLookup.Prefetched(
+                    Set.of(FOREIGN), Optional.of(Set.of(FOREIGN)), java.util.Map.of());
+            link(RDFS.domain, FOREIGN);
+            link(RDFS.domain, unanswered);
+
+            assertThatThrownBy(() -> reconciler.rejectPublishedDomainRange(CONCEPT_IRI, ConceptType.VLASTNOST,
+                    GRAPH_NAME, graph, nkd))
+                    .isInstanceOf(OntologyValidationException.class)
+                    .hasMessageContaining(FOREIGN);
+        }
+
+        @Test
+        void aPartialAnswer_reportsOnlyTheConceptWithAnUnansweredTarget() {
+            String answeredOwner = CONCEPT_IRI + "-answered";
+            String unanswered = FOREIGN + "-unanswered";
+            var nkd = new com.dia.ismdtoolbackend.service.snapshot.NkdLookup.Prefetched(
+                    Set.of(FOREIGN), Optional.of(Set.of()), java.util.Map.of());
+            link(RDFS.domain, unanswered);
+            graph.createResource(answeredOwner).addProperty(RDFS.domain, graph.createResource(FOREIGN));
+            org.springframework.web.context.request.RequestContextHolder.setRequestAttributes(
+                    new org.springframework.web.context.request.ServletRequestAttributes(
+                            new org.springframework.mock.web.MockHttpServletRequest()));
+            try {
+                reconciler.rejectPublishedDomainRange(GRAPH_NAME, java.util.Map.of(
+                        CONCEPT_IRI, ConceptType.VLASTNOST, answeredOwner, ConceptType.VLASTNOST), graph, nkd);
+
+                assertThat(com.dia.ismdtoolbackend.service.snapshot.SkippedNkdChecks.current())
+                        .containsExactly(CONCEPT_IRI);
+            } finally {
+                org.springframework.web.context.request.RequestContextHolder.resetRequestAttributes();
+            }
+        }
+
+        @Test
+        void takeNkdCopies_partialAnswer_takesTheAnsweredPublishedTarget() {
+            owner.setConceptType(ConceptType.VZTAH);
+            String unanswered = FOREIGN + "-unanswered";
+            var nkd = new com.dia.ismdtoolbackend.service.snapshot.NkdLookup.Prefetched(
+                    Set.of(FOREIGN), Optional.of(Set.of(FOREIGN)), java.util.Map.of());
+            link(RDFS.range, FOREIGN);
+            link(org.apache.jena.vocabulary.SKOS.exactMatch, unanswered);
+
+            reconciler.takeNkdCopies(owner, graph, nkd);
+
+            verify(nkdSnapshotService).createOrRefreshSnapshot(eq(owner), eq(FOREIGN),
+                    eq(SnapshotLinkType.RANGE_TARGET.value()), any(), eq(nkd));
+            verify(nkdSnapshotService, never()).createOrRefreshSnapshot(any(), eq(unanswered), any(), any(), any());
+        }
+
+        @Test
+        void takeNkdCopies_nkdNotAnswering_takesNone() {
+            owner.setConceptType(ConceptType.VZTAH);
+            when(nkdSparqlClient.findPublishedAmong(anyList())).thenReturn(Optional.empty());
+            var nkd = reconciler.prefetchPublished(GRAPH_NAME, List.of(FOREIGN));
+            link(RDFS.range, FOREIGN);
+
+            reconciler.takeNkdCopies(owner, graph, nkd);
+
+            verify(nkdSnapshotService, never()).createOrRefreshSnapshot(any(), any(), any(), any(), any());
+        }
+
         /** A value that is not a safe IRI never reaches the query; the input validation rejects it later. */
         @Test
         void leavesUnsafeValuesOutOfTheNkdQuery() {
