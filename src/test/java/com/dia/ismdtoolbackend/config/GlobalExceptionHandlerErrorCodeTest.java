@@ -2,6 +2,8 @@ package com.dia.ismdtoolbackend.config;
 
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.enums.ErrorCode;
+import com.dia.ismdtoolbackend.exception.OntologyInputException;
+import com.dia.ismdtoolbackend.exception.OntologyProcessingException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -117,6 +119,27 @@ class GlobalExceptionHandlerErrorCodeTest {
         traceless.setStackTrace(new StackTraceElement[0]);
 
         assertThat(ErrorResponses.ownMessage(traceless)).isNull();
+    }
+
+    @Test
+    void ontologyInput_answers400WithItsMessage() {
+        ResponseEntity<ApiResponseDto<Void>> response =
+                handler.handleOntologyInput(new OntologyInputException("IRI slovníku není platné."));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody().getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT);
+        assertThat(response.getBody().getMessage()).isEqualTo("IRI slovníku není platné.");
+    }
+
+    @Test
+    void ontologyProcessing_answers500WithTheDefaultMessageOnly() {
+        ResponseEntity<ApiResponseDto<Void>> response = handler.handleOntologyProcessing(
+                new OntologyProcessingException(INTERNAL_DETAIL, new IllegalStateException(INTERNAL_DETAIL)));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(response.getBody().getErrorCode()).isEqualTo(ErrorCode.ONTOLOGY_PROCESSING_FAILED);
+        assertThat(response.getBody().getMessage())
+                .isEqualTo(ErrorCode.ONTOLOGY_PROCESSING_FAILED.getDefaultMessage());
     }
 
     @ParameterizedTest

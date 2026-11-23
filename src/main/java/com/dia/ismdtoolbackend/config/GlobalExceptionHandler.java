@@ -335,6 +335,18 @@ public class GlobalExceptionHandler {
         return craftedError(ErrorCode.ONTOLOGY_PROCESSING_FAILED, ownMessage(e));
     }
 
+    @ExceptionHandler(OntologyInputException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleOntologyInput(OntologyInputException e) {
+        log.warn("Invalid vocabulary or concept input: {}", e.getMessage());
+        return error(ErrorCode.INVALID_ARGUMENT, e.getMessage());
+    }
+
+    @ExceptionHandler(OntologyProcessingException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleOntologyProcessing(OntologyProcessingException e) {
+        log.error("Operation failed: {}", e.getMessage(), e);
+        return error(ErrorCode.ONTOLOGY_PROCESSING_FAILED);
+    }
+
     /** The tool's own {@link ValidationException}: a failure to store or read a validation report. */
     @ExceptionHandler(ValidationException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleValidationReportException(ValidationException e) {
