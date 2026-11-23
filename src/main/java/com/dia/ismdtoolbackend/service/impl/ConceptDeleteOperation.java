@@ -11,7 +11,6 @@ import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.ontology.OntologyException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;

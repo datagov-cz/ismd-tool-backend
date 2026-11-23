@@ -1,10 +1,10 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
+import com.dia.ismdtoolbackend.exception.OntologyProcessingException;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
 import com.dia.ismdtoolbackend.testsupport.fixtures.Texts;
 import com.dia.ismdtoolbackend.testsupport.rdf.Ttl;
-import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.query.Dataset;
 import org.apache.jena.query.DatasetFactory;
 import org.apache.jena.rdf.model.Model;
@@ -307,7 +307,7 @@ class OntologyEditorTest {
             };
 
             assertThatThrownBy(() -> ontologyEditor.editOntology(failing, txnModel, OLD_NS, OLD_IRI))
-                    .isExactlyInstanceOf(OntologyException.class)
+                    .isExactlyInstanceOf(OntologyProcessingException.class)
                     .hasMessage("Failed to edit ontology: " + OLD_IRI)
                     .hasRootCauseInstanceOf(IllegalStateException.class)
                     .hasRootCauseMessage("boom");

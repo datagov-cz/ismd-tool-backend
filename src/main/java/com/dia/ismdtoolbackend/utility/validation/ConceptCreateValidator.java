@@ -1,8 +1,8 @@
 package com.dia.ismdtoolbackend.utility.validation;
 
+import com.dia.ismdtoolbackend.exception.OntologyInputException;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
-import org.apache.jena.ontology.OntologyException;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -12,11 +12,11 @@ public final class ConceptCreateValidator {
 
     public static void validate(ConceptCreateModel createModel, String userId) {
         if (createModel == null) {
-            throw new OntologyException("Data pro vytvoření pojmu jsou prázdná");
+            throw new OntologyInputException("Data pro vytvoření pojmu jsou prázdná");
         }
 
         if (userId == null || userId.trim().isEmpty()) {
-            throw new OntologyException("ID uživatele je povinné");
+            throw new OntologyInputException("ID uživatele je povinné");
         }
 
         // name is required and must include a non-blank cs variant

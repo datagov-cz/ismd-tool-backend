@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.utility.creator;
 
+import com.dia.ismdtoolbackend.exception.OntologyInputException;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptModel;
 import com.dia.ismdtoolbackend.models.concept.DigitalObjectModel;
@@ -9,7 +10,6 @@ import com.dia.ismdtoolbackend.ofn.OfnIris;
 import com.dia.ismdtoolbackend.testsupport.fixtures.ConceptModels;
 import com.dia.ismdtoolbackend.testsupport.fixtures.Texts;
 import com.dia.ismdtoolbackend.testsupport.rdf.Ttl;
-import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
@@ -308,7 +308,7 @@ class ConceptCreatorTest {
             });
 
             assertThatThrownBy(() -> conceptCreator.createSingleConcept(model))
-                    .isExactlyInstanceOf(OntologyException.class)
+                    .isExactlyInstanceOf(OntologyInputException.class)
                     .hasMessage("Je uvedena datová sada v NKOD, ale chybí IRI číselníku");
         }
 
@@ -320,7 +320,7 @@ class ConceptCreatorTest {
             });
 
             assertThatThrownBy(() -> conceptCreator.createSingleConcept(model))
-                    .isExactlyInstanceOf(OntologyException.class)
+                    .isExactlyInstanceOf(OntologyInputException.class)
                     .hasMessage("Je uvedeno IRI číselníku, ale chybí IRI zastřešující datové sady v NKOD");
         }
 
@@ -333,7 +333,7 @@ class ConceptCreatorTest {
             });
 
             assertThatThrownBy(() -> conceptCreator.createSingleConcept(model))
-                    .isExactlyInstanceOf(OntologyException.class)
+                    .isExactlyInstanceOf(OntologyInputException.class)
                     .hasMessage("Neplatná URL datové sady v NKOD: https://example.org/dataset");
         }
 

@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.architecture;
 
+import org.apache.jena.ontology.OntologyException;
 import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
@@ -132,6 +133,17 @@ class ClassStructureRulesTest {
                 .collect(Collectors.toSet());
 
         assertThat(selfInjecting).isEqualTo(SELF_INJECTING_BEANS);
+    }
+
+    @Test
+    void noClassConstructsJenasOntologyException() {
+        Set<String> constructing = MAIN_CLASSES.stream()
+                .flatMap(javaClass -> javaClass.getConstructorCallsFromSelf().stream())
+                .filter(call -> call.getTargetOwner().isEquivalentTo(OntologyException.class))
+                .map(call -> call.getOriginOwner().getName())
+                .collect(Collectors.toSet());
+
+        assertThat(constructing).isEmpty();
     }
 
     private static boolean isOwnBean(JavaClass owner, JavaField field) {

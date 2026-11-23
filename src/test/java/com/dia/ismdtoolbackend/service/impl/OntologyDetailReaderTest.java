@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.exception.OntologyInputException;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -25,7 +26,6 @@ import com.dia.ismdtoolbackend.service.NkdDetailService;
 import com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
-import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.junit.jupiter.api.BeforeEach;
@@ -294,14 +294,14 @@ class OntologyDetailReaderTest {
         @ValueSource(strings = {"   "})
         void missingIri_throws(String iri) {
             assertThatThrownBy(() -> reader.getConceptsByIri(iri, SearchSource.ISMD))
-                    .isInstanceOf(OntologyException.class)
+                    .isInstanceOf(OntologyInputException.class)
                     .hasMessageContaining("IRI");
         }
 
         @Test
         void missingSource_throws() {
             assertThatThrownBy(() -> reader.getConceptsByIri(GRAPH, null))
-                    .isInstanceOf(OntologyException.class)
+                    .isInstanceOf(OntologyInputException.class)
                     .hasMessageContaining("source");
         }
 

@@ -1,12 +1,11 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.exception.OntologyExceptions;
+import com.dia.ismdtoolbackend.exception.OntologyProcessingException;
 import com.dia.ismdtoolbackend.exception.RdfDataMissingException;
 import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
 import org.springframework.stereotype.Component;
 
@@ -24,7 +23,7 @@ class OntologyTurtleExport {
 
             if (graphName == null || graphName.isEmpty()) {
                 log.error("Graph name is null or empty for ontology: {}", ontology.slug());
-                throw new OntologyException("Graph name is missing for the ontology");
+                throw new OntologyProcessingException("Graph name is missing for the ontology");
             }
 
             log.info("Fetching TTL content for graph: {}", graphName);
@@ -46,11 +45,11 @@ class OntologyTurtleExport {
 
             return ttlContent;
 
-        } catch (OntologyException | RdfDataMissingException e) {
+        } catch (OntologyProcessingException | RdfDataMissingException e) {
             throw e;
         } catch (Exception e) {
             log.error("Error retrieving TTL content from ontology: {}", e.getMessage(), e);
-            throw OntologyExceptions.withCause("Failed to retrieve TTL content.", e);
+            throw new OntologyProcessingException("Failed to retrieve TTL content.", e);
         }
     }
 }

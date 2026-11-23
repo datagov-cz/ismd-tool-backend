@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.exception.OntologyInputException;
+import com.dia.ismdtoolbackend.exception.OntologyProcessingException;
 import com.dia.ismdtoolbackend.testsupport.security.SignedInAdmin;
 import com.dia.ismdtoolbackend.exception.RdfDataMissingException;
 import com.dia.ismdtoolbackend.exception.ConceptNotFoundException;
@@ -22,7 +24,6 @@ import com.dia.ismdtoolbackend.service.snapshot.OwnerChangeSet;
 import com.dia.ismdtoolbackend.testsupport.fixtures.Texts;
 import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
 import com.dia.ismdtoolbackend.utility.editor.ConceptEditor.EditResult;
-import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Resource;
@@ -521,13 +522,24 @@ class ConceptEditOperationTest {
     class Failures {
 
         @Test
+        void keepsAnInputErrorFromTheEditorUnwrapped() {
+            givenEditableConcept();
+            OntologyInputException invalid = new OntologyInputException("Neplatné IRI číselníku: x");
+            when(conceptEditor.editConcept(eq(CONCEPT_IRI), eq(editModel), any(Model.class), eq(GRAPH_NAME), any()))
+                    .thenThrow(invalid);
+
+            assertThatThrownBy(() -> operation.editConcept(CONCEPT_ID, editModel)).isSameAs(invalid);
+            verifyNoInteractions(outboxWriter);
+        }
+
+        @Test
         void wrapsAnEditorFailure() {
             givenEditableConcept();
             when(conceptEditor.editConcept(eq(CONCEPT_IRI), eq(editModel), any(Model.class), eq(GRAPH_NAME), any()))
                     .thenThrow(new RuntimeException("Editor error"));
 
             assertThatThrownBy(() -> operation.editConcept(CONCEPT_ID, editModel))
-                    .isInstanceOf(OntologyException.class)
+                    .isInstanceOf(OntologyProcessingException.class)
                     .hasMessageContaining("Nepodařilo se upravit pojem");
             verifyNoInteractions(outboxWriter);
         }
@@ -553,7 +565,7 @@ class ConceptEditOperationTest {
                     .thenThrow(new RuntimeException("DB error"));
 
             assertThatThrownBy(() -> operation.editConcept(CONCEPT_ID, editModel))
-                    .isInstanceOf(OntologyException.class)
+                    .isInstanceOf(OntologyProcessingException.class)
                     .hasMessageContaining("Nepodařilo se aktualizovat metadata pojmu");
         }
     }

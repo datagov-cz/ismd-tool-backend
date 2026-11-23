@@ -1555,13 +1555,13 @@ class OntologyControllerTest {
         String iri = "http://example.org/missing";
 
         when(ontologyService.getConceptsByIri(iri, SearchSource.ISMD))
-                .thenThrow(new org.apache.jena.ontology.OntologyException(
+                .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyNotFoundException(
                         "Slovník s IRI " + iri + " nebyl nalezen."));
 
         mockMvc.perform(get("/api/ontology/concepts")
                         .param("iri", iri)
                         .param("source", "ISMD"))
-                .andExpect(status().isInternalServerError())
+                .andExpect(status().isNotFound())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
                 .andExpect(jsonPath("$.message").value("Slovník s IRI " + iri + " nebyl nalezen."));

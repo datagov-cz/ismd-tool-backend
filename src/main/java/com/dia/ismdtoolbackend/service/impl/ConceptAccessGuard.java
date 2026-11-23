@@ -7,7 +7,6 @@ import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.utility.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.ontology.OntologyException;
 import org.springframework.security.access.AccessDeniedException;
 import java.util.Objects;
 import java.util.Optional;
