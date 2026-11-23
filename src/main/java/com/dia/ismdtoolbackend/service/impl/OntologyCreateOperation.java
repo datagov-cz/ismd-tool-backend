@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.exception.OntologyExceptions;
+import com.dia.ismdtoolbackend.exception.OntologyInputException;
+import com.dia.ismdtoolbackend.exception.OntologyProcessingException;
 import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsResponseDto;
@@ -39,7 +40,6 @@ import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import com.dia.ismdtoolbackend.utility.creator.OntologyModelFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.vocabulary.DCTerms;
@@ -73,7 +73,7 @@ class OntologyCreateOperation {
 
         if (!UtilityMethods.isValidIRI(ontologyIRI)) {
             log.error("ontologyIRI {} not valid", ontologyCreateModel.getNameModel().getName());
-            throw new OntologyException("IRI slovníku " + ontologyIRI + " není platné.");
+            throw new OntologyInputException("IRI slovníku " + ontologyIRI + " není platné.");
         }
 
         Optional<OntologyMetadataEntity> ontologyMetadataOpt = findLocalCollision(ontologyIRI);
@@ -108,7 +108,7 @@ class OntologyCreateOperation {
                 metadataEntity = createOntologyMetadata(ontologyIRI, userId);
                 ontologyMetadataRepository.flush();
             } catch (Exception e) {
-                throw OntologyExceptions.withCause("Nepodařilo se uložit metadata slovníku.", e);
+                throw new OntologyProcessingException("Nepodařilo se uložit metadata slovníku.", e);
             }
             outboxWriter.enqueueCreateGraph(ontologyIRI, graphModel);
             outboxRelayTrigger.nudgeAfterCommit();
@@ -238,7 +238,7 @@ class OntologyCreateOperation {
 
     void validateOntologyCreateModel(OntologyCreateModel model) {
         if (model == null) {
-            throw new OntologyException("Data pro vytvoření slovníku jsou prázdná");
+            throw new OntologyInputException("Data pro vytvoření slovníku jsou prázdná");
         }
 
         validateOntologyName(model.getNameModel());

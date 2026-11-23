@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.exception.OntologyInputException;
 import com.dia.ismdtoolbackend.controller.dto.OntologyDetailMetadataDto;
 import com.dia.ismdtoolbackend.config.NkdConfig;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
@@ -22,7 +23,6 @@ import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.vocabulary.RDF;
 import java.util.List;
@@ -205,10 +205,10 @@ class OntologyDetailReader {
 
     List<MinimalConceptDto> getConceptsByIri(String ontologyIri, SearchSource source) {
         if (ontologyIri == null || ontologyIri.isBlank()) {
-            throw new OntologyException("IRI slovníku musí být zadáno.");
+            throw new OntologyInputException("IRI slovníku musí být zadáno.");
         }
         if (source == null) {
-            throw new OntologyException("Zdroj (source) musí být zadán.");
+            throw new OntologyInputException("Zdroj (source) musí být zadán.");
         }
 
         return switch (source) {

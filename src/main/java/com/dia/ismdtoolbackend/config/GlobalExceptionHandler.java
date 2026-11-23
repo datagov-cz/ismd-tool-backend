@@ -330,9 +330,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(OntologyException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleOntologyException(OntologyException e) {
         log.error("Operation failed: {}", e.getMessage(), e);
-        // Jena's type doubles as this application's: its own messages (several are "not found") reach the
-        // client on a 500, Jena's do not.
-        return craftedError(ErrorCode.ONTOLOGY_PROCESSING_FAILED, ownMessage(e));
+        return error(ErrorCode.ONTOLOGY_PROCESSING_FAILED);
     }
 
     @ExceptionHandler(OntologyInputException.class)

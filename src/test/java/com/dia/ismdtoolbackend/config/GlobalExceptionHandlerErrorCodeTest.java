@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.config;
 
+import org.apache.jena.ontology.OntologyException;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.enums.ErrorCode;
 import com.dia.ismdtoolbackend.exception.OntologyInputException;
@@ -119,6 +120,17 @@ class GlobalExceptionHandlerErrorCodeTest {
         traceless.setStackTrace(new StackTraceElement[0]);
 
         assertThat(ErrorResponses.ownMessage(traceless)).isNull();
+    }
+
+    @Test
+    void jenaOntologyException_answers500WithTheDefaultMessageOnly() {
+        ResponseEntity<ApiResponseDto<Void>> response =
+                handler.handleOntologyException(new OntologyException(INTERNAL_DETAIL));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(response.getBody().getErrorCode()).isEqualTo(ErrorCode.ONTOLOGY_PROCESSING_FAILED);
+        assertThat(response.getBody().getMessage())
+                .isEqualTo(ErrorCode.ONTOLOGY_PROCESSING_FAILED.getDefaultMessage());
     }
 
     @Test

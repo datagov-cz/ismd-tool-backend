@@ -1,8 +1,8 @@
 package com.dia.ismdtoolbackend.models.concept;
 
+import com.dia.ismdtoolbackend.exception.OntologyInputException;
 import com.dia.ismdtoolbackend.utility.sparql.SparqlSolutions;
 import com.dia.ismdtoolbackend.utility.UtilityMethods;
-import org.apache.jena.ontology.OntologyException;
 
 import java.util.List;
 import java.util.Set;
@@ -29,7 +29,7 @@ public final class ConceptValidationUtil {
         boolean valid = ALLOWED_GOVERNANCE_VALUES.stream()
                 .anyMatch(allowed -> allowed.equalsIgnoreCase(value));
         if (!valid) {
-            throw new OntologyException(
+            throw new OntologyInputException(
                     "Neplatná hodnota pro " + fieldName + ": " + value);
         }
     }
@@ -69,7 +69,7 @@ public final class ConceptValidationUtil {
     public static void validateCodeListDataset(String codeListDataset) {
         if (codeListDataset != null && !codeListDataset.trim().isEmpty()
                 && !SparqlSolutions.toRawUtf8(codeListDataset).matches(NKOD_DATASET_PATTERN)) {
-            throw new OntologyException("Neplatná URL datové sady v NKOD: " + codeListDataset);
+            throw new OntologyInputException("Neplatná URL datové sady v NKOD: " + codeListDataset);
         }
     }
 
@@ -80,7 +80,7 @@ public final class ConceptValidationUtil {
         }
         String value = codeListIri.trim();
         if (!value.matches(ABSOLUTE_IRI_PATTERN)) {
-            throw new OntologyException("Neplatné IRI číselníku: " + codeListIri);
+            throw new OntologyInputException("Neplatné IRI číselníku: " + codeListIri);
         }
     }
 
@@ -93,11 +93,11 @@ public final class ConceptValidationUtil {
         boolean hasDataset = codeListDataset != null && !codeListDataset.trim().isEmpty();
 
         if (hasIri && !hasDataset) {
-            throw new OntologyException(
+            throw new OntologyInputException(
                     "Je uvedeno IRI číselníku, ale chybí IRI zastřešující datové sady v NKOD");
         }
         if (hasDataset && !hasIri) {
-            throw new OntologyException(
+            throw new OntologyInputException(
                     "Je uvedena datová sada v NKOD, ale chybí IRI číselníku");
         }
     }
@@ -108,7 +108,7 @@ public final class ConceptValidationUtil {
                                                       String genderSuffix) {
         if (privacyProvisions != null && !privacyProvisions.isEmpty()
                 && isPublic != null && isPublic) {
-            throw new OntologyException(
+            throw new OntologyInputException(
                     entityName + " nemůže být současně veřejn" + genderSuffix
                             + " a mít ustanovení o neveřejnosti");
         }

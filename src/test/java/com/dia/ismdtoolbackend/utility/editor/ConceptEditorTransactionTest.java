@@ -1,9 +1,10 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
+import com.dia.ismdtoolbackend.exception.OntologyInputException;
+import com.dia.ismdtoolbackend.exception.OntologyProcessingException;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel;
 import com.dia.ismdtoolbackend.testsupport.fixtures.EditModels;
 import com.dia.ismdtoolbackend.testsupport.fixtures.Texts;
-import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.query.Dataset;
 import org.apache.jena.query.DatasetFactory;
 import org.apache.jena.query.ReadWrite;
@@ -52,7 +53,7 @@ class ConceptEditorTransactionTest extends ConceptEditorTestBase {
         RuntimeException cause = new RuntimeException("Simulated failure");
 
         assertThatThrownBy(() -> conceptEditor.editConcept(CONCEPT_IRI, failingOnType(cause), model, null))
-                .isExactlyInstanceOf(OntologyException.class)
+                .isExactlyInstanceOf(OntologyProcessingException.class)
                 .hasMessage("Failed to edit concept: " + CONCEPT_IRI)
                 .hasCause(cause);
     }
@@ -67,7 +68,7 @@ class ConceptEditorTransactionTest extends ConceptEditorTestBase {
         edit.setDescriptionModel(Texts.description("cs", "Nový popis"));
 
         assertThatThrownBy(() -> conceptEditor.editConcept(CONCEPT_IRI, edit, model, null))
-                .isExactlyInstanceOf(OntologyException.class);
+                .isExactlyInstanceOf(OntologyProcessingException.class);
 
         assertThat(model.isIsomorphicWith(before)).isTrue();
     }
@@ -82,11 +83,23 @@ class ConceptEditorTransactionTest extends ConceptEditorTestBase {
         edit.setDescriptionModel(Texts.description("cs", "Nový popis"));
 
         assertThatThrownBy(() -> conceptEditor.editConcept(CONCEPT_IRI, edit, txnModel, null))
-                .isExactlyInstanceOf(OntologyException.class)
+                .isExactlyInstanceOf(OntologyProcessingException.class)
                 .hasRootCauseMessage("boom");
 
         assertThat(dataset.isInTransaction()).isFalse();
         assertThat(dataset.calculateRead(() -> txnModel.isIsomorphicWith(before))).isTrue();
+    }
+
+    @Test
+    void inputErrorStaysUnwrappedAndLeavesTheModelUnchanged() {
+        seedClass(model, "Třída");
+        Model before = copyOf(model);
+        OntologyInputException invalid = new OntologyInputException("Neplatné IRI číselníku: x");
+
+        assertThatThrownBy(() -> conceptEditor.editConcept(CONCEPT_IRI, failingOnType(invalid), model, null))
+                .isSameAs(invalid);
+
+        assertThat(model.isIsomorphicWith(before)).isTrue();
     }
 
     @Test

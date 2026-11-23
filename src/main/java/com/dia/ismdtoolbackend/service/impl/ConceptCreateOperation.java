@@ -1,7 +1,8 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.exception.OntologyInputException;
+import com.dia.ismdtoolbackend.exception.OntologyProcessingException;
 import org.springframework.dao.DataIntegrityViolationException;
-import com.dia.ismdtoolbackend.exception.OntologyExceptions;
 import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
@@ -22,7 +23,6 @@ import com.dia.ismdtoolbackend.utility.validation.ConceptIriNormalizer;
 import com.dia.ismdtoolbackend.utility.validation.ConceptNamespaceRule;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.vocabulary.RDF;
 import com.dia.ismdtoolbackend.service.snapshot.NkdLookup;
@@ -105,9 +105,11 @@ class ConceptCreateOperation {
             Resource conceptResource = conceptCreator.createSingleConcept(createModel);
             log.debug("Successfully transformed concept to Jena Resource: {}", conceptResource.getURI());
             return conceptResource;
+        } catch (OntologyInputException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Failed to transform concept to Jena Resource", e);
-            throw OntologyExceptions.withCause("Nepodařilo se transformovat pojem.", e);
+            throw new OntologyProcessingException("Nepodařilo se transformovat pojem.", e);
         }
     }
 
@@ -147,7 +149,7 @@ class ConceptCreateOperation {
                     "Pojem se stejným názvem již v ontologii existuje: " + conceptUri);
         } catch (Exception e) {
             log.error("Failed to save concept metadata for {}", conceptUri, e);
-            throw new OntologyException("Nepodařilo se uložit metadata pojmu.");
+            throw new OntologyProcessingException("Nepodařilo se uložit metadata pojmu.", e);
         }
 
         // Adding a concept modifies the vocabulary: the child FK write does not dirty the parent row,

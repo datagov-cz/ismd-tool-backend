@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.exception.OntologyInputException;
+import com.dia.ismdtoolbackend.exception.OntologyProcessingException;
 import com.dia.ismdtoolbackend.exception.OfnConformanceException;
 import com.dia.ismdtoolbackend.ofn.ConformanceIssue;
 import com.dia.ismdtoolbackend.ofn.OfnWriteGate;
@@ -19,7 +21,6 @@ import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
-import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -206,7 +207,7 @@ class OntologyCreateOperationTest {
         @Test
         void nullRequest_throws() {
             assertThatThrownBy(() -> operation.createOntology(null, USER_ID))
-                    .isInstanceOf(OntologyException.class)
+                    .isInstanceOf(OntologyInputException.class)
                     .hasMessageContaining("prázdná");
         }
 
@@ -216,7 +217,7 @@ class OntologyCreateOperationTest {
             model.setNamespace("invalid iri with spaces");
 
             assertThatThrownBy(() -> operation.createOntology(model, USER_ID))
-                    .isInstanceOf(OntologyException.class);
+                    .isInstanceOf(OntologyInputException.class);
             verifyNoInteractions(outboxWriter);
         }
 
@@ -257,7 +258,7 @@ class OntologyCreateOperationTest {
                     .thenThrow(new RuntimeException("DB error"));
 
             assertThatThrownBy(() -> operation.createOntology(createModel(), USER_ID))
-                    .isInstanceOf(OntologyException.class)
+                    .isInstanceOf(OntologyProcessingException.class)
                     .hasMessageContaining("Nepodařilo se uložit metadata");
             verifyNoInteractions(jenaTDB2Repository, outboxWriter);
         }
