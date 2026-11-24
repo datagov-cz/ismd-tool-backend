@@ -8,7 +8,7 @@ ARG KEYCLOAK_DIGEST=sha256:b8a3f00fc433f2999bc304b73df331e2005037e8f5673f644f9c0
 
 # 1. Build and test the extension jar
 # Digest-pinned; Dependabot raises a PR when the tag moves.
-FROM maven:3.9-eclipse-temurin-17@sha256:1a352420f7aba21f5ad08df31bab55f74c013fb491f1ae8ab1dd7ff9ed698584 AS extension
+FROM maven:3.9-eclipse-temurin-26@sha256:b2c1ad85954592f9928e84327c65201f308ad9b5d8ed7d5b823717c97bf23fbb AS extension
 ARG KEYCLOAK_VERSION
 WORKDIR /build
 COPY extension/pom.xml .
