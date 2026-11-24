@@ -39,9 +39,12 @@ updates:
         patterns:
           - "*"
 
-  # Watches the digest-pinned base images in the Dockerfile.
+  # Watches the base images in the backend, Fuseki and Keycloak Dockerfiles.
   - package-ecosystem: docker
-    directory: /
+    directories:
+      - /
+      - /docker/fuseki
+      - /docker/keycloak
     schedule:
       interval: weekly
     target-branch: dev
