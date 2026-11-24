@@ -45,6 +45,7 @@ jobs:
         with:
           languages: java
           queries: security-extended
+          config-file: ./.github/codeql/codeql-config.yml
           build-mode: manual
 
       - name: Build tool-backend

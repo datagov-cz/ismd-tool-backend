@@ -1,0 +1,9 @@
+# CodeQL configuration, referenced from .github/workflows/codeql.yml.
+# The query suite (security-extended) is set in the workflow; this file only filters it.
+
+query-filters:
+  # Log injection (CWE-117) is neutralised at the encoder: src/main/resources/logback-spring.xml
+  # wraps every rendered message in %replace(%m){'[\r\n]+', ' '}, so no log call can forge a line.
+  # CodeQL cannot see that mitigation and flags every parameterised log call.
+  - exclude:
+      id: java/log-injection
