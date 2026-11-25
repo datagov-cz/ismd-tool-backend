@@ -303,7 +303,7 @@ Today a diagram is identified by its vocabulary and name. Neither is stable: a d
 and renaming a vocabulary changes its IRI. Publication therefore gives every diagram its own IRI:
 
 - Column `diagrams.iri_id` (`UUID`, `NOT NULL`, unique `uq_diagrams_iri_id`, default
-  `gen_random_uuid()`), Liquibase `024-diagram-iri-id.yaml`. The default gave every existing row its
+  `gen_random_uuid()`), Liquibase `027-diagram-iri-id.yaml`. The default gave every existing row its
   own UUID; rollback drops the constraint and the column.
 - `DiagramEntity.iriId` is set when the object is constructed, has no setter and never changes after
   insert.
@@ -471,7 +471,7 @@ Package `com.dia.ismdtoolbackend.publication`:
 | `archive.PublicationArchive` | `begin`, `store` (with retention), `fail`, `failInterrupted`, `history`, `file` (the stored gzip) |
 | `archive.PublicationSummary`, `archive.PublicationFileSummaryRow` | The history entry and its content-free file projection |
 
-Outside the package: Liquibase `024-diagram-iri-id.yaml` + `DiagramEntity.iriId`; Liquibase
+Outside the package: Liquibase `027-diagram-iri-id.yaml` + `DiagramEntity.iriId`; Liquibase
 `025-create-publications.yaml` and `026-publication-status.yaml`; `/api/admin/publikace/**` in `SecurityConfig`;
 `PublicationInProgressException`, `PublicationFailedException`, `PublicationFilePrunedException` in
 `exception`, mapped in `GlobalExceptionHandler` to `PUBLICATION_*` in `ErrorCode`; the context in

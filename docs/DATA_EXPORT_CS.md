@@ -301,7 +301,7 @@ Diagram je dnes identifikován slovníkem a názvem. Ani jedno není stálé: di
 a přejmenování slovníku mění jeho IRI. Publikace proto dává každému diagramu vlastní IRI:
 
 - Sloupec `diagrams.iri_id` (`UUID`, `NOT NULL`, unikátní `uq_diagrams_iri_id`, výchozí
-  `gen_random_uuid()`), Liquibase `024-diagram-iri-id.yaml`. Výchozí hodnota dala každému
+  `gen_random_uuid()`), Liquibase `027-diagram-iri-id.yaml`. Výchozí hodnota dala každému
   existujícímu řádku vlastní UUID; rollback omezení i sloupec odebere.
 - `DiagramEntity.iriId` se nastaví při vytvoření objektu, nemá setter a po vložení se nemění.
 - IRI = `ismd.publication.iri-base` + `diagramy/` + `iri_id`. Výchozí základ
@@ -465,7 +465,7 @@ Balíček `com.dia.ismdtoolbackend.publication`:
 | `archive.PublicationArchive` | `begin`, `store` (s uchováním), `fail`, `failInterrupted`, `history`, `file` (uložený gzip) |
 | `archive.PublicationSummary`, `archive.PublicationFileSummaryRow` | Záznam historie a projekce souboru bez obsahu |
 
-Mimo balíček: Liquibase `024-diagram-iri-id.yaml` + `DiagramEntity.iriId`; Liquibase
+Mimo balíček: Liquibase `027-diagram-iri-id.yaml` + `DiagramEntity.iriId`; Liquibase
 `025-create-publications.yaml` a `026-publication-status.yaml`; `/api/admin/publikace/**` v `SecurityConfig`;
 `PublicationInProgressException`, `PublicationFailedException`, `PublicationFilePrunedException`
 v `exception`, které `GlobalExceptionHandler` mapuje na `PUBLICATION_*` v `ErrorCode`; kontext

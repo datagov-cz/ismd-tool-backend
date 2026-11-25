@@ -71,8 +71,8 @@ databaseChangeLog:
   - include:
       file: db/changelog/v1/024-rdf-migration-log.yaml
   - include:
-      file: db/changelog/v1/024-diagram-iri-id.yaml
-  - include:
       file: db/changelog/v1/025-create-publications.yaml
   - include:
       file: db/changelog/v1/026-publication-status.yaml
+  - include:
+      file: db/changelog/v1/027-diagram-iri-id.yaml
