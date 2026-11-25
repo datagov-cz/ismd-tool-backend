@@ -5,6 +5,7 @@ import com.dia.ismdtoolbackend.config.NkdConfig;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
+import com.dia.ismdtoolbackend.service.NkdSnapshotService;
 import com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector.LinkTarget;
 import com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotOwnerWarmer.Target;
 import lombok.RequiredArgsConstructor;
@@ -29,8 +30,8 @@ import java.util.stream.Collectors;
  * (ontology detail) never block on NKD. Single warmer behind two triggers — cold/stale ontology
  * detail and post-commit upload.
  * <p>
- * Orchestrator only — no transaction here. Detection (graph read) and the batch
- * published-check are non-transactional; each owner is then snapshotted+flushed in its own
+ * Orchestrator only — no transaction here. Detection (graph read), the batch published-check and the
+ * fetch of NKD's copies are non-transactional; each owner is then snapshotted+flushed in its own
  * {@code REQUIRES_NEW} transaction by {@link NkdSnapshotOwnerWarmer}. That isolation is deliberate
  * (see {@link NkdSnapshotOwnerWarmer}): it prevents one poisoned target from rolling back the whole
  * graph's batch via the Spring rollback-only trap, and keeps each owner's row-writes + outbox enqueue
@@ -47,6 +48,7 @@ public class NkdSnapshotWarmer {
     private final NkdSnapshotOwnerWarmer ownerWarmer;
     private final NkdLinkDetector linkDetector;
     private final NkdConfig nkdConfig;
+    private final NkdSnapshotService nkdSnapshotService;
 
     /**
      * Last time a scan was STARTED per graph, so a detail read that finds no snapshot rows does not
@@ -166,7 +168,20 @@ public class NkdSnapshotWarmer {
             return;
         }
 
-        // 3. Per owner: snapshot its published targets + flush, in its OWN transaction (isolated).
+        // 3. NKD's copy of every published target, fetched before any owner transaction. Raw triples only
+        //    where some owner has no copy yet: an existing copy is only re-evaluated, never re-materialized.
+        Set<String> copied = nkdSnapshotService.findForGraph(graphName).stream()
+                .map(row -> row.getOwningConcept().getId() + "|" + row.getNkdIri())
+                .collect(Collectors.toSet());
+        Set<String> needRaw = new HashSet<>();
+        candidatesByOwner.forEach((ownerId, candidates) -> candidates.stream()
+                .map(LinkTarget::targetIri)
+                .filter(published::contains)
+                .filter(iri -> !copied.contains(ownerId + "|" + iri))
+                .forEach(needRaw::add));
+        NkdLookup nkd = NkdLookup.prefetchConcepts(nkdSparqlClient, published, needRaw::contains);
+
+        // 4. Per owner: snapshot its published targets + flush, in its OWN transaction (isolated).
         int warmedOwners = 0;
         for (Map.Entry<Long, List<LinkTarget>> entry : candidatesByOwner.entrySet()) {
             List<Target> targets = entry.getValue().stream()
@@ -178,7 +193,7 @@ public class NkdSnapshotWarmer {
             }
             ConceptMetadataEntity owner = ownerById.get(entry.getKey());
             try {
-                if (ownerWarmer.warmOwner(graphName, owner, targets)) {
+                if (ownerWarmer.warmOwner(graphName, owner, targets, nkd)) {
                     warmedOwners++;
                 }
             } catch (Exception e) {

@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.utility.validation;
 
+import com.dia.ismdtoolbackend.models.concept.PropertyConceptEditModel;
+import com.dia.ismdtoolbackend.models.concept.RelationshipConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptModel;
 import com.dia.ismdtoolbackend.models.concept.DigitalObjectModel;
@@ -52,6 +54,74 @@ class ConceptInputValidatorTest {
         DigitalObjectModel d = new DigitalObjectModel();
         d.setUrl(url);
         return d;
+    }
+
+    /** A concept reference is an IRI or a 400: text is never turned into one, and nothing unsafe enters SPARQL. */
+    @Nested
+    class ConceptReferences {
+
+        private static final String CLASS = "https://slovník.gov.cz/datový/test/pojem/osoba";
+
+        @Test
+        void iriReferencesAreAcceptedOnEveryTypeAndVerb() {
+            RelationshipConceptModel rel = new RelationshipConceptModel();
+            rel.setConceptType("VZTAH");
+            rel.setDomain(CLASS);
+            rel.setRange(CLASS);
+            rel.setSuperRelation(List.of(CLASS));
+            PropertyConceptEditModel prop = new PropertyConceptEditModel();
+            prop.setConceptType("VLASTNOST");
+            prop.setDomain(CLASS);
+            prop.setSuperProperty(List.of(CLASS));
+            ClassConceptModel cls = createModel();
+            cls.setBroaderConcept(List.of(CLASS));
+
+            assertThat(ConceptInputValidator.validate(rel)).isEmpty();
+            assertThat(ConceptInputValidator.validate(prop)).isEmpty();
+            assertThat(ConceptInputValidator.validate(cls)).isEmpty();
+        }
+
+        @Test
+        void aLabelInsteadOfAnIriIsRejectedOnEveryReferenceField() {
+            RelationshipConceptEditModel rel = new RelationshipConceptEditModel();
+            rel.setConceptType("VZTAH");
+            rel.setDomain("Osoba");
+            rel.setRange("Vozidlo");
+            rel.setSuperRelation(List.of("vlastní"));
+            ClassConceptEditModel cls = editModel();
+            cls.setBroaderConcept(List.of("Osoba"));
+            PropertyConceptModel prop = new PropertyConceptModel();
+            prop.setConceptType("VLASTNOST");
+            prop.setDomain("Osoba");
+            prop.setSuperProperty(List.of("jméno"));
+
+            assertThat(fields(ConceptInputValidator.validate(rel))).containsExactly("domain", "range", "superRelation");
+            assertThat(fields(ConceptInputValidator.validate(cls))).containsExactly("broaderConcept");
+            assertThat(fields(ConceptInputValidator.validate(prop))).containsExactly("domain", "superProperty");
+        }
+
+        @Test
+        void anIriThatCouldBreakOutOfASparqlTokenIsRejected() {
+            RelationshipConceptModel rel = new RelationshipConceptModel();
+            rel.setConceptType("VZTAH");
+            rel.setDomain(CLASS + "> ?p ?o } #");
+            ClassConceptModel cls = createModel();
+            cls.setExactMatch(List.of("urn:x"));
+
+            assertThat(fields(ConceptInputValidator.validate(rel))).containsExactly("domain");
+            assertThat(fields(ConceptInputValidator.validate(cls))).containsExactly("exactMatch");
+        }
+
+        @Test
+        void blankReferencesClearAndAreNotErrors() {
+            RelationshipConceptEditModel rel = new RelationshipConceptEditModel();
+            rel.setConceptType("VZTAH");
+            rel.setDomain(" ");
+            rel.setRange("");
+            rel.setSuperRelation(List.of());
+
+            assertThat(ConceptInputValidator.validate(rel)).isEmpty();
+        }
     }
 
     @Nested

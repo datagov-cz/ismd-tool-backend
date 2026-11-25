@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.client.esbirka;
 
+import java.time.Duration;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
@@ -20,6 +21,7 @@ final class EsbirkaRateGate {
     }
 
     private final long minSpacingNanos;
+    private final Duration maxWait;
     private final Semaphore inFlight;
     /** Fair, so a waiting call is not overtaken indefinitely by later ones. */
     private final ReentrantLock departureLock = new ReentrantLock(true);
@@ -27,7 +29,13 @@ final class EsbirkaRateGate {
     private boolean departedBefore;
 
     EsbirkaRateGate(long minSpacingMillis, int maxInFlight) {
+        this(minSpacingMillis, maxInFlight, Duration.ofSeconds(30));
+    }
+
+    /** {@code maxWait} caps the wait for a slot, however much of the request deadline is left. */
+    EsbirkaRateGate(long minSpacingMillis, int maxInFlight, Duration maxWait) {
         this.minSpacingNanos = TimeUnit.MILLISECONDS.toNanos(minSpacingMillis);
+        this.maxWait = maxWait;
         this.inFlight = new Semaphore(maxInFlight, true);
     }
 
@@ -37,7 +45,8 @@ final class EsbirkaRateGate {
      *
      * @return the departure time ({@link System#nanoTime()})
      */
-    long acquire(EsbirkaDeadline deadline) throws DeadlineExceeded, InterruptedException {
+    long acquire(EsbirkaDeadline requestDeadline) throws DeadlineExceeded, InterruptedException {
+        EsbirkaDeadline deadline = requestDeadline.atMost(maxWait);
         if (!inFlight.tryAcquire(deadline.remainingNanos(), TimeUnit.NANOSECONDS)) {
             throw new DeadlineExceeded("deadline expired waiting for an in-flight slot");
         }

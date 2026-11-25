@@ -302,5 +302,21 @@ class FusekiTextSearchTest {
             assertThat(search.filterByRelationTypes(List.of(RIDIC), List.of())).isEmpty();
             assertThat(connections).hasValue(0);
         }
+
+        @Test
+        @DisplayName("an IRI that could break out of <...> is dropped; the rest still filter")
+        void unsafeIriDropped() {
+            String breakout = RIDIC + "> ?p ?o } #";
+
+            assertThat(search.filterByRelationTypes(List.of(breakout, JMENO), List.of(RelationType.PROPERTY_OF)))
+                    .containsExactly(JMENO);
+        }
+
+        @Test
+        @DisplayName("only unsafe IRIs return empty without querying")
+        void onlyUnsafeIris() {
+            assertThat(search.filterByRelationTypes(List.of(RIDIC + ">"), List.of(RelationType.SUBCLASS))).isEmpty();
+            assertThat(connections).hasValue(0);
+        }
     }
 }

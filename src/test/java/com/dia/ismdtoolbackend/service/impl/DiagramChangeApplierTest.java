@@ -21,6 +21,7 @@ import com.dia.ismdtoolbackend.repository.DiagramEdgeRepository;
 import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.service.ConceptService;
+import com.dia.ismdtoolbackend.service.snapshot.NkdLookup;
 import com.dia.ismdtoolbackend.testsupport.rdf.Ttl;
 import org.apache.jena.rdf.model.Model;
 import org.junit.jupiter.api.BeforeAll;
@@ -73,6 +74,9 @@ class DiagramChangeApplierTest {
     @Mock private JenaTDB2Repository jenaTDB2Repository;
 
     @InjectMocks private DiagramChangeApplier applier;
+
+    /** The NKD answers a change is applied with; the applier passes them through to the concept edit. */
+    private static final NkdLookup NKD = NkdLookup.none();
 
     @BeforeAll
     static void initJena() {
@@ -143,13 +147,63 @@ class DiagramChangeApplierTest {
         return e;
     }
 
+    // ---- NKD prefetch ---------------------------------------------------------------------------
+
+    /** The same edit applyChange will make, asked of NKD before the change's transaction. */
+    @Test
+    void prefetch_asksForTheEditTheChangeWillMake() {
+        stage(A, broader(B));
+        known(concept(1, A, ConceptType.TRIDA, GRAPH));
+        NkdLookup answers = org.mockito.Mockito.mock(NkdLookup.class);
+        when(conceptService.prefetchEdit(eq(1L), any())).thenReturn(answers);
+
+        assertThat(applier.prefetchNkd(DIAGRAM_ID, A)).isSameAs(answers);
+
+        ArgumentCaptor<ClassConceptEditModel> model = ArgumentCaptor.forClass(ClassConceptEditModel.class);
+        verify(conceptService).prefetchEdit(eq(1L), model.capture());
+        assertThat(model.getValue().getBroaderConcept()).containsExactly(B);
+    }
+
+    /** Op 6 edits the target class, so its broader set (existing plus the new one) is what NKD is asked about. */
+    @Test
+    void prefetch_forConvertToHierarchy_asksForTheTargetClassEdit() {
+        stage(REL, convert(B, A));
+        known(concept(2, B, ConceptType.TRIDA, GRAPH));
+        when(jenaTDB2Repository.fetchGraph(GRAPH)).thenReturn(graph("<" + B + "> rdfs:subClassOf <" + C + "> ."));
+
+        applier.prefetchNkd(DIAGRAM_ID, REL);
+
+        ArgumentCaptor<ClassConceptEditModel> model = ArgumentCaptor.forClass(ClassConceptEditModel.class);
+        verify(conceptService).prefetchEdit(eq(2L), model.capture());
+        assertThat(model.getValue().getBroaderConcept()).containsExactly(C, A);
+    }
+
+    @Test
+    void prefetch_withNothingStaged_answersNothing() {
+        when(pendingEditRepository.findByDiagramIdAndConceptIri(DIAGRAM_ID, A)).thenReturn(Optional.empty());
+
+        assertThat(applier.prefetchNkd(DIAGRAM_ID, A).publishedAmong(List.of(B))).isEmpty();
+        verify(conceptService, never()).prefetchEdit(anyLong(), any());
+    }
+
+    /** A refusal is applyChange's to report as a per-change failure; the prefetch only answers nothing. */
+    @Test
+    void prefetch_aRefusedPrefetch_answersNothing() {
+        stage(A, broader(B));
+        known(concept(1, A, ConceptType.TRIDA, GRAPH));
+        when(conceptService.prefetchEdit(eq(1L), any()))
+                .thenThrow(new org.springframework.security.access.AccessDeniedException("no"));
+
+        assertThat(applier.prefetchNkd(DIAGRAM_ID, A).publishedAmong(List.of(B))).isEmpty();
+    }
+
     // ---- outcome --------------------------------------------------------------------------------
 
     @Test
     void noStagedRow_isNothingStaged() {
         when(pendingEditRepository.findByDiagramIdAndConceptIri(DIAGRAM_ID, A)).thenReturn(Optional.empty());
 
-        assertThat(applier.applyChange(DIAGRAM_ID, A))
+        assertThat(applier.applyChange(DIAGRAM_ID, A, NKD))
                 .isEqualTo(new DiagramChangeApplier.Outcome(null, DiagramChangeApplier.Outcome.Kind.NOTHING_STAGED));
         verifyNoInteractions(conceptService);
     }
@@ -159,7 +213,7 @@ class DiagramChangeApplierTest {
     void stagedRowWithUnreadableEdit_isNothingStaged() {
         stage(A, null);
 
-        assertThat(applier.applyChange(DIAGRAM_ID, A).kind())
+        assertThat(applier.applyChange(DIAGRAM_ID, A, NKD).kind())
                 .isEqualTo(DiagramChangeApplier.Outcome.Kind.NOTHING_STAGED);
         verifyNoInteractions(conceptService);
     }
@@ -171,7 +225,7 @@ class DiagramChangeApplierTest {
         stage(A, edit);
         when(conceptMetadataRepository.findByConceptIri(A)).thenReturn(Optional.empty());
 
-        assertThat(applier.applyChange(DIAGRAM_ID, A)).isEqualTo(new DiagramChangeApplier.Outcome(
+        assertThat(applier.applyChange(DIAGRAM_ID, A, NKD)).isEqualTo(new DiagramChangeApplier.Outcome(
                 DiagramOp.CHANGE_PROPERTY_PARENT, DiagramChangeApplier.Outcome.Kind.SKIPPED_STALE));
         verify(pendingEditRepository, never()).delete(any());
     }
@@ -181,7 +235,7 @@ class DiagramChangeApplierTest {
         stage(A, broader(B));
         known(concept(1, A, ConceptType.TRIDA, FOREIGN_GRAPH));
 
-        assertThatThrownBy(() -> applier.applyChange(DIAGRAM_ID, A))
+        assertThatThrownBy(() -> applier.applyChange(DIAGRAM_ID, A, NKD))
                 .isInstanceOf(DiagramForeignConceptException.class)
                 .hasMessageContaining(A);
         verifyNoInteractions(conceptService);
@@ -194,7 +248,7 @@ class DiagramChangeApplierTest {
         stage(A, edit);
         known(concept(1, A, ConceptType.TRIDA, GRAPH));
 
-        assertThatThrownBy(() -> applier.applyChange(DIAGRAM_ID, A))
+        assertThatThrownBy(() -> applier.applyChange(DIAGRAM_ID, A, NKD))
                 .isInstanceOf(DiagramStaleBaseException.class);
         verifyNoInteractions(conceptService);
     }
@@ -208,11 +262,11 @@ class DiagramChangeApplierTest {
         known(concept(1, A, ConceptType.TRIDA, GRAPH));
         when(diagramEdgeRepository.findByDiagramId(DIAGRAM_ID)).thenReturn(List.of());
 
-        assertThat(applier.applyChange(DIAGRAM_ID, A)).isEqualTo(new DiagramChangeApplier.Outcome(
+        assertThat(applier.applyChange(DIAGRAM_ID, A, NKD)).isEqualTo(new DiagramChangeApplier.Outcome(
                 DiagramOp.CHANGE_HIERARCHY_TYPE, DiagramChangeApplier.Outcome.Kind.MATERIALIZED));
 
         ArgumentCaptor<ClassConceptEditModel> model = ArgumentCaptor.forClass(ClassConceptEditModel.class);
-        verify(conceptService).editConcept(eq(1L), model.capture());
+        verify(conceptService).editConcept(eq(1L), model.capture(), eq(NKD));
         assertThat(model.getValue().getExactMatch()).containsExactly(C);
         assertThat(model.getValue().getBroaderConcept()).isNull();
         verify(pendingEditRepository).delete(row);
@@ -228,10 +282,10 @@ class DiagramChangeApplierTest {
         known(concept(1, A, ConceptType.VLASTNOST, GRAPH));
         known(concept(2, B, ConceptType.TRIDA, GRAPH));
 
-        applier.applyChange(DIAGRAM_ID, A);
+        applier.applyChange(DIAGRAM_ID, A, NKD);
 
         ArgumentCaptor<PropertyConceptEditModel> model = ArgumentCaptor.forClass(PropertyConceptEditModel.class);
-        verify(conceptService).editConcept(eq(1L), model.capture());
+        verify(conceptService).editConcept(eq(1L), model.capture(), eq(NKD));
         assertThat(model.getValue().getDomain()).isEqualTo(B);
         assertThat(model.getValue().getConceptType()).isEqualTo(ConceptType.VLASTNOST.getValue());
     }
@@ -245,11 +299,11 @@ class DiagramChangeApplierTest {
         known(concept(3, REL, ConceptType.VZTAH, GRAPH));
         known(concept(2, B, ConceptType.TRIDA, GRAPH));
 
-        assertThat(applier.applyChange(DIAGRAM_ID, REL).op()).isEqualTo(DiagramOp.SWAP_DIRECTION);
+        assertThat(applier.applyChange(DIAGRAM_ID, REL, NKD).op()).isEqualTo(DiagramOp.SWAP_DIRECTION);
 
         ArgumentCaptor<RelationshipConceptEditModel> model =
                 ArgumentCaptor.forClass(RelationshipConceptEditModel.class);
-        verify(conceptService).editConcept(eq(3L), model.capture());
+        verify(conceptService).editConcept(eq(3L), model.capture(), eq(NKD));
         assertThat(model.getValue().getDomain()).isEqualTo(B);
         assertThat(model.getValue().getRange()).isEqualTo(A);
     }
@@ -261,7 +315,7 @@ class DiagramChangeApplierTest {
         stage(A, edit);
         known(concept(1, A, ConceptType.KONCEPT, GRAPH));
 
-        assertThatThrownBy(() -> applier.applyChange(DIAGRAM_ID, A))
+        assertThatThrownBy(() -> applier.applyChange(DIAGRAM_ID, A, NKD))
                 .isInstanceOf(ConceptValidationException.class)
                 .hasMessageContaining("KONCEPT");
         verify(pendingEditRepository, never()).delete(any());
@@ -277,7 +331,7 @@ class DiagramChangeApplierTest {
         known(concept(1, A, ConceptType.VLASTNOST, GRAPH));
         known(concept(2, B, ConceptType.TRIDA, FOREIGN_GRAPH));
 
-        assertThatThrownBy(() -> applier.applyChange(DIAGRAM_ID, A))
+        assertThatThrownBy(() -> applier.applyChange(DIAGRAM_ID, A, NKD))
                 .isInstanceOf(DiagramForeignConceptException.class)
                 .hasMessageContaining(B);
         verifyNoInteractions(conceptService);
@@ -291,7 +345,7 @@ class DiagramChangeApplierTest {
         known(concept(1, A, ConceptType.VLASTNOST, GRAPH));
         when(conceptMetadataRepository.findByConceptIri(B)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> applier.applyChange(DIAGRAM_ID, A))
+        assertThatThrownBy(() -> applier.applyChange(DIAGRAM_ID, A, NKD))
                 .isInstanceOf(DiagramStaleBaseException.class)
                 .hasMessageContaining(B);
         verifyNoInteractions(conceptService);
@@ -306,10 +360,10 @@ class DiagramChangeApplierTest {
         known(concept(1, A, ConceptType.VLASTNOST, GRAPH));
         when(conceptMetadataRepository.findByConceptIri(external)).thenReturn(Optional.empty());
 
-        assertThat(applier.applyChange(DIAGRAM_ID, A).kind())
+        assertThat(applier.applyChange(DIAGRAM_ID, A, NKD).kind())
                 .isEqualTo(DiagramChangeApplier.Outcome.Kind.MATERIALIZED);
         ArgumentCaptor<PropertyConceptEditModel> model = ArgumentCaptor.forClass(PropertyConceptEditModel.class);
-        verify(conceptService).editConcept(eq(1L), model.capture());
+        verify(conceptService).editConcept(eq(1L), model.capture(), eq(NKD));
         assertThat(model.getValue().getDomain()).isEqualTo(external);
     }
 
@@ -325,7 +379,7 @@ class DiagramChangeApplierTest {
         when(jenaTDB2Repository.fetchGraph(GRAPH)).thenReturn(graph(
                 "<" + A + "> rdfs:subClassOf <" + B + "> , [ a owl:Class ] ."));
 
-        applier.applyChange(DIAGRAM_ID, A);
+        applier.applyChange(DIAGRAM_ID, A, NKD);
 
         assertThat(row.getEdgeKey()).isEqualTo(subclass(A, C));
         assertThat(unrelated.getEdgeKey()).isEqualTo(subclass(C, D));
@@ -342,12 +396,12 @@ class DiagramChangeApplierTest {
         when(diagramEdgeRepository.findByDiagramId(DIAGRAM_ID)).thenReturn(List.of(row));
         when(jenaTDB2Repository.fetchGraph(GRAPH)).thenReturn(graph("<" + A + "> rdfs:subClassOf <" + B + "> ."));
 
-        applier.applyChange(DIAGRAM_ID, A);
+        applier.applyChange(DIAGRAM_ID, A, NKD);
 
         assertThat(row.getEdgeKey()).isEqualTo(subclass(A, B));
         verify(diagramEdgeRepository, never()).save(any());
         ArgumentCaptor<ClassConceptEditModel> model = ArgumentCaptor.forClass(ClassConceptEditModel.class);
-        verify(conceptService).editConcept(eq(1L), model.capture());
+        verify(conceptService).editConcept(eq(1L), model.capture(), eq(NKD));
         assertThat(model.getValue().getBroaderConcept()).isEmpty();
     }
 
@@ -360,7 +414,7 @@ class DiagramChangeApplierTest {
         when(diagramEdgeRepository.findByDiagramId(DIAGRAM_ID)).thenReturn(List.of(moving, alreadyThere));
         when(jenaTDB2Repository.fetchGraph(GRAPH)).thenReturn(graph("<" + A + "> rdfs:subClassOf <" + B + "> ."));
 
-        applier.applyChange(DIAGRAM_ID, A);
+        applier.applyChange(DIAGRAM_ID, A, NKD);
 
         verify(diagramEdgeRepository).delete(moving);
         verify(diagramEdgeRepository, never()).save(any());
@@ -377,7 +431,7 @@ class DiagramChangeApplierTest {
         when(jenaTDB2Repository.fetchGraph(GRAPH)).thenReturn(graph(
                 "<" + A + "> rdfs:subClassOf <" + B + "> ; skos:exactMatch <" + C + "> ."));
 
-        applier.applyChange(DIAGRAM_ID, A);
+        applier.applyChange(DIAGRAM_ID, A, NKD);
 
         assertThat(row.getEdgeKey()).isEqualTo(subclass(A, B));
         verify(diagramEdgeRepository, never()).save(any());
@@ -394,7 +448,7 @@ class DiagramChangeApplierTest {
         when(diagramEdgeRepository.findByDiagramId(DIAGRAM_ID)).thenReturn(List.of(unrelated));
         when(jenaTDB2Repository.fetchGraph(GRAPH)).thenReturn(graph("<" + A + "> skos:exactMatch <" + C + "> ."));
 
-        applier.applyChange(DIAGRAM_ID, A);
+        applier.applyChange(DIAGRAM_ID, A, NKD);
 
         assertThat(unrelated.getEdgeKey()).isEqualTo(subclass(A, B));
         verify(diagramEdgeRepository, never()).save(any());
@@ -412,7 +466,7 @@ class DiagramChangeApplierTest {
         when(diagramEdgeRepository.findByDiagramId(DIAGRAM_ID)).thenReturn(List.of(row));
         when(jenaTDB2Repository.fetchGraph(GRAPH)).thenReturn(graph("<" + A + "> rdfs:subClassOf <" + B + "> ."));
 
-        applier.applyChange(DIAGRAM_ID, A);
+        applier.applyChange(DIAGRAM_ID, A, NKD);
 
         assertThat(row.getEdgeKey()).isEqualTo(subclass(A, B));
         verify(diagramEdgeRepository, never()).save(any());
@@ -431,11 +485,11 @@ class DiagramChangeApplierTest {
         when(jenaTDB2Repository.fetchGraph(GRAPH)).thenReturn(graph(
                 "<" + B + "> rdfs:subClassOf <" + C + "> , <" + A + "> , [ a owl:Class ] ."));
 
-        assertThat(applier.applyChange(DIAGRAM_ID, REL)).isEqualTo(new DiagramChangeApplier.Outcome(
+        assertThat(applier.applyChange(DIAGRAM_ID, REL, NKD)).isEqualTo(new DiagramChangeApplier.Outcome(
                 DiagramOp.CONVERT_TO_HIERARCHY, DiagramChangeApplier.Outcome.Kind.MATERIALIZED));
 
         ArgumentCaptor<ClassConceptEditModel> model = ArgumentCaptor.forClass(ClassConceptEditModel.class);
-        verify(conceptService).editConcept(eq(2L), model.capture());
+        verify(conceptService).editConcept(eq(2L), model.capture(), eq(NKD));
         assertThat(model.getValue().getBroaderConcept())
                 .as("existing parents carried through, the already-present new one not duplicated")
                 .containsExactlyInAnyOrder(C, A)
@@ -454,10 +508,10 @@ class DiagramChangeApplierTest {
         when(jenaTDB2Repository.findRelatedConceptUris(REL, GRAPH)).thenReturn(null);
         when(jenaTDB2Repository.fetchGraph(GRAPH)).thenReturn(graph("<" + B + "> rdfs:subClassOf <" + C + "> ."));
 
-        applier.applyChange(DIAGRAM_ID, REL);
+        applier.applyChange(DIAGRAM_ID, REL, NKD);
 
         ArgumentCaptor<ClassConceptEditModel> model = ArgumentCaptor.forClass(ClassConceptEditModel.class);
-        verify(conceptService).editConcept(eq(2L), model.capture());
+        verify(conceptService).editConcept(eq(2L), model.capture(), eq(NKD));
         assertThat(model.getValue().getBroaderConcept()).containsExactly(C, A);
     }
 
@@ -468,10 +522,10 @@ class DiagramChangeApplierTest {
         when(diagramEdgeRepository.findByDiagramId(DIAGRAM_ID)).thenReturn(List.of());
         when(jenaTDB2Repository.findRelatedConceptUris(REL, GRAPH)).thenReturn(List.of(D));
 
-        assertThatThrownBy(() -> applier.applyChange(DIAGRAM_ID, REL))
+        assertThatThrownBy(() -> applier.applyChange(DIAGRAM_ID, REL, NKD))
                 .isInstanceOf(DiagramCascadeConflictException.class);
         verify(conceptService, never()).deleteConcept(anyLong());
-        verify(conceptService, never()).editConcept(anyLong(), any());
+        verify(conceptService, never()).editConcept(anyLong(), any(), any());
     }
 
     @Test
@@ -482,7 +536,7 @@ class DiagramChangeApplierTest {
         when(jenaTDB2Repository.findRelatedConceptUris(REL, GRAPH)).thenReturn(List.of());
         when(conceptMetadataRepository.findByConceptIri(B)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> applier.applyChange(DIAGRAM_ID, REL))
+        assertThatThrownBy(() -> applier.applyChange(DIAGRAM_ID, REL, NKD))
                 .isInstanceOf(ConceptValidationException.class)
                 .hasMessageContaining(B);
         verify(conceptService, never()).deleteConcept(anyLong());
@@ -496,7 +550,7 @@ class DiagramChangeApplierTest {
         when(diagramEdgeRepository.findByDiagramId(DIAGRAM_ID)).thenReturn(List.of());
         when(jenaTDB2Repository.findRelatedConceptUris(REL, GRAPH)).thenReturn(List.of());
 
-        assertThatThrownBy(() -> applier.applyChange(DIAGRAM_ID, REL))
+        assertThatThrownBy(() -> applier.applyChange(DIAGRAM_ID, REL, NKD))
                 .isInstanceOf(DiagramForeignConceptException.class);
         verify(conceptService, never()).deleteConcept(anyLong());
     }
@@ -508,12 +562,12 @@ class DiagramChangeApplierTest {
         stage(REL, convert(resolve(addBroaderOn), resolve(broader)));
         known(concept(3, REL, ConceptType.VZTAH, GRAPH));
 
-        assertThatThrownBy(() -> applier.applyChange(DIAGRAM_ID, REL))
+        assertThatThrownBy(() -> applier.applyChange(DIAGRAM_ID, REL, NKD))
                 .isInstanceOf(ConceptValidationException.class)
                 .hasMessageContaining(REL);
         verify(jenaTDB2Repository, never()).findRelatedConceptUris(any(), any());
         verify(diagramEdgeRepository, never()).findByDiagramId(anyLong());
-        verify(conceptService, never()).editConcept(anyLong(), any());
+        verify(conceptService, never()).editConcept(anyLong(), any(), any());
         verify(conceptService, never()).deleteConcept(anyLong());
     }
 

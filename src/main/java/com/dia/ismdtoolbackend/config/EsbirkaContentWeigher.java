@@ -6,6 +6,7 @@ import com.dia.ismdtoolbackend.models.eli.FragmentModel;
 import com.github.benmanes.caffeine.cache.Weigher;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Estimated heap bytes of an e-Sbírka content entry: 2 bytes per character (Czech text is stored
@@ -25,10 +26,21 @@ final class EsbirkaContentWeigher implements Weigher<Object, Object> {
                     + (content.getVersions() == null ? 0 : content.getVersions().size() * (long) NODE_OVERHEAD * 2);
         } else if (value instanceof List<?> list) {
             bytes = list.stream().mapToLong(EsbirkaContentWeigher::model).sum();
+        } else if (value instanceof Map<?, ?> map) {
+            bytes = map.entrySet().stream().mapToLong(EsbirkaContentWeigher::entry).sum();
         } else {
             bytes = UNKNOWN_ENTRY;
         }
         return (int) Math.min(Integer.MAX_VALUE, bytes);
+    }
+
+    /** One fragment IRI → subtree HTML entry of the subtree-body cache. */
+    private static long entry(Map.Entry<?, ?> e) {
+        return NODE_OVERHEAD + 2L * (text(e.getKey()) + text(e.getValue()));
+    }
+
+    private static int text(Object o) {
+        return o instanceof String s ? s.length() : 0;
     }
 
     private static long model(Object item) {

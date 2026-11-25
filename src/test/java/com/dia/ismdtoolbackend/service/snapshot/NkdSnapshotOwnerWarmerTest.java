@@ -52,6 +52,8 @@ class NkdSnapshotOwnerWarmerTest {
     @Mock private OutboxRelayTrigger outboxRelayTrigger;
     @Mock private ConceptMetadataRepository conceptMetadataRepository;
 
+    @Mock private NkdLookup nkd;
+
     @InjectMocks private NkdSnapshotOwnerWarmer warmer;
 
     private ConceptMetadataEntity owner;
@@ -82,9 +84,9 @@ class NkdSnapshotOwnerWarmerTest {
             cs.toRemove.add(staleLabel);
             return null;
         }).when(nkdSnapshotService).refreshOrSeedForWarming(
-                eq(owner), eq(NKD_IRI), eq(SnapshotLinkType.BROADER_CLASS.value()), any());
+                eq(owner), eq(NKD_IRI), eq(SnapshotLinkType.BROADER_CLASS.value()), any(), eq(nkd));
 
-        boolean delta = warmer.warmOwner(GRAPH, owner, oneTarget());
+        boolean delta = warmer.warmOwner(GRAPH, owner, oneTarget(), nkd);
 
         assertThat(delta).isTrue();
         ArgumentCaptor<Set<Statement>> removed = ArgumentCaptor.captor();
@@ -104,7 +106,7 @@ class NkdSnapshotOwnerWarmerTest {
         owner.setUpdatedAt(before);
         // refreshOrSeedForWarming contributes nothing to the change set (existing copy, re-evaluated only).
 
-        boolean delta = warmer.warmOwner(GRAPH, owner, oneTarget());
+        boolean delta = warmer.warmOwner(GRAPH, owner, oneTarget(), nkd);
 
         assertThat(delta).isFalse();
         verify(outboxWriter, never()).enqueueUpsert(anyString(), anyString(), any(), any());

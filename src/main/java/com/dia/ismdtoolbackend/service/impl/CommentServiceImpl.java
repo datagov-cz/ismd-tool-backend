@@ -36,8 +36,8 @@ public class CommentServiceImpl implements CommentService {
     @Override
     @Transactional
     public CommentModel postComment(CommentCreateModel commentCreateModel, String userId) {
-        log.info("Creating commentEntity for: ontology: {}, concept: {}, comment: {}",
-                commentCreateModel.getOntologyIRI(), commentCreateModel.getConceptIRI(), commentCreateModel.getComment());
+        log.info("Creating comment for ontology: {}, concept: {}",
+                commentCreateModel.getOntologyIRI(), commentCreateModel.getConceptIRI());
 
         validateInput(commentCreateModel, userId);
 

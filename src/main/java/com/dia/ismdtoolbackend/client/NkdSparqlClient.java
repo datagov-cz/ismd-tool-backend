@@ -23,6 +23,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Component
 @Slf4j
@@ -316,42 +317,50 @@ public class NkdSparqlClient {
     /**
      * Returns which of {@code resourceIris} exist as published resources in NKD, in a single batched CONSTRUCT
      * rather than one round-trip per IRI — so wall-time is independent of the batch size.
-     * Best-effort: an NKD outage returns an empty list, never an exception.
+     * Best-effort: an NKD outage returns an empty list, never an exception; callers that must tell an outage
+     * from "none published" use {@link #findPublishedAmong}.
      */
     public List<String> getPublishedResourcesList(List<String> resourceIris) {
-        if (resourceIris == null || resourceIris.isEmpty()) {
-            log.debug("No resource IRIs provided for NKD verification");
-            return new ArrayList<>();
-        }
+        return findPublishedAmong(resourceIris).map(List::copyOf).orElseGet(ArrayList::new);
+    }
 
+    /**
+     * Which of {@code resourceIris} NKD publishes, or empty when NKD did not answer (endpoint not configured,
+     * busy, timed out or failed). An answered check with nothing published is an empty set, not an empty
+     * {@link Optional}.
+     */
+    public Optional<Set<String>> findPublishedAmong(List<String> resourceIris) {
+        if (resourceIris == null || resourceIris.isEmpty()) {
+            return Optional.of(Set.of());
+        }
         if (!executor.isConfigured()) {
             log.warn("NKD SPARQL endpoint not configured, skipping verification");
-            return new ArrayList<>();
+            return Optional.empty();
         }
 
         log.debug("Verifying {} resources against NKD", resourceIris.size());
-
+        String label = "NKD publication check for " + resourceIris.size() + " resource(s)";
         String query = NKDSPARQLConstructQuery.buildPublicationCheckQuery(resourceIris);
-        Optional<Model> result = executor.constructLenient(
-                "NKD publication check for " + resourceIris.size() + " resource(s)", query);
-        if (result.isEmpty()) {
-            log.info("Found 0 published resources out of {} total resources", resourceIris.size());
-            return new ArrayList<>();
+        Optional<Model> result;
+        try {
+            result = executor.construct(label, query);
+        } catch (RuntimeException e) {
+            log.warn("{} failed: {}", label, e.getMessage());
+            return Optional.empty();
         }
 
-        // Intersect the requested IRIs with the subjects NKD returned, so a lenient result
-        // can only ever confirm IRIs the caller actually asked about.
+        // Intersect the requested IRIs with the subjects NKD returned, so the result can only ever
+        // confirm IRIs the caller actually asked about.
         Set<String> requested = new HashSet<>(resourceIris);
-        List<String> publishedResources = result.get().listSubjects().toList().stream()
-                .filter(Resource::isURIResource)
-                .map(Resource::getURI)
-                .filter(requested::contains)
-                .distinct()
-                .toList();
+        Set<String> published = result.map(model -> model.listSubjects().toList().stream()
+                        .filter(Resource::isURIResource)
+                        .map(Resource::getURI)
+                        .filter(requested::contains)
+                        .collect(Collectors.toUnmodifiableSet()))
+                .orElse(Set.of());
 
-        log.info("Found {} published resources out of {} total resources",
-                publishedResources.size(), resourceIris.size());
-        return publishedResources;
+        log.info("Found {} published resources out of {} total resources", published.size(), resourceIris.size());
+        return Optional.of(published);
     }
 
     /**

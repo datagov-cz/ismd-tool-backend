@@ -34,4 +34,10 @@ record DiagramSnapshot(
         /* Graph name per foreign node IRI. An NKD IRI has no PG row, so no entry. */
         Map<String, String> foreignGraphs
 ) {
+
+    /** The same diagram with no staged edits: live content only. */
+    DiagramSnapshot withoutOverlays() {
+        return new DiagramSnapshot(diagramId, name, graphName, version, viewport, nodes, types, slugs,
+                nodeIriByRowId, edgeWaypoints, onCanvasEdges, edgeTombstones, Map.of(), foreignGraphs);
+    }
 }

@@ -58,7 +58,8 @@ class UploadConceptGate {
 
     /**
      * The domain/range targets outside the vocabulary that must not be published in NKD.
-     * Targets owned locally are left out: a working copy is published, but it is ours.
+     * Working copies in {@code graphName} are left out: published, but ours. A concept of another ISMD
+     * vocabulary that NKD publishes is not.
      *
      * @param concepts the upload's owned concepts and their resolved types
      * @return concept IRI → its candidate targets; concepts without any are absent
@@ -75,7 +76,8 @@ class UploadConceptGate {
         }
 
         Set<String> all = targets.values().stream().flatMap(List::stream).collect(Collectors.toSet());
-        Set<String> locallyOwned = conceptMetadataRepository.findByConceptIriIn(new ArrayList<>(all)).stream()
+        Set<String> locallyOwned = conceptMetadataRepository
+                .findByGraphNameAndConceptIriIn(graphName, new ArrayList<>(all)).stream()
                 .map(ConceptMetadataEntity::getConceptIri)
                 .collect(Collectors.toSet());
         targets.replaceAll((iri, found) -> found.stream().filter(t -> !locallyOwned.contains(t)).toList());

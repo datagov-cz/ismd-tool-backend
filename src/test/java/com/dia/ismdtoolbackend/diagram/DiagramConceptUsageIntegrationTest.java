@@ -24,6 +24,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
+import java.util.function.Predicate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -46,6 +47,8 @@ import static org.mockito.Mockito.when;
  */
 @DiagramServiceIT
 class DiagramConceptUsageIntegrationTest extends PostgresIntegrationTestBase {
+
+    private static final Predicate<String> ALL_VISIBLE = slug -> true;
 
     private static final String GRAPH = "https://slovnik.gov.cz/usage";
     private static final String SLUG = "usage-ontology";
@@ -91,7 +94,7 @@ class DiagramConceptUsageIntegrationTest extends PostgresIntegrationTestBase {
     void classOnACanvas_isReportedAsANode() {
         Long diagramId = diagram("Hlavní diagram", d -> node(d, CLASS_IRI));
 
-        DiagramConceptUsageDto usage = usageService.usageForSlug(slugOf(CLASS_IRI));
+        DiagramConceptUsageDto usage = usageService.usageForSlug(slugOf(CLASS_IRI), ALL_VISIBLE);
 
         assertThat(usage.placements()).singleElement().satisfies(p -> {
             assertThat(p.diagramId()).isEqualTo(diagramId);
@@ -109,7 +112,7 @@ class DiagramConceptUsageIntegrationTest extends PostgresIntegrationTestBase {
     void relationshipOnACanvas_isReportedAsAnEdge() {
         Long diagramId = diagram("Vztahový pohled", d -> edge(d, VZTAH_IRI));
 
-        DiagramConceptUsageDto usage = usageService.usageForSlug(slugOf(VZTAH_IRI));
+        DiagramConceptUsageDto usage = usageService.usageForSlug(slugOf(VZTAH_IRI), ALL_VISIBLE);
 
         assertThat(usage.placements()).singleElement().satisfies(p -> {
             assertThat(p.diagramId()).isEqualTo(diagramId);
@@ -126,7 +129,7 @@ class DiagramConceptUsageIntegrationTest extends PostgresIntegrationTestBase {
     void propertyOnACanvas_isReportedAsAPropertyRowWithItsHostClass() {
         Long diagramId = diagram("Vlastnostní pohled", d -> node(d, CLASS_IRI, List.of(VLASTNOST_IRI)));
 
-        DiagramConceptUsageDto usage = usageService.usageForSlug(slugOf(VLASTNOST_IRI));
+        DiagramConceptUsageDto usage = usageService.usageForSlug(slugOf(VLASTNOST_IRI), ALL_VISIBLE);
 
         assertThat(usage.placements()).singleElement().satisfies(p -> {
             assertThat(p.diagramId()).isEqualTo(diagramId);
@@ -146,7 +149,7 @@ class DiagramConceptUsageIntegrationTest extends PostgresIntegrationTestBase {
     void propertyNotListedByItsHostClass_isNotReported() {
         diagram("Nekurátorovaný", d -> node(d, CLASS_IRI, List.of(OTHER_CLASS_IRI)));
 
-        DiagramConceptUsageDto usage = usageService.usageForSlug(slugOf(VLASTNOST_IRI));
+        DiagramConceptUsageDto usage = usageService.usageForSlug(slugOf(VLASTNOST_IRI), ALL_VISIBLE);
 
         assertThat(usage.placements())
                 .as("a node whose list omits the property does not draw it")
@@ -160,7 +163,7 @@ class DiagramConceptUsageIntegrationTest extends PostgresIntegrationTestBase {
     void conceptOnNoCanvas_returnsEmptyPlacements_notAnError() {
         diagram("Jiný diagram", d -> node(d, OTHER_CLASS_IRI));
 
-        DiagramConceptUsageDto usage = usageService.usageForSlug(slugOf(CLASS_IRI));
+        DiagramConceptUsageDto usage = usageService.usageForSlug(slugOf(CLASS_IRI), ALL_VISIBLE);
 
         assertThat(usage.conceptIri()).isEqualTo(CLASS_IRI);
         assertThat(usage.conceptName()).containsEntry("cs", "Zaměstnanec");
@@ -170,7 +173,7 @@ class DiagramConceptUsageIntegrationTest extends PostgresIntegrationTestBase {
     /** A concept on nothing must not pay for a hierarchy fetch — the empty answer is decided in PG. */
     @Test
     void conceptOnNoCanvas_doesNotTouchTheGraph() {
-        usageService.usageForSlug(slugOf(CLASS_IRI));
+        usageService.usageForSlug(slugOf(CLASS_IRI), ALL_VISIBLE);
 
         verify(tdb2, never()).fetchConceptHierarchy(any(), any());
         verify(resolutionEngine, never()).resolveAll(any());
@@ -178,7 +181,7 @@ class DiagramConceptUsageIntegrationTest extends PostgresIntegrationTestBase {
 
     @Test
     void unknownSlug_isRejected() {
-        assertThatThrownBy(() -> usageService.usageForSlug("neexistujici-pojem"))
+        assertThatThrownBy(() -> usageService.usageForSlug("neexistujici-pojem", ALL_VISIBLE))
                 .isInstanceOf(EntityNotFoundException.class);
     }
 
@@ -188,7 +191,7 @@ class DiagramConceptUsageIntegrationTest extends PostgresIntegrationTestBase {
         Long first = diagram("První", d -> node(d, CLASS_IRI));
         Long second = diagram("Druhý", d -> node(d, CLASS_IRI));
 
-        DiagramConceptUsageDto usage = usageService.usageForSlug(slugOf(CLASS_IRI));
+        DiagramConceptUsageDto usage = usageService.usageForSlug(slugOf(CLASS_IRI), ALL_VISIBLE);
 
         assertThat(usage.placements()).extracting(DiagramConceptUsageDto.Placement::diagramId)
                 .containsExactlyInAnyOrder(first, second);
@@ -205,7 +208,7 @@ class DiagramConceptUsageIntegrationTest extends PostgresIntegrationTestBase {
         diagram("B", d -> node(d, CLASS_IRI));
         diagram("C", d -> node(d, CLASS_IRI));
 
-        usageService.usageForSlug(slugOf(CLASS_IRI));
+        usageService.usageForSlug(slugOf(CLASS_IRI), ALL_VISIBLE);
 
         verify(tdb2).fetchConceptHierarchy(any(), any());
         verify(resolutionEngine).resolveAll(any());
@@ -220,7 +223,7 @@ class DiagramConceptUsageIntegrationTest extends PostgresIntegrationTestBase {
                 new ConceptHierarchyLinks(List.of(PARENT_CLASS_IRI), List.of()));
         diagram("S hierarchií", d -> node(d, CLASS_IRI));
 
-        DiagramConceptUsageDto usage = usageService.usageForSlug(slugOf(CLASS_IRI));
+        DiagramConceptUsageDto usage = usageService.usageForSlug(slugOf(CLASS_IRI), ALL_VISIBLE);
 
         assertThat(usage.placements()).singleElement().satisfies(p -> {
             assertThat(p.broader()).singleElement()
@@ -245,7 +248,7 @@ class DiagramConceptUsageIntegrationTest extends PostgresIntegrationTestBase {
         overlay.setBroaderConcept(List.of(OTHER_CLASS_IRI));
         stage(staged, VZTAH_IRI, overlay);
 
-        DiagramConceptUsageDto usage = usageService.usageForSlug(slugOf(VZTAH_IRI));
+        DiagramConceptUsageDto usage = usageService.usageForSlug(slugOf(VZTAH_IRI), ALL_VISIBLE);
 
         assertThat(placement(usage, staged)).satisfies(p -> {
             assertThat(p.broader()).singleElement()
@@ -273,7 +276,7 @@ class DiagramConceptUsageIntegrationTest extends PostgresIntegrationTestBase {
         overlay.setDomain(OTHER_CLASS_IRI);          // domain staged; hierarchy untouched
         stage(diagramId, VZTAH_IRI, overlay);
 
-        DiagramConceptUsageDto usage = usageService.usageForSlug(slugOf(VZTAH_IRI));
+        DiagramConceptUsageDto usage = usageService.usageForSlug(slugOf(VZTAH_IRI), ALL_VISIBLE);
 
         assertThat(placement(usage, diagramId)).satisfies(p -> {
             assertThat(p.domain()).isNotNull();
@@ -294,7 +297,7 @@ class DiagramConceptUsageIntegrationTest extends PostgresIntegrationTestBase {
         overlay.setBroaderConcept(List.of());
         stage(diagramId, CLASS_IRI, overlay);
 
-        DiagramConceptUsageDto usage = usageService.usageForSlug(slugOf(CLASS_IRI));
+        DiagramConceptUsageDto usage = usageService.usageForSlug(slugOf(CLASS_IRI), ALL_VISIBLE);
 
         assertThat(placement(usage, diagramId).broader())
                 .as("staged [] clears the predicate rather than falling back to live")
@@ -318,7 +321,7 @@ class DiagramConceptUsageIntegrationTest extends PostgresIntegrationTestBase {
         otherDiagram.setBroaderConcept(List.of(OTHER_CLASS_IRI));
         stage(theirs, CLASS_IRI, otherDiagram);        // same concept, different diagram
 
-        DiagramConceptUsageDto usage = usageService.usageForSlug(slugOf(CLASS_IRI));
+        DiagramConceptUsageDto usage = usageService.usageForSlug(slugOf(CLASS_IRI), ALL_VISIBLE);
 
         assertThat(placement(usage, mine).pending())
                 .as("neither staged edit belongs to (this diagram, this concept)")

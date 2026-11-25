@@ -23,7 +23,7 @@ class ConceptFieldUpdaters {
     ConceptFieldUpdaters(ConceptIriFactory iriFactory) {
         this.labels = new ConceptLabelUpdater();
         this.sources = new ConceptSourceUpdater();
-        this.relations = new ConceptRelationUpdater(iriFactory);
+        this.relations = new ConceptRelationUpdater();
         this.governance = new ConceptGovernanceUpdater(iriFactory);
         this.classification = new ConceptDataClassificationUpdater();
         this.codeLists = new ConceptCodeListUpdater();

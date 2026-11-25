@@ -54,6 +54,23 @@ zápisu.
 smazání slovníku. **Nepokryto:** **upload** slovníku (stále přímý zápis — tuto cestu jistí
 rekonciliátor a existující **best effort** revert).
 
+### Upload a úložiště grafů
+
+Upload zapíše graf nejprve do Fuseki, potom commitne řádek slovníku; při neúspěšném commitu graf zase
+smaže. Graf bez řádku (`GRAPH_ORPHAN`) přesto může zůstat, když proces skončí mezi oběma zápisy, když
+selže i ono úklidové smazání, nebo když se záznam `DELETE_GRAPH` ze smazání slovníku nedostane do Fuseki.
+Upload proti tomu chrání dvě kontroly:
+
+- **Neaplikovaný záznam outboxu pro graf → `409 ONTOLOGY_CREATION_CONFLICT`.** Dokud je pro graf
+  nějaký záznam čekající nebo `FAILED`, upload stejného IRI se odmítne: frontované smazání dřívějšího
+  slovníku by jinak nový graf odstranilo, až by se konečně aplikovalo. Zopakujte selhaný záznam (nebo
+  počkejte na relay) a nahrajte znovu.
+- **Zbylý graf bez řádku → nahrazen, s WARN.** Upload přes takový graf jej nahradí a zaloguje
+  `Graph <iri> holds data but has no vocabulary row; the upload replaces it`. Opakované nahrání tak
+  uklidí zbytky dřívějších neúspěšných pokusů.
+
+Data vložená do Fuseki mimo aplikaci chráněna **nejsou**: viz provozní příručka níže.
+
 ## Životní cyklus záznamu
 
 ```
@@ -150,12 +167,11 @@ s cizím IRI, jejichž `inScheme` ukazuje na schéma, jehož prefixem jejich IRI
 | Kategorie | Význam                                                                                                   | Nakládání                                                              |
 |---|----------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------|
 | `RDF_ORPHAN` | Vlastněný RDF subjekt ve Fuseki, žádný PG řádek                                                          | Jediná **automaticky opravitelná** kategorie (budoucí fáze)            |
-| `PG_MISSING_RDF` | PG řádek, jehož IRI není vlastnicky řešitelné v **žádném** grafu                                         | Pouze hlášení (dvě příčiny: neúspěšné smazání vs. neúspěšné vytvoření) |
+| `PG_MISSING_RDF` | PG řádek, jehož IRI není vlastnicky řešitelné v **žádném** grafu a ve svém deklarovaném grafu nemá žádné trojice | Pouze hlášení (dvě příčiny: neúspěšné smazání vs. neúspěšné vytvoření) |
 | `IRI_GRAPH_MISMATCH` | PG IRI je vlastnicky řešitelné, ale ne ve svém deklarovaném `graphName` (nebo je `graphName` null)       | Pouze hlášení                                                          |
 | `GRAPH_ORPHAN` | Graf Fuseki drží vlastněné subjekty, ale neodkazuje na něj žádný řádek slovníku                          | Pouze hlášení (smazatelné jen v budoucí hlídané fázi)                  |
 | `SUSPECTED_RENAME` | Dvojice `RDF_ORPHAN`(nové IRI) + `PG_MISSING_RDF`(staré IRI), jež vypadá jako jedno nedokončené přejmenování | Pouze hlášení; obě IRI vyloučena z jakékoli budoucí opravy             |
-| `EXCLUDED_NO_INSCHEME` | Subjekt v daném namespacu bez `inScheme` (záměrně vyloučený)                                    | Informativní; *zatím se nehlásí*                                       |
-| `RDF_NOT_OWNED_RESOLVABLE` | PG IRI má trojice, ale není vlastnicky řešitelné (např. ztracené `inScheme`)                             | Pouze hlášení; *zatím se nehlásí*                                      |
+| `RDF_NOT_OWNED_RESOLVABLE` | PG řádek, jehož IRI je subjektem trojic ve svém deklarovaném grafu, ale není vlastnicky řešitelné v žádném grafu (ztracené nebo cizí `inScheme`); nahrazuje u řádku `PG_MISSING_RDF` | Pouze hlášení |
 
 > **Dnes pouze detekce.** Žádná kategorie se neopravuje. Automaticky opravitelná je jen
 > `RDF_ORPHAN`, a to v pozdější iteraci.
@@ -206,6 +222,14 @@ curl -s -X POST "http://localhost:8081/popisujeme/api/admin/reconciler/run" \
   spusťte sken znovu — může jít o přechodný stav (PG commit dorazil těsně po PG snímku skenu).
 - **`SUSPECTED_RENAME`:** pravděpodobně nedokončené přejmenování; obě IRI jsou hlášena spolu. Pouze
   hlášení.
+- **`GRAPH_ORPHAN`:** graf s vlastněnými pojmy a bez řádku slovníku. Pouze hlášení. Příští upload
+  stejného IRI jej nahradí (WARN v logu); chcete-li jej místo toho odstranit, smažte graf ve Fuseki.
+- **Změny Fuseki nebo PostgreSQL mimo aplikaci** (obnova ze zálohy, výmaz dat, ruční nahrání): aplikace
+  bere existující slovníky z PostgreSQL a upload nahradí graf, který nemá řádek. Proto:
+  - obnovujte nebo mažte **obě úložiště společně**, ze záloh ze stejného okamžiku;
+  - po změně spusťte rekonciliátor (`POST /run`) a vyřešte každý `GRAPH_ORPHAN` a `PG_MISSING_RDF`,
+    než uživatelé začnou znovu zapisovat;
+  - graf slovníku, který má aplikace vlastnit, nikdy nenahrávejte do Fuseki ručně; nahrajte jej uploadem.
 - **`409` na `POST /run`:** plánovaný nebo jiný ruční běh ještě probíhá. Použijte `GET /report`.
 - **Běh skončí chybou max-concepts:** dataset překračuje `reconciler.max-concepts`. Zvyšte limit (nebo
   stránkujte snímek).

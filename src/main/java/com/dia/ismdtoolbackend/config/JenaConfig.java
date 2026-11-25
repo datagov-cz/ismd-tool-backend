@@ -22,6 +22,10 @@ public class JenaConfig {
     @Value("${jena.fuseki.connection-timeout:5000}")
     private int connectionTimeout;
 
+    /** Upper bound on the wait for a Fuseki response, so a stalled call releases its semaphore permit. */
+    @Value("${jena.fuseki.request-timeout:30000}")
+    private int requestTimeout;
+
     /** Basic-auth user for Fuseki. Empty (the default) sends no credentials, as local compose expects. */
     @Value("${jena.fuseki.username:}")
     private String username;
@@ -42,7 +46,8 @@ public class JenaConfig {
 
     @Bean
     public HttpClient fusekiHttpClient() {
-        return buildFusekiHttpClient(connectionTimeout, username, password);
+        return new RequestTimeoutHttpClient(buildFusekiHttpClient(connectionTimeout, username, password),
+                Duration.ofMillis(requestTimeout));
     }
 
     /**

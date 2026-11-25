@@ -64,8 +64,9 @@ public class DiagramServiceImpl implements DiagramService {
      * for the same failure.
      */
     @Override
-    public DiagramDto getDiagram(String ontologySlug, Long diagramId) {
-        DiagramSnapshot snapshot = transactions.loadForRead(ontologySlug, diagramId);
+    public DiagramDto getDiagram(String ontologySlug, Long diagramId, boolean withPendingEdits) {
+        DiagramSnapshot loaded = transactions.loadForRead(ontologySlug, diagramId);
+        DiagramSnapshot snapshot = withPendingEdits ? loaded : loaded.withoutOverlays();
         BackingResolver live;
         try {
             live = liveContentReader.liveContent(snapshot);

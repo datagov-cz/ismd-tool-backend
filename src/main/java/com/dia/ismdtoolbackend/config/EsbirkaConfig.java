@@ -14,6 +14,7 @@ public class EsbirkaConfig {
     private String provider = "sparql";
     /** Heap budget shared by the whole-version content caches. */
     private int cacheBudgetMb = 64;
+    private int subtreeCacheBudgetMb = 32;
     private Sparql sparql = new Sparql();
     private Rest rest = new Rest();
     private Search search = new Search();
@@ -35,6 +36,8 @@ public class EsbirkaConfig {
         private long requestDeadlineMs = 60000;
         private long minRequestSpacingMs = 40;
         private int maxInFlight = 4;
+        /** Longest wait for a free call slot; the rest of the request deadline does not extend it. */
+        private long maxSlotWaitMs = 30000;
         private Retry retry = new Retry();
         private CircuitBreaker circuitBreaker = new CircuitBreaker();
     }

@@ -85,6 +85,7 @@ class UploadMetadataWriter {
             ontologyMetadataRepository.save(ontologyMetadata);
         }
 
+        // Owned subjects without slovníky:pojem were rejected by the OFN gate and lost skos:inScheme.
         Resource pojemResource = model.createResource(POJEM_GENERIC);
         ResIterator conceptIterator = model.listResourcesWithProperty(RDF.type, pojemResource);
         List<ConceptMetadataEntity> conceptEntities = new ArrayList<>();

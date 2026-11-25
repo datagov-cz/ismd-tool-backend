@@ -30,10 +30,11 @@ public class CommentController {
             @RequestBody CommentCreateModel commentCreateModel,
             @AuthenticationPrincipal SecurityUser securityUser
     ) {
-        log.info("Comment post request created, ontologyIri: {}, conceptIri: {}, userId: {}, comment: {}", commentCreateModel.getOntologyIRI(), commentCreateModel.getConceptIRI(), securityUser.getUserId(), commentCreateModel.getComment());
+        log.info("Comment post requested, ontologyIri: {}, conceptIri: {}, userId: {}",
+                commentCreateModel.getOntologyIRI(), commentCreateModel.getConceptIRI(), securityUser.getUserId());
 
         CommentModel postedComment = commentService.postComment(commentCreateModel, securityUser.getUserId());
-        log.info("Comment post successful: {}", postedComment);
+        log.info("Comment post successful, commentId: {}", postedComment.getId());
 
         return ResponseEntity.ok().body(ApiResponseDto.success(postedComment, "Komentář úspěšně přidán."));
     }

@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service;
 
+import com.dia.ismdtoolbackend.service.snapshot.NkdLookup;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.NkdConceptSnapshotEntity;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
@@ -23,18 +24,19 @@ public interface NkdSnapshotService {
 
     /**
      * Creates or refreshes the snapshot for an (owner, NKD IRI) link, contributing the resulting
-     * triple delta to {@code ownerChangeSet}.
+     * triple delta to {@code ownerChangeSet}. Reads NKD only through {@code nkd}, which callers fetch
+     * before their transaction.
      * @param linkType the logical link type token (see {@code SnapshotLinkType.value()})
      * @return the upserted snapshot, or {@code null} if NKD had no such concept (removal path taken)
      */
     NkdConceptSnapshotEntity createOrRefreshSnapshot(ConceptMetadataEntity owner, String nkdIri,
-                                                     String linkType, OwnerChangeSet ownerChangeSet);
+                                                     String linkType, OwnerChangeSet ownerChangeSet, NkdLookup nkd);
 
     /**
-     * Compares the stored snapshot against live NKD and caches the result on the row
+     * Compares the stored snapshot against NKD's copy in {@code nkd} and caches the result on the row
      * ({@code lastDeviationStatus} / {@code lastCheckedAt}).
      */
-    PublishedConceptDeviationModel evaluateDeviation(NkdConceptSnapshotEntity snapshot);
+    PublishedConceptDeviationModel evaluateDeviation(NkdConceptSnapshotEntity snapshot, NkdLookup nkd);
 
     /**
      * The read-path warmer's per-target operation. A snapshot is a frozen copy, so a passive read must
@@ -45,7 +47,7 @@ public interface NkdSnapshotService {
      * the explicit command paths ({@code updateLocalCopy} / edit reconcile).
      */
     void refreshOrSeedForWarming(ConceptMetadataEntity owner, String nkdIri, String linkType,
-                                 OwnerChangeSet ownerChangeSet);
+                                 OwnerChangeSet ownerChangeSet, NkdLookup nkd);
 
     /**
      * Removes the link + snapshot, contributing the removal to {@code ownerChangeSet}.

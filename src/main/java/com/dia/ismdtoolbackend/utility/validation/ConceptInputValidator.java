@@ -72,7 +72,10 @@ public final class ConceptInputValidator {
         validateNonLegalList("definingNonLegalSource", v.definingNonLegalSource(), problems);
         validateNonLegalList("relatedNonLegalSource", v.relatedNonLegalSource(), problems);
 
-        validateExactMatch(v.exactMatch(), problems);
+        validateIris("exactMatch", v.exactMatch(), problems);
+        if (v.references() != null) {
+            v.references().forEach((field, values) -> validateIris(field, values, problems));
+        }
 
         validateAgenda(v.agendaCode(), problems);
         validateAis(v.agendaSystemCode(), problems);
@@ -140,13 +143,17 @@ public final class ConceptInputValidator {
         }
     }
 
-    private static void validateExactMatch(List<String> values, List<InvalidInput> problems) {
+    /**
+     * A concept reference must be an IRI that is also safe inside a SPARQL {@code <...>} token. Text that
+     * is not one is rejected; it is never turned into an IRI.
+     */
+    private static void validateIris(String field, List<String> values, List<InvalidInput> problems) {
         if (values == null) return;
         for (String v : values) {
             if (v == null || v.trim().isEmpty()) continue;   // blank entry = ignored
             String trimmed = v.trim();
-            if (!UtilityMethods.isValidIRI(trimmed)) {
-                problems.add(new InvalidInput("exactMatch", trimmed, REASON_IRI));
+            if (!UtilityMethods.isValidIRI(trimmed) || !SparqlIriValidator.isSafeHttpIri(trimmed)) {
+                problems.add(new InvalidInput(field, trimmed, REASON_IRI));
             }
         }
     }

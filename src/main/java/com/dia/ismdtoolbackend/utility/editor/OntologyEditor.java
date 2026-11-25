@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
+import com.dia.ismdtoolbackend.exception.OntologyExceptions;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.DescriptionModel;
 import com.dia.ismdtoolbackend.models.NameModel;
@@ -8,7 +9,6 @@ import com.dia.ismdtoolbackend.utility.URIGenerator;
 import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.*;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.SKOS;
@@ -102,9 +102,7 @@ public class OntologyEditor {
 
         } catch (Exception e) {
             log.error("Failed to edit ontology: {}", iri, e);
-            OntologyException ex = new OntologyException("Failed to edit ontology: " + iri + " - " + e.getMessage());
-            ex.initCause(e);
-            throw ex;
+            throw OntologyExceptions.withCause("Failed to edit ontology: " + iri, e);
         } finally {
             if (supportsTransactions && !committed) {
                 try {

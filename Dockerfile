@@ -26,6 +26,9 @@ RUN --mount=type=cache,target=/root/.m2/repository \
 FROM eclipse-temurin:17-jre@sha256:541b08fc7f494edf14e436ff6bfb55767e4a115c87bfc547b8c5de957b58737f AS runtime
 WORKDIR /app
 
+# Unprivileged runtime user. The app writes nothing under /app; Tomcat's work files go to /tmp.
+RUN groupadd --system app && useradd --system --gid app --no-create-home --shell /usr/sbin/nologin app
+
 ENV SPRING_PROFILES_ACTIVE=production
 
 COPY --from=builder /app/target/ismd-tool-backend-*.jar app.jar
@@ -41,5 +44,10 @@ ADD --checksum=sha256:e81ef99fd30444f6f1da70cd31db5e47f8e6906acbbc9199cac3b390dc
 
 LABEL org.opencontainers.image.title="ISMD Tool Backend"
 
+USER app
+
 EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# The JVM's default max heap is 25% of the container memory (256 MB of 1 GiB). 70% leaves the rest for
+# metaspace, thread stacks, direct buffers and the App Insights agent. On OutOfMemoryError the JVM exits,
+# so the platform restarts the container instead of it running on in a broken state.
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=70", "-XX:+ExitOnOutOfMemoryError", "-jar", "app.jar"]

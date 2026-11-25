@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.controller.dto.ConceptSummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptModel;
@@ -36,7 +37,8 @@ class ConceptServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        service = new ConceptServiceImpl(createOperation, editOperation, deleteOperation, syncOperation, detailReader);
+        service = new ConceptServiceImpl(createOperation, editOperation, deleteOperation, syncOperation, detailReader,
+                new ConceptWriteTransaction(org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class)));
     }
 
     private static ConceptMetadataModel metadata(String iri) {
@@ -49,9 +51,15 @@ class ConceptServiceImplTest {
     void createConceptDelegates() {
         ClassConceptModel createModel = ConceptServiceTestData.createModel();
         ConceptMetadataModel created = metadata("a");
-        when(createOperation.createConcept(createModel, USER_ID)).thenReturn(created);
+        com.dia.ismdtoolbackend.service.snapshot.NkdLookup nkd = org.mockito.Mockito.mock(
+                com.dia.ismdtoolbackend.service.snapshot.NkdLookup.class);
+        when(createOperation.prefetchNkd(createModel)).thenReturn(nkd);
+        when(createOperation.createConcept(createModel, USER_ID, nkd)).thenReturn(created);
 
         assertThat(service.createConcept(createModel, USER_ID)).isSameAs(created);
+        InOrder order = inOrder(createOperation);
+        order.verify(createOperation).prefetchNkd(createModel);
+        order.verify(createOperation).createConcept(createModel, USER_ID, nkd);
     }
 
     @Test
@@ -60,24 +68,37 @@ class ConceptServiceImplTest {
         ClassConceptModel second = ConceptModels.trida("Druhý");
         ConceptMetadataModel firstCreated = metadata("a");
         ConceptMetadataModel secondCreated = metadata("b");
-        when(createOperation.createConcept(first, USER_ID)).thenReturn(firstCreated);
-        when(createOperation.createConcept(second, USER_ID)).thenReturn(secondCreated);
+        var firstNkd = org.mockito.Mockito.mock(com.dia.ismdtoolbackend.service.snapshot.NkdLookup.class);
+        var secondNkd = org.mockito.Mockito.mock(com.dia.ismdtoolbackend.service.snapshot.NkdLookup.class);
+        when(createOperation.prefetchNkd(first)).thenReturn(firstNkd);
+        when(createOperation.prefetchNkd(second)).thenReturn(secondNkd);
+        when(createOperation.createConcept(first, USER_ID, firstNkd)).thenReturn(firstCreated);
+        when(createOperation.createConcept(second, USER_ID, secondNkd)).thenReturn(secondCreated);
 
         List<ConceptMetadataModel> result = service.createConcepts(List.of(first, second), USER_ID);
 
         assertThat(result).containsExactly(firstCreated, secondCreated);
         InOrder order = inOrder(createOperation);
-        order.verify(createOperation).createConcept(first, USER_ID);
-        order.verify(createOperation).createConcept(second, USER_ID);
+        order.verify(createOperation).prefetchNkd(first);
+        order.verify(createOperation).prefetchNkd(second);
+        order.verify(createOperation).createConcept(first, USER_ID, firstNkd);
+        order.verify(createOperation).createConcept(second, USER_ID, secondNkd);
     }
 
+    /** NKD is asked first, then the edit runs with what was fetched. */
     @Test
-    void editConceptDelegates() {
+    void editConceptPrefetchesNkdThenEdits() {
         ClassConceptEditModel editModel = ConceptServiceTestData.editModel();
         ConceptMetadataModel edited = metadata("a");
-        when(editOperation.editConcept(CONCEPT_ID, editModel)).thenReturn(edited);
+        com.dia.ismdtoolbackend.service.snapshot.NkdLookup nkd =
+                com.dia.ismdtoolbackend.service.snapshot.NkdLookup.none();
+        when(editOperation.prefetchNkd(CONCEPT_ID, editModel)).thenReturn(nkd);
+        when(editOperation.editConcept(CONCEPT_ID, editModel, nkd)).thenReturn(edited);
 
         assertThat(service.editConcept(CONCEPT_ID, editModel)).isSameAs(edited);
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(editOperation);
+        order.verify(editOperation).prefetchNkd(CONCEPT_ID, editModel);
+        order.verify(editOperation).editConcept(CONCEPT_ID, editModel, nkd);
     }
 
     @Test
@@ -87,17 +108,29 @@ class ConceptServiceImplTest {
         verify(deleteOperation).deleteConcept(CONCEPT_ID);
     }
 
+    /** The plan (all NKD reads) first, then the write with it. */
     @Test
-    void syncWorkingCopyDelegates() {
+    void syncWorkingCopyPlansThenApplies() {
         List<String> fields = List.of("name");
-        when(syncOperation.syncWorkingCopy(CONCEPT_ID, fields)).thenReturn("synced");
+        WorkingCopySyncOperation.SyncPlan plan =
+                new WorkingCopySyncOperation.SyncPlan(null, "synced", null, false, 1, 1, null);
+        org.springframework.transaction.PlatformTransactionManager txManager =
+                org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class);
+        ConceptServiceImpl transactional = new ConceptServiceImpl(createOperation, editOperation, deleteOperation,
+                syncOperation, detailReader, new ConceptWriteTransaction(txManager));
+        when(syncOperation.planSync(CONCEPT_ID, fields)).thenReturn(plan);
+        when(syncOperation.applySync(CONCEPT_ID, plan)).thenReturn("synced");
 
-        assertThat(service.syncWorkingCopy(CONCEPT_ID, fields)).isEqualTo("synced");
+        assertThat(transactional.syncWorkingCopy(CONCEPT_ID, fields)).isEqualTo("synced");
+        InOrder order = inOrder(syncOperation, txManager);
+        order.verify(syncOperation).planSync(CONCEPT_ID, fields);
+        order.verify(txManager).getTransaction(org.mockito.ArgumentMatchers.any());
+        order.verify(syncOperation).applySync(CONCEPT_ID, plan);
     }
 
     @Test
     void getAllDelegates() {
-        List<ConceptMetadataModel> all = List.of(metadata("a"));
+        List<ConceptSummaryDto> all = List.of(new ConceptSummaryDto());
         when(detailReader.getAll(USER_ID, true)).thenReturn(all);
 
         assertThat(service.getAll(USER_ID, true)).isSameAs(all);

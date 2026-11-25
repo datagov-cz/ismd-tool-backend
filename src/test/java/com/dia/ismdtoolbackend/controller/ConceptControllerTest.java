@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.controller;
 
+import com.dia.ismdtoolbackend.enums.ErrorCode;
+import com.dia.ismdtoolbackend.controller.dto.ConceptSummaryDto;
 import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
 import com.dia.ismdtoolbackend.exception.ConceptNotFoundException;
 import com.dia.ismdtoolbackend.exception.ConceptStorageException;
@@ -241,7 +243,8 @@ class ConceptControllerTest {
                 .andExpect(status().isInternalServerError())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
-                .andExpect(jsonPath("$.message").value("Nepodařilo se uložit pojem"));
+                // A 5xx carries the code's own message, never the exception's.
+                .andExpect(jsonPath("$.message").value(ErrorCode.CONCEPT_STORAGE_FAILED.getDefaultMessage()));
     }
 
     @Test
@@ -655,13 +658,13 @@ class ConceptControllerTest {
 
     @Test
     void testGetConceptList_AllConcepts() throws Exception {
-        ConceptMetadataModel concept1 = new ConceptMetadataModel();
+        ConceptSummaryDto concept1 = new ConceptSummaryDto();
         concept1.setId(1L);
         concept1.setConceptIri("http://example.org/concept1");
         concept1.setConceptName("Concept1");
         concept1.setConceptType(ConceptType.TRIDA);
 
-        ConceptMetadataModel concept2 = new ConceptMetadataModel();
+        ConceptSummaryDto concept2 = new ConceptSummaryDto();
         concept2.setId(2L);
         concept2.setConceptIri("http://example.org/concept2");
         concept2.setConceptName("Concept2");
@@ -686,12 +689,11 @@ class ConceptControllerTest {
     @Test
     void testGetConceptList_ByUserId() throws Exception {
         String userId = "user123";
-        ConceptMetadataModel concept1 = new ConceptMetadataModel();
+        ConceptSummaryDto concept1 = new ConceptSummaryDto();
         concept1.setId(1L);
         concept1.setConceptIri("http://example.org/concept1");
         concept1.setConceptName("Concept1");
         concept1.setConceptType(ConceptType.TRIDA);
-        concept1.setUser(new UserModel(userId));
 
         when(conceptService.getAll(userId, null))
                 .thenReturn(java.util.List.of(concept1));
@@ -703,13 +705,14 @@ class ConceptControllerTest {
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].id").value(1))
-                .andExpect(jsonPath("$.data[0].user.userId").value(userId))
+                .andExpect(jsonPath("$.data[0].user").doesNotExist())
+                .andExpect(jsonPath("$.data[0].comments").doesNotExist())
                 .andExpect(jsonPath("$.message").value("Žádost o seznam pojmů proběhla úspěšně."));
     }
 
     @Test
     void testGetConceptList_ByPublishedStatus() throws Exception {
-        ConceptMetadataModel concept1 = new ConceptMetadataModel();
+        ConceptSummaryDto concept1 = new ConceptSummaryDto();
         concept1.setId(1L);
         concept1.setConceptIri("http://example.org/concept1");
         concept1.setConceptName("Concept1");
@@ -745,12 +748,11 @@ class ConceptControllerTest {
     @Test
     void testGetConceptList_CombinedFilters() throws Exception {
         String userId = "user123";
-        ConceptMetadataModel concept1 = new ConceptMetadataModel();
+        ConceptSummaryDto concept1 = new ConceptSummaryDto();
         concept1.setId(1L);
         concept1.setConceptIri("http://example.org/concept1");
         concept1.setConceptName("Concept1");
         concept1.setConceptType(ConceptType.TRIDA);
-        concept1.setUser(new UserModel(userId));
         concept1.setIsPublished(true);
 
         when(conceptService.getAll(userId, true))
@@ -763,7 +765,8 @@ class ConceptControllerTest {
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].user.userId").value(userId))
+                .andExpect(jsonPath("$.data[0].user").doesNotExist())
+                .andExpect(jsonPath("$.data[0].comments").doesNotExist())
                 .andExpect(jsonPath("$.data[0].isPublished").value(true))
                 .andExpect(jsonPath("$.message").value("Žádost o seznam pojmů proběhla úspěšně."));
     }

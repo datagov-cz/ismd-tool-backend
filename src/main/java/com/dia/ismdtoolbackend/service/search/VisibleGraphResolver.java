@@ -1,19 +1,16 @@
 package com.dia.ismdtoolbackend.service.search;
 
-import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
-import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.Objects;
 
 /** Resolves which graphs a search may read, and narrows them by the request's ontology filter. */
 @Component
 @RequiredArgsConstructor
 class VisibleGraphResolver {
 
-    private final OntologyMetadataRepository ontologyMetadataRepository;
+    private final OntologyGraphNames ontologyGraphNames;
 
     /** The graph filter for one request: the caller's visible graphs narrowed by {@code ontologyIris}. */
     GraphFilter graphFilterFor(List<String> ontologyIris, String userId, boolean isAdmin, Boolean publishedFilter) {
@@ -59,11 +56,7 @@ class VisibleGraphResolver {
      * unpublished-only path but is no longer needed to narrow visibility.
      */
     List<String> getVisibleGraphNames() {
-        return ontologyMetadataRepository.findAll().stream()
-                .map(OntologyMetadataEntity::getGraphName)
-                .filter(Objects::nonNull)
-                .distinct()
-                .toList();
+        return ontologyGraphNames.all();
     }
 
     /**
@@ -84,9 +77,6 @@ class VisibleGraphResolver {
         if (!isAdmin && userId == null) {
             return List.of();
         }
-        return ontologyMetadataRepository.findAllGraphNames().stream()
-                .filter(Objects::nonNull)
-                .distinct()
-                .toList();
+        return ontologyGraphNames.all();
     }
 }

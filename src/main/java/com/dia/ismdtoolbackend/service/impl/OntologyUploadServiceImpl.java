@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.service.search.OntologyGraphNames;
 import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyUploadResultDto;
 import com.dia.ismdtoolbackend.controller.dto.RejectedConceptDto;
@@ -52,6 +53,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
     private final UploadMetadataWriter metadataWriter;
     private final OntologyUploadTransactions transactions;
     private final UploadValidationRunner validationRunner;
+    private final UploadGraphGuard graphGuard;
 
     @Override
     public Lang determineRDFFormat(MultipartFile file) {
@@ -60,7 +62,8 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
 
     @Override
     @CacheEvict(cacheNames = {ReferencedConceptResolutionEngine.CACHE_NAME,
-            WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE}, allEntries = true)
+            WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, OntologyGraphNames.CACHE_NAME},
+            allEntries = true)
     public OntologyUploadResultDto uploadFromFile(MultipartFile file, String userId,
                                                   NormalizeMode normalizeMode,
                                                   List<String> conceptsToNormalize) throws IOException, OntologyUploadException {
@@ -81,6 +84,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             // One upload per vocabulary at a time, so the existence check below is reliable.
             claim = vocabularyLock.claim(graphName);
             metadataWriter.checkSlugUniqueness(graphName);
+            graphGuard.requireNoUnappliedWrites(graphName);
 
             // 3. skos:inScheme for owned concepts lacking it, only as the user decided (asks when undecided).
             Set<String> chosen = InSchemeStamping.chosen(finalModel, graphName, normalizeMode, conceptsToNormalize);
@@ -120,6 +124,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
 
             // 6. Save RDF data to TDB2 first — if this fails, no metadata exists, clean exit
             try {
+                graphGuard.warnIfGraphHoldsData(graphName);
                 jenaTDB2Repository.putOntologyModel(graphName, finalModel);
             } catch (Exception e) {
                 throw new OntologyUploadRdfStoreException(

@@ -20,6 +20,7 @@ import com.dia.ismdtoolbackend.repository.DiagramEdgeRepository;
 import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.service.ConceptService;
+import com.dia.ismdtoolbackend.service.snapshot.NkdLookup;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.rdf.model.Model;
@@ -69,12 +70,43 @@ public class DiagramChangeApplier {
     }
 
     /**
+     * The NKD answers the concept edit of this change needs, fetched now: call it outside any transaction,
+     * before {@link #applyChange}. Reads only. Whatever stops the change (no staged row, an unknown concept,
+     * a missing permission) is left for {@code applyChange} to report: this answers {@link NkdLookup#none()},
+     * and a staged edit that changes in between is answered as NKD not answering, never as "not published".
+     */
+    public NkdLookup prefetchNkd(Long diagramId, String conceptIri) {
+        try {
+            DiagramPendingEditEntity staged = pendingEditRepository
+                    .findByDiagramIdAndConceptIri(diagramId, conceptIri)
+                    .orElse(null);
+            if (staged == null || staged.getPendingEdit() == null) {
+                return NkdLookup.none();
+            }
+            DiagramPendingEdit overlay = staged.getPendingEdit();
+            if (classify(overlay) == DiagramOp.CONVERT_TO_HIERARCHY) {
+                DiagramPendingEdit.ConvertToHierarchy marker = overlay.getConvertToHierarchy();
+                ConceptMetadataEntity targetClass =
+                        conceptMetadataRepository.findByConceptIri(marker.getAddBroaderOn()).orElse(null);
+                return targetClass == null ? NkdLookup.none()
+                        : conceptService.prefetchEdit(targetClass.getId(), addBroaderEdit(targetClass, marker));
+            }
+            ConceptMetadataEntity concept = conceptMetadataRepository.findByConceptIri(conceptIri).orElse(null);
+            return concept == null ? NkdLookup.none()
+                    : conceptService.prefetchEdit(concept.getId(), buildEdit(overlay, concept.getConceptType()));
+        } catch (RuntimeException e) {
+            log.debug("No NKD prefetch for {} on diagram {}: {}", conceptIri, diagramId, e.getMessage());
+            return NkdLookup.none();
+        }
+    }
+
+    /**
      * Applies one concept's staged edit in a fresh transaction and clears it on success, throwing on any
      * failure for the caller to record as {@code failed}. Addressed by {@code (diagram, conceptIri)}, so a
-     * staged edit need not have a node.
+     * staged edit need not have a node. Reads NKD only through {@code nkd}, from {@link #prefetchNkd}.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public Outcome applyChange(Long diagramId, String conceptIri) {
+    public Outcome applyChange(Long diagramId, String conceptIri, NkdLookup nkd) {
         DiagramPendingEditEntity staged = pendingEditRepository
                 .findByDiagramIdAndConceptIri(diagramId, conceptIri)
                 .orElse(null);
@@ -106,11 +138,11 @@ public class DiagramChangeApplier {
         List<EdgeRekey> rekeys = plannedEdgeRekeys(diagramId, concept, overlay);
 
         if (op == DiagramOp.CONVERT_TO_HIERARCHY) {
-            applyConvertToHierarchy(overlay, concept, ontologyGraphName);
+            applyConvertToHierarchy(overlay, concept, ontologyGraphName, nkd);
         } else {
             // Re-asserted here: a row staged earlier could name a concept that has since moved graphs.
             requireResolvedIriIsOwnGraph(ontologyGraphName, overlay.getDomain());
-            conceptService.editConcept(concept.getId(), buildEdit(overlay, concept.getConceptType()));
+            conceptService.editConcept(concept.getId(), buildEdit(overlay, concept.getConceptType()), nkd);
         }
         applyEdgeRekeys(rekeys);
         // Applied to RDF, so the staged row has served its purpose.
@@ -246,7 +278,7 @@ public class DiagramChangeApplier {
      * broader-edit too.
      */
     private void applyConvertToHierarchy(DiagramPendingEdit overlay, ConceptMetadataEntity vztah,
-                                         String diagramGraphName) {
+                                         String diagramGraphName, NkdLookup nkd) {
         DiagramPendingEdit.ConvertToHierarchy marker = overlay.getConvertToHierarchy();
         List<String> related =
                 jenaTDB2Repository.findRelatedConceptUris(vztah.getConceptIri(), vztah.getGraphName());
@@ -261,12 +293,18 @@ public class DiagramChangeApplier {
         // addBroaderOn is EDITED and must be ours; broader is only referenced, so it may be foreign.
         requireGraphMatches(diagramGraphName, targetClass.getGraphName(), targetClass.getConceptIri());
 
+        conceptService.editConcept(targetClass.getId(), addBroaderEdit(targetClass, marker), nkd);
+
+        conceptService.deleteConcept(vztah.getId());
+    }
+
+    /** Op 6's edit of the target class: its broader set with the marker's broader added. */
+    private ClassConceptEditModel addBroaderEdit(ConceptMetadataEntity targetClass,
+                                                 DiagramPendingEdit.ConvertToHierarchy marker) {
         ClassConceptEditModel addBroader = new ClassConceptEditModel();
         addBroader.setConceptType(ConceptType.TRIDA.getValue());
         addBroader.setBroaderConcept(mergedBroaderFor(targetClass, marker.getBroader()));
-        conceptService.editConcept(targetClass.getId(), addBroader);
-
-        conceptService.deleteConcept(vztah.getId());
+        return addBroader;
     }
 
     /**

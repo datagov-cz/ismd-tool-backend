@@ -26,16 +26,16 @@ class ConceptAccessGuard {
      * — a service-to-service caller (the diagram layer is the first) inherits none of it. Asserting here means
      * the guarantee holds at the layer that actually performs the write.
      *
-     * <p>Enforced only when a request context is present. A caller running outside one (the outbox relay, a
-     * scheduler, a warmer) has no user to check and is trusted by construction; requiring authentication here
-     * would break those paths instead of protecting them.
+     * <p>Fails closed without an authenticated user: no scheduler, relay or warmer edits or deletes a concept,
+     * so a caller without one is a mistake rather than a trusted system path.
      */
     void assertCanModify(Long conceptId) {
         SecurityUser currentUser;
         try {
             currentUser = SecurityUtils.getCurrentUser();
         } catch (IllegalStateException e) {
-            return;   // no authenticated context — a non-request caller, not a cross-tenant reach
+            log.warn("Concept {} modification refused: no authenticated user", conceptId);
+            throw new AccessDeniedException("Úprava pojmu vyžaduje přihlášeného uživatele.");
         }
         if (currentUser.isAdmin()) {
             return;

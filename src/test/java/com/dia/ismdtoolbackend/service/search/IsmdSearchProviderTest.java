@@ -85,7 +85,7 @@ class IsmdSearchProviderTest {
     void createProvider() {
         Executor directExecutor = Runnable::run;
         IsmdFusekiSearch fusekiSearch = new IsmdFusekiSearch(jenaTDB2Repository);
-        VisibleGraphResolver visibleGraphs = new VisibleGraphResolver(ontologyMetadataRepository);
+        VisibleGraphResolver visibleGraphs = new VisibleGraphResolver(new OntologyGraphNames(ontologyMetadataRepository));
         provider = new IsmdSearchProvider(
                 new IsmdOntologySearch(ontologyMetadataRepository, conceptMetadataRepository,
                         fusekiSearch, visibleGraphs, directExecutor, 10_000L),
@@ -679,7 +679,8 @@ class IsmdSearchProviderTest {
 
     /** The ontologies whose graphs scope the Fuseki text query. */
     private void givenVisibleOntologies(OntologyMetadataEntity... ontologies) {
-        when(ontologyMetadataRepository.findAll()).thenReturn(List.of(ontologies));
+        when(ontologyMetadataRepository.findAllGraphNames()).thenReturn(
+                java.util.Arrays.stream(ontologies).map(OntologyMetadataEntity::getGraphName).toList());
     }
 
     /** The Fuseki text index answers, with no hits. */

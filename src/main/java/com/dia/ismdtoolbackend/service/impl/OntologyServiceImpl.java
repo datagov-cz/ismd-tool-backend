@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.service.search.OntologyGraphNames;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsRequestDto;
@@ -13,6 +14,7 @@ import com.dia.ismdtoolbackend.models.OntologyEditModel;
 import com.dia.ismdtoolbackend.models.OntologyRef;
 import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
 import com.dia.ismdtoolbackend.service.OntologyService;
+import com.dia.ismdtoolbackend.service.snapshot.NkdLookup;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
@@ -34,11 +36,13 @@ public class OntologyServiceImpl implements OntologyService {
     private final OntologyDetailReader detailReader;
     private final OntologyMetadataReader metadataReader;
     private final OntologyTurtleExport turtleExport;
+    private final ConceptWriteTransaction writeTransaction;
 
     @Override
     @Transactional
     @CacheEvict(cacheNames = {ReferencedConceptResolutionEngine.CACHE_NAME,
-            WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE}, allEntries = true)
+            WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, OntologyGraphNames.CACHE_NAME},
+            allEntries = true)
     public void deleteOntology(Long ontologyId) {
         deleteOperation.deleteOntology(ontologyId);
     }
@@ -46,17 +50,20 @@ public class OntologyServiceImpl implements OntologyService {
     @Override
     @Transactional
     @CacheEvict(cacheNames = {ReferencedConceptResolutionEngine.CACHE_NAME,
-            WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE}, allEntries = true)
+            WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, OntologyGraphNames.CACHE_NAME},
+            allEntries = true)
     public OntologySummaryDto createOntology(OntologyCreateModel ontologyCreateModel, String userId) {
         return createOperation.createOntology(ontologyCreateModel, userId);
     }
 
+    /** NKD first, outside any transaction, then the create in a bounded one. */
     @Override
-    @Transactional
     @CacheEvict(cacheNames = {ReferencedConceptResolutionEngine.CACHE_NAME,
-            WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE}, allEntries = true)
+            WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, OntologyGraphNames.CACHE_NAME},
+            allEntries = true)
     public OntologyCreateWithConceptsResponseDto createWithConcepts(OntologyCreateWithConceptsRequestDto request, String userId) {
-        return createOperation.createWithConcepts(request, userId);
+        NkdLookup nkd = createOperation.prefetchNkd(request);
+        return writeTransaction.run(() -> createOperation.createWithConcepts(request, userId, nkd));
     }
 
     @Override
@@ -86,7 +93,8 @@ public class OntologyServiceImpl implements OntologyService {
     @Override
     @Transactional
     @CacheEvict(cacheNames = {ReferencedConceptResolutionEngine.CACHE_NAME,
-            WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE}, allEntries = true)
+            WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, OntologyGraphNames.CACHE_NAME},
+            allEntries = true)
     public OntologySummaryDto editOntology(Long id, OntologyEditModel ontologyEditModel) {
         return editOperation.editOntology(id, ontologyEditModel);
     }

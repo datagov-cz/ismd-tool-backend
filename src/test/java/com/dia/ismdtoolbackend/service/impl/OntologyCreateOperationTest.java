@@ -49,6 +49,7 @@ import static com.dia.ismdtoolbackend.testsupport.fixtures.Texts.name;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -67,6 +68,7 @@ class OntologyCreateOperationTest {
     private ConceptMetadataRepository conceptMetadataRepository;
     private JenaTDB2Repository jenaTDB2Repository;
     private OutboxWriter outboxWriter;
+    private com.dia.ismdtoolbackend.client.NkdSparqlClient nkdSparqlClient;
 
     private OntologyCreateOperation operation;
 
@@ -77,6 +79,7 @@ class OntologyCreateOperationTest {
         conceptMetadataRepository = fixture.conceptMetadataRepository();
         jenaTDB2Repository = fixture.jenaTDB2Repository();
         outboxWriter = fixture.outboxWriter();
+        nkdSparqlClient = fixture.nkdSparqlClient();
         operation = fixture.createOperation();
     }
 
@@ -301,6 +304,78 @@ class OntologyCreateOperationTest {
             when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(ontologyEntity());
 
             assertThat(operation.createOntology(model, USER_ID)).isNotNull();
+        }
+    }
+
+    /** AI create: a domain on a published NKD concept fails the whole request (per-concept reject if it proves common). */
+    @Nested
+    class NkdDomainRange {
+
+        private static final String NKD_CLASS = "https://slovník.gov.cz/generický/veřejný-sektor/pojem/adresa";
+        private static final String NKD_TARGET = "https://slovník.gov.cz/generický/veřejný-sektor/pojem/osoba";
+
+        /** {@code sample()} with the attribute's class and the relationship's target pointing at NKD. */
+        private com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsRequestDto request() {
+            var sample = com.dia.ismdtoolbackend.support.VocabularyCreationRequests.sample();
+            var nkd = (java.util.function.Function<String, com.dia.ismdtoolbackend.controller.dto.ai.AiConceptReferenceDto>)
+                    iri -> new com.dia.ismdtoolbackend.controller.dto.ai.AiConceptReferenceDto(null, iri);
+            var a = sample.attributes().get(0);
+            var r = sample.relationships().get(0);
+            return new com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsRequestDto(sample.ontology(),
+                    sample.classes(),
+                    List.of(new com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsRequestDto.AttributeDto(
+                            a.ref(), nkd.apply(NKD_CLASS), a.name(), a.definition(), a.explanation(), a.legalAct(),
+                            a.dataType())),
+                    List.of(new com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsRequestDto.RelationshipDto(
+                            r.ref(), r.sourceClass(), nkd.apply(NKD_TARGET), r.name(), r.definition(), r.explanation(),
+                            r.legalAct())));
+        }
+
+        @Test
+        void aDomainOnAPublishedNkdConceptFailsTheWholeRequest_andWritesNothing() {
+            when(nkdSparqlClient.findPublishedAmong(anyList())).thenReturn(Optional.of(java.util.Set.of(NKD_CLASS)));
+
+            assertThatThrownBy(() -> operation.createWithConcepts(request(), USER_ID))
+                    .isInstanceOf(OntologyValidationException.class)
+                    .hasMessageContaining(NKD_CLASS)
+                    .hasMessageContaining("/hmotnost");
+            verify(ontologyMetadataRepository, never()).save(any());
+            verify(conceptMetadataRepository, never()).saveAll(any());
+            verifyNoInteractions(outboxWriter);
+        }
+
+        /** Before the transaction: one publication check over the attribute domain; a relationship target is a range. */
+        @Test
+        void prefetchAsksOnlyAboutExternalDomains() {
+            when(nkdSparqlClient.findPublishedAmong(anyList())).thenReturn(Optional.of(java.util.Set.of()));
+
+            operation.prefetchNkd(request());
+
+            verify(nkdSparqlClient).findPublishedAmong(List.of(NKD_CLASS));
+            org.mockito.Mockito.verifyNoMoreInteractions(nkdSparqlClient);
+        }
+
+        @Test
+        void aPrefetchedAnswerIsUsedWithoutAskingNkdAgain() {
+            when(nkdSparqlClient.findPublishedAmong(anyList())).thenReturn(Optional.of(java.util.Set.of(NKD_CLASS)));
+            var nkd = operation.prefetchNkd(request());
+            org.mockito.Mockito.clearInvocations(nkdSparqlClient);
+
+            assertThatThrownBy(() -> operation.createWithConcepts(request(), USER_ID, nkd))
+                    .isInstanceOf(OntologyValidationException.class);
+            verifyNoInteractions(nkdSparqlClient);
+        }
+
+        /** Not published, or NKD not answering: the create goes on to save. */
+        @org.junit.jupiter.params.ParameterizedTest
+        @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
+        void otherwiseTheCreateProceedsToSave(boolean nkdAnswers) {
+            when(nkdSparqlClient.findPublishedAmong(anyList()))
+                    .thenReturn(nkdAnswers ? Optional.of(java.util.Set.of(NKD_TARGET)) : Optional.empty());
+            when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class)))
+                    .thenThrow(new IllegalStateException("reached save"));
+
+            assertThatThrownBy(() -> operation.createWithConcepts(request(), USER_ID)).hasMessageContaining("reached save");
         }
     }
 }

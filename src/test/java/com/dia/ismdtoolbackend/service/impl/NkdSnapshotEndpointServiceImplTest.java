@@ -24,7 +24,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
+
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -56,14 +56,20 @@ class NkdSnapshotEndpointServiceImplTest {
     @Mock private ConceptMetadataRepository conceptMetadataRepository;
     @Mock private OutboxWriter outboxWriter;
     @Mock private OutboxRelayTrigger outboxRelayTrigger;
+    @Mock private com.dia.ismdtoolbackend.client.NkdSparqlClient nkdSparqlClient;
+    @Mock private DeviationResolutionEnricher deviationEnricher;
+    @Mock private org.springframework.transaction.PlatformTransactionManager txManager;
 
-    @InjectMocks private NkdSnapshotEndpointServiceImpl service;
+    private NkdSnapshotEndpointServiceImpl service;
 
     private ConceptMetadataEntity owner;
     private NkdConceptSnapshotEntity snapshot;
 
     @BeforeEach
     void setUp() {
+        service = new NkdSnapshotEndpointServiceImpl(snapshotRepository, nkdSnapshotService, jenaTDB2Repository,
+                conceptMetadataRepository, outboxWriter, outboxRelayTrigger, nkdSparqlClient, deviationEnricher,
+                new ConceptWriteTransaction(txManager));
         owner = new ConceptMetadataEntity();
         owner.setId(CONCEPT_ID);
         owner.setConceptIri(OWNER_IRI);
@@ -98,13 +104,13 @@ class NkdSnapshotEndpointServiceImplTest {
         Statement copyLabel = copyLabelStatement();
         when(snapshotRepository.findById(SNAPSHOT_ID)).thenReturn(Optional.of(snapshot));
         when(nkdSnapshotService.createOrRefreshSnapshot(eq(owner), eq(NKD_IRI),
-                eq(SnapshotLinkType.BROADER_CLASS.value()), any()))
+                eq(SnapshotLinkType.BROADER_CLASS.value()), any(), any()))
                 .thenAnswer(inv -> {
                     OwnerChangeSet cs = inv.getArgument(3);
                     cs.toAdd.add(copyLabel);
                     return snapshot;
                 });
-        when(nkdSnapshotService.evaluateDeviation(snapshot))
+        when(nkdSnapshotService.evaluateDeviation(eq(snapshot), any()))
                 .thenReturn(PublishedConceptDeviationModel.builder().status(DeviationStatus.HAS_DEVIATIONS).build());
 
         LinkSnapshotDto dto = service.updateSnapshot(CONCEPT_ID, SNAPSHOT_ID);
@@ -117,11 +123,35 @@ class NkdSnapshotEndpointServiceImplTest {
         verify(outboxRelayTrigger).nudgeAfterCommit();
     }
 
+    /** NKD is read before the transaction opens; the deviation's labels are resolved after it commits. */
+    @Test
+    void update_readsNkdBeforeTheTransaction_andEnrichesAfterCommit() {
+        when(snapshotRepository.findById(SNAPSHOT_ID)).thenReturn(Optional.of(snapshot));
+        when(nkdSparqlClient.fetchPublishedConceptWithScheme(NKD_IRI)).thenAnswer(inv -> {
+            org.mockito.Mockito.verifyNoInteractions(txManager);
+            return Optional.empty();
+        });
+        when(nkdSnapshotService.createOrRefreshSnapshot(eq(owner), eq(NKD_IRI), anyString(), any(), any()))
+                .thenReturn(snapshot);
+        PublishedConceptDeviationModel deviation =
+                PublishedConceptDeviationModel.builder().status(DeviationStatus.HAS_DEVIATIONS).build();
+        when(nkdSnapshotService.evaluateDeviation(eq(snapshot), any())).thenReturn(deviation);
+
+        LinkSnapshotDto dto = service.updateSnapshot(CONCEPT_ID, SNAPSHOT_ID);
+
+        assertThat(dto.getDeviation()).isSameAs(deviation);
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(nkdSparqlClient, txManager, deviationEnricher);
+        order.verify(nkdSparqlClient).fetchPublishedConceptWithScheme(NKD_IRI);
+        order.verify(txManager).getTransaction(any());
+        order.verify(txManager).commit(any());
+        order.verify(deviationEnricher).enrich(deviation);
+    }
+
     @Test
     void update_nkdGone_cascadesUpstreamDeletion_removesLink() {
         when(snapshotRepository.findById(SNAPSHOT_ID)).thenReturn(Optional.of(snapshot));
         // Service returns null = NKD confirmed gone; it folded copy-removal into the change set.
-        when(nkdSnapshotService.createOrRefreshSnapshot(eq(owner), eq(NKD_IRI), anyString(), any()))
+        when(nkdSnapshotService.createOrRefreshSnapshot(eq(owner), eq(NKD_IRI), anyString(), any(), any()))
                 .thenReturn(null);
         // Owner graph contains the link triple owner -> nkdIri, which the cascade must remove,
         // next to owner statements and another subject's link that must stay.
@@ -138,7 +168,7 @@ class NkdSnapshotEndpointServiceImplTest {
 
         assertThat(dto.getStatus()).isEqualTo(DeviationStatus.CONCEPT_NOT_FOUND_IN_NKD);
         // Deviation is NOT evaluated for a gone concept (no live compare).
-        verify(nkdSnapshotService, never()).evaluateDeviation(any());
+        verify(nkdSnapshotService, never()).evaluateDeviation(any(), any());
         // Only the owner→nkdIri link is removed, in the owner-keyed flush.
         FlushedDelta delta = capturedFlush();
         assertThat(delta.removed()).containsExactly(link);
@@ -169,13 +199,13 @@ class NkdSnapshotEndpointServiceImplTest {
         owner.setUpdatedAt(before);
         when(snapshotRepository.findById(SNAPSHOT_ID)).thenReturn(Optional.of(snapshot));
         Statement copyLabel = copyLabelStatement();
-        when(nkdSnapshotService.createOrRefreshSnapshot(eq(owner), eq(NKD_IRI), anyString(), any()))
+        when(nkdSnapshotService.createOrRefreshSnapshot(eq(owner), eq(NKD_IRI), anyString(), any(), any()))
                 .thenAnswer(inv -> {
                     OwnerChangeSet cs = inv.getArgument(3);
                     cs.toAdd.add(copyLabel);
                     return snapshot;
                 });
-        when(nkdSnapshotService.evaluateDeviation(snapshot))
+        when(nkdSnapshotService.evaluateDeviation(eq(snapshot), any()))
                 .thenReturn(PublishedConceptDeviationModel.builder().status(DeviationStatus.HAS_DEVIATIONS).build());
 
         service.updateSnapshot(CONCEPT_ID, SNAPSHOT_ID);
@@ -214,9 +244,9 @@ class NkdSnapshotEndpointServiceImplTest {
         owner.setUpdatedAt(before);
         when(snapshotRepository.findById(SNAPSHOT_ID)).thenReturn(Optional.of(snapshot));
         // Refresh yields no change-set entries at all.
-        when(nkdSnapshotService.createOrRefreshSnapshot(eq(owner), eq(NKD_IRI), anyString(), any()))
+        when(nkdSnapshotService.createOrRefreshSnapshot(eq(owner), eq(NKD_IRI), anyString(), any(), any()))
                 .thenReturn(snapshot);
-        when(nkdSnapshotService.evaluateDeviation(snapshot))
+        when(nkdSnapshotService.evaluateDeviation(eq(snapshot), any()))
                 .thenReturn(PublishedConceptDeviationModel.builder().status(DeviationStatus.NO_DEVIATION).build());
 
         service.updateSnapshot(CONCEPT_ID, SNAPSHOT_ID);
@@ -245,6 +275,6 @@ class NkdSnapshotEndpointServiceImplTest {
         assertThatThrownBy(() -> service.updateSnapshot(CONCEPT_ID, SNAPSHOT_ID))
                 .isInstanceOf(OntologyValidationException.class)
                 .hasMessageContaining("nepatří");
-        verify(nkdSnapshotService, never()).createOrRefreshSnapshot(any(), anyString(), anyString(), any());
+        verify(nkdSnapshotService, never()).createOrRefreshSnapshot(any(), anyString(), anyString(), any(), any());
     }
 }

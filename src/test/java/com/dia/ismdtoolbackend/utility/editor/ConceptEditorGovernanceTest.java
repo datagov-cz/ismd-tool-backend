@@ -95,6 +95,34 @@ class ConceptEditorGovernanceTest extends ConceptEditorTestBase {
             assertThat(model.getResource(RENAMED).hasProperty(AGENDA)).isFalse();
             assertThat(model.getResource(RENAMED).hasProperty(AIS)).isFalse();
         }
+
+        /** The full-snapshot edit the FE sends on save: every field present, none changed. */
+        @Test
+        void unchangedAgendaAndAisStageNothing() {
+            seedProperty("; a104:%s <%sA123> ; a104:%s <%s456>".formatted(AGENDA_LONG, AGENDA_ITEMS, UDAJE_AIS, AIS_ITEMS));
+            propertyConceptEditModel.setAgendaCode("A123");
+            propertyConceptEditModel.setAgendaSystemCode("456");
+
+            ConceptEditor.EditResult result = edit();
+
+            assertThat(result.statementsToRemove).isEmpty();
+            assertThat(result.statementsToAdd).isEmpty();
+            assertThat(iris(model, CONCEPT, AGENDA)).containsExactly(AGENDA_ITEMS + "A123");
+        }
+
+        @Test
+        void changingOnlyTheAgendaStagesOnlyTheAgenda() {
+            seedProperty("; a104:%s <%sA123> ; a104:%s <%s456>".formatted(AGENDA_LONG, AGENDA_ITEMS, UDAJE_AIS, AIS_ITEMS));
+            propertyConceptEditModel.setAgendaCode("A124");
+            propertyConceptEditModel.setAgendaSystemCode("456");
+
+            ConceptEditor.EditResult result = edit();
+
+            assertThat(result.statementsToRemove).singleElement()
+                    .satisfies(st -> assertThat(st.getObject().asResource().getURI()).isEqualTo(AGENDA_ITEMS + "A123"));
+            assertThat(result.statementsToAdd).singleElement()
+                    .satisfies(st -> assertThat(st.getObject().asResource().getURI()).isEqualTo(AGENDA_ITEMS + "A124"));
+        }
     }
 
     @Nested

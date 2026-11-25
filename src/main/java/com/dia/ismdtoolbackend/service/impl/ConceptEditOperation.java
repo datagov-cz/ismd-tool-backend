@@ -1,5 +1,8 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.utility.validation.ConceptInputView;
+import com.dia.ismdtoolbackend.service.snapshot.NkdLookup;
+import com.dia.ismdtoolbackend.exception.OntologyExceptions;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
@@ -26,6 +29,7 @@ import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.vocabulary.RDF;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import org.springframework.stereotype.Component;
 
@@ -48,17 +52,54 @@ class ConceptEditOperation {
     private final OfnWriteGate ofnWriteGate;
 
     ConceptMetadataModel editConcept(Long conceptId, ConceptEditModel conceptEditModel) {
+        return editConcept(conceptId, conceptEditModel, nkdLinkReconciler.live());
+    }
+
+    /**
+     * The NKD answers this edit's link reconcile will need, fetched now. Runs before the edit's transaction,
+     * so NKD latency or an outage never holds the row lock or a database connection; a failure here only
+     * makes the reconcile skip what it could not learn.
+     *
+     * <p>Covers the IRIs the edit names and the concept's current link targets: a field the edit leaves null
+     * keeps its stored value (sync and diagram edits carry only some fields), and the reconcile checks it too.
+     */
+    NkdLookup prefetchNkd(Long conceptId, ConceptEditModel conceptEditModel) {
+        accessGuard.assertCanModify(conceptId);
+        ConceptIriNormalizer.normalize(conceptEditModel);
+        Optional<ConceptMetadataEntity> metadata = conceptMetadataRepository.findById(conceptId);
+        if (metadata.isEmpty()) {
+            return NkdLookup.none();   // the edit itself reports the missing row
+        }
+        ConceptInputView view = ConceptInputView.of(conceptEditModel);
+        List<String> referenced = new java.util.ArrayList<>(
+                jenaTDB2Repository.fetchLinkTargets(metadata.get().getConceptIri(), metadata.get().getGraphName()));
+        if (view != null) {
+            view.references().values().forEach(referenced::addAll);
+            if (view.exactMatch() != null) {
+                referenced.addAll(view.exactMatch());
+            }
+        }
+        return nkdLinkReconciler.prefetch(metadata.get().getGraphName(), referenced);
+    }
+
+    /** The edit, reading NKD only through {@code nkd}. */
+    ConceptMetadataModel editConcept(Long conceptId, ConceptEditModel conceptEditModel, NkdLookup nkd) {
         accessGuard.assertCanModify(conceptId);
         // A rename relocates the conceptIri, which for a working copy IS its NKD twin's IRI — so a rename
         // orphans it from the twin. The generic edit path treats that as chosen divergence and severs the
         // working copy to a draft. The sync path passes false: it owns its own sever decision (a name sync
         // relocates the IRI too, but "accept ALL" must stay a working copy).
-        return editConcept(conceptId, conceptEditModel, true);
+        return editConcept(conceptId, conceptEditModel, true, nkd);
     }
 
     // The sync path calls this with severWorkingCopyOnRename=false.
     ConceptMetadataModel editConcept(Long conceptId, ConceptEditModel conceptEditModel,
                                      boolean severWorkingCopyOnRename) {
+        return editConcept(conceptId, conceptEditModel, severWorkingCopyOnRename, nkdLinkReconciler.live());
+    }
+
+    ConceptMetadataModel editConcept(Long conceptId, ConceptEditModel conceptEditModel,
+                                     boolean severWorkingCopyOnRename, NkdLookup nkd) {
         log.info("Editing concept: ID={}, type={}",
                 conceptId, conceptEditModel.getConceptType());
 
@@ -94,7 +135,7 @@ class ConceptEditOperation {
         if (editResult.iriChanged) {
             metadata.setConceptIri(editResult.newConceptIRI);
         }
-        OwnerChangeSet snapshotDelta = nkdLinkReconciler.reconcileNkdLinks(metadata, model);
+        OwnerChangeSet snapshotDelta = nkdLinkReconciler.reconcileNkdLinks(metadata, model, nkd);
         Set<Statement> toRemove = new HashSet<>(editResult.statementsToRemove);
         toRemove.addAll(snapshotDelta.toRemove);
         Set<Statement> toAdd = new HashSet<>(editResult.statementsToAdd);
@@ -164,7 +205,7 @@ class ConceptEditOperation {
             throw e;
         } catch (Exception e) {
             log.error("Failed to edit concept", e);
-            throw new OntologyException("Nepodařilo se upravit pojem: " + e.getMessage());
+            throw OntologyExceptions.withCause("Nepodařilo se upravit pojem.", e);
         }
     }
 
@@ -211,7 +252,7 @@ class ConceptEditOperation {
             return conceptMetadataMapper.toDto(savedMetadata);
         } catch (Exception e) {
             log.error("Failed to update concept metadata", e);
-            throw new OntologyException("Nepodařilo se aktualizovat metadata pojmu: " + e.getMessage());
+            throw OntologyExceptions.withCause("Nepodařilo se aktualizovat metadata pojmu.", e);
         }
     }
 

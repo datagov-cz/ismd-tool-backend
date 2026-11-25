@@ -10,8 +10,8 @@ import org.springframework.test.context.junit.jupiter.SpringExtension;
 
 /**
  * {@code ontologySecurityService} for controller slices. The ownership checks ({@code canModify(Long)},
- * {@code canModifyConcept}, {@code canModifyComment}, {@code belongsToUserBySlug}) answer one flag that
- * allows by default; {@code canViewResource} and {@code canModify(String)} run the real code.
+ * {@code canModifyConcept}, {@code canModifyComment}, {@code belongsToUserBySlug}, {@code canSeePendingEdits})
+ * answer one flag that allows by default; {@code canModify(String)} runs the real code.
  *
  * <p>The flag lives in the context's bean and {@link ResetBeforeEach} sets it back to allow before every
  * test, so a deny cannot leak into the next test or class.
@@ -50,6 +50,11 @@ public class StubOntologySecurityService extends OntologySecurityService {
 
     @Override
     public boolean belongsToUserBySlug(String slug) {
+        return allowModify;
+    }
+
+    @Override
+    public boolean canSeePendingEdits(String ontologySlug) {
         return allowModify;
     }
 
