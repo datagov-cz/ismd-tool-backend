@@ -95,6 +95,18 @@ NKD, RPP and e-Sbírka don't.
 A wrong or missing password doesn't stop startup: Fuseki calls fail with
 `Fuseki HTTP error (status 401)` in the log, and monitoring alerts on that line.
 
+## Rate Limiting (Optional)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RATE_LIMIT_MODE` | `OFF` | `OFF`, `LOG` or `ENFORCE`. |
+| `RATE_LIMIT_TRUSTED_PROXIES` | private and loopback ranges | Proxies skipped in `X-Forwarded-For`; replaces the default. |
+| `RATE_LIMIT_ESBIRKA_PER_MINUTE` | `60` | Per-caller budget for `/api/eli/**`. |
+| `RATE_LIMIT_RESOLVE_PER_MINUTE` | `30` | Per-caller budget for `/api/ontology/concepts/resolve`. |
+| `RATE_LIMIT_SEARCH_PER_MINUTE` | `120` | Per-caller budget for search, NKD, NKOD and RPP search. |
+
+How to switch it on, and what to change when nginx is retired: [RATE_LIMITING.md](RATE_LIMITING.md).
+
 ## PG ↔ TDB2 Consistency: Outbox & Reconciler
 
 Two opt-in mechanisms keep the Postgres metadata and the TDB2/Fuseki RDF in sync. Both are
