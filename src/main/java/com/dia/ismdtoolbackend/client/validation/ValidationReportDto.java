@@ -15,6 +15,12 @@ public class ValidationReportDto implements ValidationReport {
     private List<ValidationResult> results;
     private Instant timestamp;
     private String ontologyIri;
+    /**
+     * Whether the validator's corpus (global) checks ran. Present on fresh validator responses; not
+     * persisted, so it is {@code null} on reports read back from the database. When UNAVAILABLE the
+     * validator also adds a WARNING result, which is persisted with the other results.
+     */
+    private GlobalValidationSummary globalValidation;
 
     public ValidationReportDto(List<ValidationResult> results,
                                String ontologyIri, Instant timestamp) {

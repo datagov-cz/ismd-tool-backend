@@ -64,6 +64,11 @@ class ValidatorContractTest {
         assertEquals(ValidationSeverity.WARNING, global.severity());
         assertEquals("b", global.value());
         assertEquals(new NkdResource("https://slovník.gov.cz/pojem/b", "Pojem B"), global.nkdResource());
+
+        assertNotNull(report.getGlobalValidation());
+        assertEquals(GlobalValidationStatus.UNAVAILABLE, report.getGlobalValidation().status());
+        assertEquals("NKD není dostupné, globální pravidla nebyla ověřena (nebo jen částečně).",
+                report.getGlobalValidation().message());
         server.verify();
     }
 
