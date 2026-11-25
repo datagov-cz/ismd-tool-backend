@@ -11,6 +11,10 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: chore
+    # Major version bumps are manual; Dependabot raises only minor/patch (and digest) updates.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     # One grouped PR per run instead of a separate PR per dependency.
     groups:
       maven-dependencies:
@@ -26,23 +30,30 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: chore
+    # Major version bumps are manual; Dependabot raises only minor/patch (and digest) updates.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       github-actions:
         patterns:
           - "*"
 
-  # Watches the digest-pinned base images in the Dockerfile.
+  # Watches the base images in the backend, Fuseki and Keycloak Dockerfiles.
   - package-ecosystem: docker
-    directory: /
+    directories:
+      - /
+      - /docker/fuseki
+      - /docker/keycloak
     schedule:
       interval: weekly
     target-branch: dev
     open-pull-requests-limit: 5
     commit-message:
       prefix: chore
-    # Java major upgrades (e.g. 17 -> 24) are manual; minor/patch tags and digest refreshes stay automatic.
+    # Major version bumps are manual; Dependabot raises only minor/patch (and digest) updates.
     ignore:
-      - dependency-name: eclipse-temurin
+      - dependency-name: "*"
         update-types: ["version-update:semver-major"]
     groups:
       docker-images:

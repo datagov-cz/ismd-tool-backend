@@ -132,7 +132,7 @@ jobs:
           
           if [ "$PR_EXISTS" = "0" ]; then
             # Create new PR
-            gh pr create \
+            if ! gh pr create \
               --title "Release v${{ steps.new-version.outputs.version }}" \
               --body "# Release v${{ steps.new-version.outputs.version }}
 
@@ -145,9 +145,17 @@ jobs:
 
           **Note:** Version is managed via Git tags, no pom.xml changes needed." \
               --base main \
-              --head $BRANCH_NAME
-          
-            echo "Created new PR from $BRANCH_NAME to main"
+              --head $BRANCH_NAME; then
+              echo "::warning::Could not open the release PR (GitHub Actions is not allowed to create PRs here). Open it by hand with the title exactly 'Release v${{ steps.new-version.outputs.version }}': ${{ github.server_url }}/${{ github.repository }}/compare/main...${BRANCH_NAME}?expand=1"
+              {
+                echo "### Release PR not created"
+                echo "GitHub Actions could not open the PR. Open it by hand: [main...${BRANCH_NAME}](${{ github.server_url }}/${{ github.repository }}/compare/main...${BRANCH_NAME}?expand=1)"
+                echo ""
+                echo "The title must be exactly \`Release v${{ steps.new-version.outputs.version }}\` - the push-to-main release gate matches it."
+              } >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "Created new PR from $BRANCH_NAME to main"
+            fi
           else
             # PR already exists, just update the description
             PR_NUMBER=$(gh pr list --head $BRANCH_NAME --base main --json number --jq '.[0].number')

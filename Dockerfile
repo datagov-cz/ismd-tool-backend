@@ -5,7 +5,7 @@
 # so no extra install is needed.
 # Both base images are pinned to the multi-arch index digest; Dependabot
 # (docker ecosystem) raises the bump PRs.
-FROM eclipse-temurin:17-jdk@sha256:5d6042fb8cdc14d614e4e421f52e3211fc5aeadddce44cbf9de8ed37c791f824 AS builder
+FROM eclipse-temurin:17-jdk@sha256:7a0b2bc7e1372bb05ee361fb79e8a9e822df47343b8716253b3bbaa75060653e AS builder
 WORKDIR /app
 
 # Copy build manifests first so dependency layers cache across source changes.
@@ -23,7 +23,7 @@ RUN --mount=type=cache,target=/root/.m2/repository \
     ./mvnw clean install -DskipTests -B
 
 ### Runtime stage
-FROM eclipse-temurin:17-jre@sha256:207ecae0b2b104dfc6dfa763d1e9cd2041cb344800a180e24cb1a28ed533ff90 AS runtime
+FROM eclipse-temurin:17-jre@sha256:541b08fc7f494edf14e436ff6bfb55767e4a115c87bfc547b8c5de957b58737f AS runtime
 WORKDIR /app
 
 # Unprivileged runtime user. The app writes nothing under /app; Tomcat's work files go to /tmp.
