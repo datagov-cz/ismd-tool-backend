@@ -130,7 +130,7 @@ jobs:
       contents: read
     steps:
       - name: Review dependency changes
-        uses: actions/dependency-review-action@v5.0.0
+        uses: actions/dependency-review-action@v5.0.1
         with:
           fail-on-severity: high
           # Dependabot raises minor/patch only, so a vulnerable version on its PR means the fix
