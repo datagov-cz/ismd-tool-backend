@@ -11,6 +11,10 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: chore
+    # Major version bumps are manual; Dependabot raises only minor/patch (and digest) updates.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     # One grouped PR per run instead of a separate PR per dependency.
     groups:
       maven-dependencies:
@@ -26,6 +30,10 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: chore
+    # Major version bumps are manual; Dependabot raises only minor/patch (and digest) updates.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       github-actions:
         patterns:
@@ -40,6 +48,10 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: chore
+    # Major version bumps are manual; Dependabot raises only minor/patch (and digest) updates.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       docker-images:
         patterns:
