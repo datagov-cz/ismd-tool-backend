@@ -138,10 +138,18 @@ public class ConsistencyReconciler {
                 mismatches.add(Mismatch.of(MismatchCategory.RDF_ORPHAN, o.graph(), o.iri(),
                         "Owned RDF subject with no Postgres row"));
             }
+            Set<String> withTriples = subjectsInDeclaredGraph(pgMissing);
             for (RawMissing m : pgMissing) {
-                mismatches.add(Mismatch.of(MismatchCategory.PG_MISSING_RDF, m.concept().getGraphName(),
-                        m.concept().getConceptIri(),
-                        "PG row with no owned-resolvable RDF in ANY graph (failed delete, failed create, or lost inScheme)"));
+                ConceptMetadataEntity c = m.concept();
+                if (withTriples.contains(c.getConceptIri())) {
+                    mismatches.add(Mismatch.of(MismatchCategory.RDF_NOT_OWNED_RESOLVABLE, c.getGraphName(),
+                            c.getConceptIri(),
+                            "PG row whose IRI has triples in its graph but is not owned-resolvable (lost or foreign inScheme)"));
+                } else {
+                    mismatches.add(Mismatch.of(MismatchCategory.PG_MISSING_RDF, c.getGraphName(),
+                            c.getConceptIri(),
+                            "PG row with no RDF in its graph and no owned-resolvable RDF in any graph (failed delete or failed create)"));
+                }
             }
 
             ReconciliationReport report = new ReconciliationReport(
@@ -224,6 +232,20 @@ public class ConsistencyReconciler {
         }
         int idx = iri.lastIndexOf(POJEM_SEGMENT);
         return idx < 0 ? null : iri.substring(0, idx + POJEM_SEGMENT.length());
+    }
+
+    /** The IRIs of {@code missing} rows that are the subject of a triple in the row's declared graph. */
+    private Set<String> subjectsInDeclaredGraph(List<RawMissing> missing) {
+        Map<String, List<String>> irisByGraph = new HashMap<>();
+        for (RawMissing m : missing) {
+            ConceptMetadataEntity c = m.concept();
+            if (c.getGraphName() != null && c.getConceptIri() != null) {
+                irisByGraph.computeIfAbsent(c.getGraphName(), k -> new ArrayList<>()).add(c.getConceptIri());
+            }
+        }
+        Set<String> found = new HashSet<>();
+        irisByGraph.forEach((graph, iris) -> found.addAll(jenaTDB2Repository.findSubjectsInGraph(graph, iris)));
+        return found;
     }
 
     /** Batch-fetches lowercased {@code skos:prefLabel} strings per concept IRI from Fuseki. */

@@ -53,6 +53,23 @@ fallback.
 delete. **Not covered:** ontology **upload** (still a direct write — this is the path the reconciler
 backstops).
 
+### Upload and the graph store
+
+Upload writes its graph to Fuseki first, then commits the vocabulary row; on a failed commit it deletes
+the graph again. A graph can still be left without a row (`GRAPH_ORPHAN`) when the process dies between
+the two writes, when that cleanup delete fails too, or when a vocabulary delete's `DELETE_GRAPH` row
+does not reach Fuseki. Two guards keep upload safe against this:
+
+- **Unapplied outbox row for the graph → `409 ONTOLOGY_CREATION_CONFLICT`.** While any row for the
+  graph is pending or `FAILED`, an upload of that IRI is refused: a queued delete of an earlier
+  vocabulary would otherwise remove the new graph when it is finally applied. Retry the failed row (or
+  wait for the relay), then upload again.
+- **Leftover graph without a row → replaced, with a WARN.** An upload over such a graph replaces it and
+  logs `Graph <iri> holds data but has no vocabulary row; the upload replaces it`. This heals leftovers
+  of earlier failed attempts by re-uploading.
+
+Data placed in Fuseki outside the application is **not** protected: see the runbook below.
+
 ## Row lifecycle
 
 ```
@@ -150,12 +167,11 @@ concepts whose `inScheme` points at a scheme their IRI doesn't prefix-match.
 | Category | Meaning | Disposition |
 |---|---|---|
 | `RDF_ORPHAN` | Owned RDF subject in Fuseki, no PG row | The only **auto-repairable** category (future phase) |
-| `PG_MISSING_RDF` | PG row whose IRI is not owned-resolvable in **any** graph | Report-only (two causes: failed delete vs failed create) |
+| `PG_MISSING_RDF` | PG row whose IRI is not owned-resolvable in **any** graph and has no triples in its declared graph | Report-only (two causes: failed delete vs failed create) |
 | `IRI_GRAPH_MISMATCH` | PG IRI owned-resolvable, but not in its declared `graphName` (or `graphName` is null) | Report-only |
 | `GRAPH_ORPHAN` | Fuseki graph holds owned subjects but no ontology row references it | Report-only (deletable only in a future gated phase) |
 | `SUSPECTED_RENAME` | An `RDF_ORPHAN`(new IRI) + `PG_MISSING_RDF`(old IRI) pair that looks like one half-finished rename | Report-only; both IRIs excluded from any future repair |
-| `EXCLUDED_NO_INSCHEME` | In-namespace subject with no `inScheme` (deliberately excluded / legacy) | Informational; *not emitted yet* |
-| `RDF_NOT_OWNED_RESOLVABLE` | PG IRI has triples but isn't ownership-resolvable (e.g. lost `inScheme`) | Report-only; *not emitted yet* |
+| `RDF_NOT_OWNED_RESOLVABLE` | PG row whose IRI is the subject of triples in its declared graph but isn't owned-resolvable anywhere (lost or foreign `inScheme`); replaces `PG_MISSING_RDF` for that row | Report-only |
 
 > **Detection-only today.** No category is repaired. Only `RDF_ORPHAN` is *ever* auto-repairable, and
 > only after the repair-safety machinery (quarantine, pre-delete audit, distributed lock) is built.
@@ -206,6 +222,15 @@ curl -s -X POST "http://localhost:8081/popisujeme/api/admin/reconciler/run" \
 - **`RDF_ORPHAN`:** owned RDF with no PG row. Today: report-only. If you see one immediately after a
   write, re-run — it may be a transient (PG commit landed just after the scan's PG snapshot).
 - **`SUSPECTED_RENAME`:** a likely half-finished rename; both IRIs are reported together. Report-only.
+- **`GRAPH_ORPHAN`:** a graph with owned concepts and no vocabulary row. Report-only. The next upload
+  of that IRI replaces it (WARN in the log); to drop it instead, delete the graph in Fuseki.
+- **Changing Fuseki or PostgreSQL outside the application** (restore from backup, data wipe, manual
+  load): the application trusts PostgreSQL for which vocabularies exist, and upload replaces a graph
+  that has no row. So:
+  - restore or wipe **both stores together**, from backups of the same point in time;
+  - after the change, run the reconciler (`POST /run`) and resolve every `GRAPH_ORPHAN` and
+    `PG_MISSING_RDF` before users write again;
+  - never load a graph into Fuseki by hand for a vocabulary the application should own; upload it.
 - **`409` on `POST /run`:** a scheduled or another manual run holds the guard. Use `GET /report`.
 - **Run aborts with a max-concepts error:** the dataset exceeds `reconciler.max-concepts`. Raise the
   cap (or page the snapshot) before relying on the reports.

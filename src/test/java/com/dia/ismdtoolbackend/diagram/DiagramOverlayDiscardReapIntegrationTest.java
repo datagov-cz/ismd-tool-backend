@@ -154,7 +154,7 @@ class DiagramOverlayDiscardReapIntegrationTest extends PostgresIntegrationTestBa
         save(List.of(CLASS_A, CLASS_B));
         save(List.of(CLASS_A));
 
-        DiagramDto fetched = diagramService.getDiagram(SLUG, diagramId);
+        DiagramDto fetched = diagramService.getDiagram(SLUG, diagramId, true);
 
         assertThat(nodeIds(fetched))
                 .as("a later GET must not resurrect the removed class")
@@ -185,7 +185,7 @@ class DiagramOverlayDiscardReapIntegrationTest extends PostgresIntegrationTestBa
         assertThat(propertyIris(after, CLASS_A))
                 .as("a placed property renders as a row in its class cell")
                 .containsExactly(PROP);
-        assertThat(propertyIris(diagramService.getDiagram(SLUG, diagramId), CLASS_A))
+        assertThat(propertyIris(diagramService.getDiagram(SLUG, diagramId, true), CLASS_A))
                 .as("and survives a fresh GET")
                 .containsExactly(PROP);
     }
@@ -205,7 +205,7 @@ class DiagramOverlayDiscardReapIntegrationTest extends PostgresIntegrationTestBa
                 ConceptDetailModel.builder().iri(created).name(Map.of("cs", "nová vlastnost"))
                         .domain(CLASS_A).build());
 
-        assertThat(propertyIris(diagramService.getDiagram(SLUG, diagramId), CLASS_A))
+        assertThat(propertyIris(diagramService.getDiagram(SLUG, diagramId, true), CLASS_A))
                 .as("a property created elsewhere stays off the canvas until placed")
                 .containsExactly(PROP);
     }

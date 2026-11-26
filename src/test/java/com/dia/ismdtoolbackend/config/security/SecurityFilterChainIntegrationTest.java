@@ -11,10 +11,12 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockServletContext;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -29,9 +31,15 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.AbstractMockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.web.method.HandlerMethod;
+import org.springframework.web.servlet.HandlerExecutionChain;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
+import java.lang.reflect.Method;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -74,6 +82,10 @@ class SecurityFilterChainIntegrationTest {
     @Autowired
     private MockMvc mockMvc;
 
+    @Autowired
+    @Qualifier("requestMappingHandlerMapping")
+    private RequestMappingHandlerMapping requestMappings;
+
     /** Stubbed, with its snapshot holder, so /api/codelist/nkod never reaches the live catalogue. */
     @MockitoBean
     private NkodCodelistService nkodCodelistService;
@@ -96,36 +108,10 @@ class SecurityFilterChainIntegrationTest {
         }
     }
 
-    // ── Chain order ──────────────────────────────────────────────────────
+    /** A legal act path prefix of the AI suggestion endpoints. */
+    private static final String AI_LEGAL_ACT = "/api/ai/legal-acts/2009/111/2024-01-01";
 
-    /** The first chain whose matcher accepts a request is the one that serves it: search → public → authenticated. */
-    @Test
-    void filterChains_serveSearchThenPublicThenAuthenticated() {
-        assertThat(filterChainProxy.getFilterChains()).hasSize(3);
-
-        assertThat(firstMatchingChain("/api/search")).isZero();
-        assertThat(firstMatchingChain("/api/search/anything")).isZero();
-        assertThat(firstMatchingChain("/api/ontology/list")).isEqualTo(1);
-        assertThat(firstMatchingChain("/actuator/health")).isEqualTo(1);
-        assertThat(firstMatchingChain("/api/user/me")).isEqualTo(2);
-        assertThat(firstMatchingChain("/api/nonexistent")).isEqualTo(2);
-    }
-
-    private int firstMatchingChain(String path) {
-        List<SecurityFilterChain> chains = filterChainProxy.getFilterChains();
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", path);
-        return IntStream.range(0, chains.size())
-                .filter(i -> chains.get(i).matches(request))
-                .findFirst()
-                .orElse(-1);
-    }
-
-    // ── Public chain ─────────────────────────────────────────────────────
-
-    // Mirrors the securityMatcher allowlist of SecurityConfig.publicSecurityFilterChain. A path dropped from the
-    // allowlist falls to the authenticated chain and answers 401. Concrete paths exercise the wildcard patterns.
-    @ParameterizedTest
-    @ValueSource(strings = {
+    private static final String[] PUBLIC_PATHS = {
             // Actuator
             "/actuator/health",
             "/actuator/health/liveness",
@@ -165,7 +151,42 @@ class SecurityFilterChainIntegrationTest {
             "/v3/api-docs",
             "/swagger-ui/index.html",
             "/swagger-ui.html"
-    })
+    };
+
+    // ── Chain order ──────────────────────────────────────────────────────
+
+    /** The first chain whose matcher accepts a request is the one that serves it: search → public → authenticated. */
+    @Test
+    void filterChains_serveSearchThenPublicThenAuthenticated() {
+        assertThat(filterChainProxy.getFilterChains()).hasSize(3);
+
+        assertThat(firstMatchingChain("/api/search")).isZero();
+        assertThat(firstMatchingChain("/api/search/anything")).isZero();
+        assertThat(firstMatchingChain("/api/ontology/list")).isEqualTo(1);
+        assertThat(firstMatchingChain("/actuator/health")).isEqualTo(1);
+        assertThat(firstMatchingChain("/api/user/me")).isEqualTo(2);
+        assertThat(firstMatchingChain("/api/nonexistent")).isEqualTo(2);
+    }
+
+    private int firstMatchingChain(String path) {
+        List<SecurityFilterChain> chains = filterChainProxy.getFilterChains();
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", path);
+        return IntStream.range(0, chains.size())
+                .filter(i -> chains.get(i).matches(request))
+                .findFirst()
+                .orElse(-1);
+    }
+
+    // ── Public chain ─────────────────────────────────────────────────────
+
+    static Stream<String> publicPaths() {
+        return Stream.of(PUBLIC_PATHS);
+    }
+
+    // Mirrors the securityMatcher allowlist of SecurityConfig.publicSecurityFilterChain. A path dropped from the
+    // allowlist falls to the authenticated chain and answers 401. Concrete paths exercise the wildcard patterns.
+    @ParameterizedTest
+    @MethodSource("publicPaths")
     void publicEndpoints_accessibleWithoutAuth(String path) throws Exception {
         int status = mockMvc.perform(get(path)
                         .accept(MediaType.APPLICATION_JSON))
@@ -209,7 +230,21 @@ class SecurityFilterChainIntegrationTest {
                 new Route(HttpMethod.PATCH, "/api/diagram/test/5/rename", "renameDiagram"),
                 new Route(HttpMethod.POST, "/api/diagram/test/5/materialize", "materialize"),
                 new Route(HttpMethod.DELETE, "/api/diagram/test/5", "deleteDiagram"),
-                new Route(HttpMethod.POST, "/api/ai/accept-suggestion", "acceptSuggestions")
+                new Route(HttpMethod.POST, "/api/ai/accept-suggestion", "acceptSuggestions"),
+                new Route(HttpMethod.POST, "/api/ai/like-suggestion", "likeSuggestions"),
+                new Route(HttpMethod.POST, "/api/ai/dislike-suggestion", "dislikeSuggestions"),
+                new Route(HttpMethod.POST, AI_LEGAL_ACT + "/class-suggestions", "startClassSuggestions"),
+                new Route(HttpMethod.POST, AI_LEGAL_ACT + "/property-suggestions", "startPropertySuggestions"),
+                new Route(HttpMethod.POST, AI_LEGAL_ACT + "/relationship-suggestions", "startRelationshipSuggestions"),
+                new Route(HttpMethod.POST, AI_LEGAL_ACT + "/vocabulary-suggestions", "startVocabularySuggestions"),
+                new Route(HttpMethod.POST, AI_LEGAL_ACT + "/vocabulary-suggestions/expand", "expandVocabulary"),
+                new Route(HttpMethod.POST, AI_LEGAL_ACT + "/vocabulary-suggestions/regenerate",
+                        "regenerateVocabularyConcept"),
+                new Route(HttpMethod.GET, "/api/ai/legal-acts/class-suggestions-jobs", "getClassSuggestions"),
+                new Route(HttpMethod.GET, "/api/ai/legal-acts/property-suggestions-jobs", "getPropertySuggestions"),
+                new Route(HttpMethod.GET, "/api/ai/legal-acts/relationship-suggestions-jobs",
+                        "getRelationshipSuggestions"),
+                new Route(HttpMethod.GET, "/api/ai/legal-acts/vocabulary-suggestions-jobs", "getVocabularySuggestions")
         );
     }
 
@@ -295,6 +330,45 @@ class SecurityFilterChainIntegrationTest {
                 .as("%s must pass the filter chain and reach a controller", route)
                 .isInstanceOfSatisfying(HandlerMethod.class, handler ->
                         assertThat(handler.getMethod().getName()).isEqualTo(route.handler()));
+    }
+
+    // ── Route lists cover every endpoint ─────────────────────────────────
+
+    /**
+     * Every controller method of the application is reached by a path listed in this test, so a new endpoint
+     * cannot go untested here: add it to {@link #PUBLIC_PATHS}, {@link #authenticatedRoutes} or {@link #adminRoutes}.
+     */
+    @Test
+    void routeLists_coverEveryControllerMethod() {
+        Set<Method> covered = new HashSet<>();
+        Stream.of(PUBLIC_PATHS).forEach(path -> {
+            handlerFor(get(path)).ifPresent(covered::add);
+            handlerFor(request(HttpMethod.POST, path)).ifPresent(covered::add);
+        });
+        allProtectedRoutes().forEach(route -> handlerFor(requestFor(route)).ifPresent(covered::add));
+        handlerFor(get("/api/search")).ifPresent(covered::add);
+
+        List<String> uncovered = requestMappings.getHandlerMethods().entrySet().stream()
+                .filter(entry -> entry.getValue().getBeanType().getPackageName().startsWith("com.dia.ismdtoolbackend"))
+                .filter(entry -> !covered.contains(entry.getValue().getMethod()))
+                .map(entry -> entry.getValue().getBeanType().getSimpleName() + "#"
+                        + entry.getValue().getMethod().getName() + " " + entry.getKey())
+                .sorted()
+                .toList();
+
+        assertThat(uncovered).as("controller methods no route list of this test reaches").isEmpty();
+    }
+
+    private Optional<Method> handlerFor(AbstractMockHttpServletRequestBuilder<?> request) {
+        try {
+            HandlerExecutionChain chain = requestMappings.getHandler(request.buildRequest(new MockServletContext()));
+            return Optional.ofNullable(chain)
+                    .map(HandlerExecutionChain::getHandler)
+                    .filter(HandlerMethod.class::isInstance)
+                    .map(handler -> ((HandlerMethod) handler).getMethod());
+        } catch (Exception wrongMethodOrNoMatch) {
+            return Optional.empty();
+        }
     }
 
     // ── Unmatched endpoints are denied ────────────────────────────────────

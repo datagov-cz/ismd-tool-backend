@@ -92,6 +92,16 @@ class NkdLinkDetectorTest {
                 .isEmpty();
     }
 
+    /** A datatype range is never an NKD concept: asking NKD about it would only make every check incomplete. */
+    @Test
+    void vlastnostDatatypeRange_isNoCandidate() {
+        Model model = model(PROP, RDFS.range, org.apache.jena.vocabulary.XSD.xdouble.getURI());
+        model.add(model.getResource(PROP), RDFS.range, RDFS.Literal);
+        model.add(model.getResource(PROP), RDFS.range, org.apache.jena.vocabulary.RDF.langString);
+
+        assertThat(detector.forbiddenDomainRangeTargets(PROP, ConceptType.VLASTNOST, OWNER_GRAPH, model)).isEmpty();
+    }
+
     /** The snapshot side is VZTAH-gated too: a TRIDA has no range, so nothing may be collected from one. */
     @Test
     void tridaWithARangeTriple_isNotSnapshottedAsARangeTarget() {

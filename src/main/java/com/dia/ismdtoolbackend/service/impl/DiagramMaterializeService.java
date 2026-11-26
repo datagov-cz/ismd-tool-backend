@@ -13,6 +13,7 @@ import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
 import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
 import com.dia.ismdtoolbackend.service.impl.DiagramChangeApplier.Outcome;
+import com.dia.ismdtoolbackend.service.snapshot.NkdLookup;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.AccessDeniedException;
@@ -53,7 +54,10 @@ public class DiagramMaterializeService {
             String conceptIri = change.conceptIri();
             log.debug("Applying {} on concept {} (diagram {})", change.op(), conceptIri, diagramId);
             try {
-                Outcome outcome = changeApplier.applyChange(diagramId, conceptIri);
+                // NKD first, outside the change's transaction, so a slow NKD holds neither a lock nor a
+                // connection.
+                NkdLookup nkd = changeApplier.prefetchNkd(diagramId, conceptIri);
+                Outcome outcome = changeApplier.applyChange(diagramId, conceptIri, nkd);
                 switch (outcome.kind()) {
                     case SKIPPED_STALE ->
                             skippedStale.add(new MaterializeResultDto.SkippedStale(conceptIri));

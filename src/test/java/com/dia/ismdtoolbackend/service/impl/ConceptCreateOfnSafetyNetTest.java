@@ -78,12 +78,12 @@ class ConceptCreateOfnSafetyNetTest {
                 })),
                 Arguments.of("vlastnost with a datatype code", ConceptModels.vlastnost("Výška", m -> {
                     m.setDataType("double");
-                    m.setDomain("Vozidlo");
+                    m.setDomain(GRAPH + "/pojem/vozidlo");
                 })),
                 Arguments.of("vlastnost without a datatype", ConceptModels.vlastnost("Poznámka")),
                 Arguments.of("vztah", ConceptModels.vztah("Vlastní", m -> {
-                    m.setDomain("Osoba");
-                    m.setRange("Vozidlo");
+                    m.setDomain(GRAPH + "/pojem/osoba");
+                    m.setRange(GRAPH + "/pojem/vozidlo");
                 })));
     }
 

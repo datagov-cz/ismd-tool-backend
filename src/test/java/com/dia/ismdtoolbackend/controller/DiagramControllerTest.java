@@ -45,7 +45,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Web-layer contract for the diagram controller: {@code GET /all} lists summaries; reads are open to any
- * authenticated user (the deliberate {@code canViewResource()} posture — a non-owner can read); writes are
+ * authenticated user (a non-owner reads it without the staged edits); writes are
  * ownership-gated ({@code belongsToUserBySlug}) and 403 for a non-owner. Service is mocked — this exercises
  * routing + authz, not the fat-read join.
  */
@@ -103,7 +103,7 @@ class DiagramControllerTest {
                 .andExpect(jsonPath("$.data[0].diagramId").value(5));
 
         // The filter is the parameter's value, never the caller's own id — this endpoint lists
-        // any user's diagrams (reads are canViewResource(), not ownership-gated).
+        // any user's diagrams (reads need authentication only, not ownership).
         verify(diagramService).listAll("someone-else");
         verify(diagramService, never()).listAll("user123");
     }
@@ -123,10 +123,10 @@ class DiagramControllerTest {
     @WithMockSecurityUser(userId = "not-the-owner")
     void getDetail_readableByNonOwner() throws Exception {
         ontologySecurity.denyModify();   // not the owner → writes would 403
-        when(diagramService.getDiagram(eq("pracovni-pomer"), eq(5L)))
+        when(diagramService.getDiagram(eq("pracovni-pomer"), eq(5L), eq(false)))
                 .thenReturn(new DiagramDto(5L, "Hlavní diagram", "pracovni-pomer", 0L, null, List.of(), List.of(), List.of()));
 
-        // canViewResource() (any authenticated) gates the read, NOT belongsToUserBySlug → still 200.
+        // Any authenticated user reads the diagram (200), but without the owner's staged edits.
         mockMvc.perform(get("/api/diagram/pracovni-pomer/5/detail"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.ontologySlug").value("pracovni-pomer"));
@@ -297,7 +297,7 @@ class DiagramControllerTest {
     @Test
     @WithMockSecurityUser(userId = "user123")
     void getDiagram_ownGraphUnreadable_returns502LikeTheSavePath() throws Exception {
-        when(diagramService.getDiagram(eq("pracovni-pomer"), eq(5L)))
+        when(diagramService.getDiagram(eq("pracovni-pomer"), eq(5L), eq(true)))
                 .thenThrow(new DiagramContentUnavailableException(new RuntimeException("fuseki down")));
 
         mockMvc.perform(get("/api/diagram/pracovni-pomer/5/detail"))
@@ -446,7 +446,7 @@ class DiagramControllerTest {
     void getDetail_nodesOmitVersion_diagramCarriesIt() throws Exception {
         DiagramDto.Node node = new DiagramDto.Node("iri:https://x/pojem/a", "classNode",
                 new PositionDto(0.0, 0.0), null, true, null);     // in-diagram form: no version
-        when(diagramService.getDiagram(eq("pracovni-pomer"), eq(5L)))
+        when(diagramService.getDiagram(eq("pracovni-pomer"), eq(5L), eq(true)))
                 .thenReturn(new DiagramDto(5L, "Hlavní diagram", "pracovni-pomer", 7L, null, List.of(node), List.of(), List.of()));
 
         String body = mockMvc.perform(get("/api/diagram/pracovni-pomer/5/detail"))
@@ -468,7 +468,7 @@ class DiagramControllerTest {
 
     // ========== List for an ontology, concept usage, create, delete ==========
 
-    /** Reads are canViewResource(): a non-owner gets the ontology's diagrams, asked for by the path slug. */
+    /** Reads need authentication only: a non-owner gets the ontology's diagrams, asked for by the path slug. */
     @Test
     @WithMockSecurityUser(userId = "not-the-owner")
     void listForOntology_returnsTheSlugsDiagrams_toANonOwner() throws Exception {
@@ -492,7 +492,7 @@ class DiagramControllerTest {
     @WithMockSecurityUser(userId = "not-the-owner")
     void conceptUsage_returnsPlacements_toANonOwner() throws Exception {
         ontologySecurity.denyModify();
-        when(conceptUsageService.usageForSlug("zamestnava")).thenReturn(new DiagramConceptUsageDto(
+        when(conceptUsageService.usageForSlug(eq("zamestnava"), any())).thenReturn(new DiagramConceptUsageDto(
                 "https://x/pojem/zaměstnává", Map.of("cs", "Zaměstnává"), "zamestnava",
                 List.of(new DiagramConceptUsageDto.Placement(5L, "Hlavní diagram", "pracovni-pomer",
                         DiagramConceptUsageKind.EDGE, null, null, null, List.of(), List.of(), true))));
@@ -510,14 +510,19 @@ class DiagramControllerTest {
                 // NON_NULL: hostClass is set only for PROPERTY_ROW
                 .andExpect(jsonPath("$.data.placements[0].hostClass").doesNotExist());
 
-        verify(conceptUsageService).usageForSlug("zamestnava");
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<java.util.function.Predicate<String>> visible =
+                ArgumentCaptor.forClass(java.util.function.Predicate.class);
+        verify(conceptUsageService).usageForSlug(eq("zamestnava"), visible.capture());
+        assertThat(visible.getValue().test("pracovni-pomer"))
+                .as("a non-owner does not see the ontology's staged edits").isFalse();
         verifyNoInteractions(diagramService);
     }
 
     @Test
     @WithMockSecurityUser(userId = "user123")
     void conceptUsage_onNoCanvas_isAnEmptyList() throws Exception {
-        when(conceptUsageService.usageForSlug("osamely")).thenReturn(new DiagramConceptUsageDto(
+        when(conceptUsageService.usageForSlug(eq("osamely"), any())).thenReturn(new DiagramConceptUsageDto(
                 "https://x/pojem/osamělý", null, "osamely", List.of()));
 
         mockMvc.perform(get("/api/diagram/usage/concept/{conceptSlug}", "osamely"))

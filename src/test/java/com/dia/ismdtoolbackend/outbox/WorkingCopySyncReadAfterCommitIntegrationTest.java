@@ -71,6 +71,7 @@ import static org.mockito.Mockito.when;
  * twin is stubbed.
  */
 @DataJpaTest
+@org.junit.jupiter.api.extension.ExtendWith(com.dia.ismdtoolbackend.testsupport.security.SignedInAdmin.class)
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @ActiveProfiles("junit")
 @Import({WorkingCopySyncReadAfterCommitIntegrationTest.Beans.class, WorkingCopyDeviationTestBeans.class,
@@ -244,7 +245,8 @@ class WorkingCopySyncReadAfterCommitIntegrationTest extends PostgresIntegrationT
                 ConceptMetadataMapper mapper, InMemoryTdb2 tdb2, OntologyDetailExtractor detailExtractor,
                 NkdSparqlClient nkdSparqlClient, OutboxWriter writer, OutboxEntryRepository outboxRepository,
                 OutboxRelayTrigger trigger, MetadataTouchService touchService,
-                WorkingCopyDeviationServiceImpl deviationService) {
+                WorkingCopyDeviationServiceImpl deviationService,
+                org.springframework.transaction.PlatformTransactionManager txManager) {
             return new ConceptServiceFixture()
                     .conceptMetadataRepository(conceptRepo)
                     .ontologyMetadataRepository(ontologyRepo)
@@ -259,6 +261,7 @@ class WorkingCopySyncReadAfterCommitIntegrationTest extends PostgresIntegrationT
                     .outboxRepository(outboxRepository)
                     .outboxRelayTrigger(trigger)
                     .workingCopyDeviationService(deviationService)
+                    .writeTransaction(new com.dia.ismdtoolbackend.service.impl.ConceptWriteTransaction(txManager))
                     .build();
         }
     }

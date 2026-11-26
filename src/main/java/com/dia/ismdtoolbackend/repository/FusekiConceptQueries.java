@@ -272,6 +272,40 @@ final class FusekiConceptQueries {
     }
 
     /**
+     * The IRIs {@code conceptIri} points at in {@code graphName} through the predicates the NKD link rules read:
+     * {@code rdfs:domain}, {@code rdfs:range}, {@code rdfs:subClassOf}, {@code rdfs:subPropertyOf},
+     * {@code skos:exactMatch}. Blank nodes and literals are skipped.
+     */
+    public List<String> fetchLinkTargets(String conceptIri, String graphName) {
+        if (conceptIri == null || graphName == null || !SparqlIriValidator.isSafeHttpIri(conceptIri)) {
+            return List.of();
+        }
+        return executor.execute(
+                "fetching link targets of " + conceptIri,
+                "Failed to fetch concept links from Fuseki",
+                conn -> {
+                    ParameterizedSparqlString pss = new ParameterizedSparqlString();
+                    pss.append("PREFIX skos: <http://www.w3.org/2004/02/skos/core#> ");
+                    pss.append("PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> ");
+                    pss.append("SELECT DISTINCT ?target WHERE { GRAPH ");
+                    pss.appendIri(graphName);
+                    pss.append(" { ");
+                    pss.appendIri(conceptIri);
+                    pss.append(" ?p ?target . ");
+                    pss.append("VALUES ?p { rdfs:domain rdfs:range rdfs:subClassOf rdfs:subPropertyOf skos:exactMatch } ");
+                    pss.append("FILTER(isIRI(?target)) } }");
+                    List<String> targets = new ArrayList<>();
+                    try (QueryExecution qExec = conn.query(pss.asQuery())) {
+                        ResultSet rs = qExec.execSelect();
+                        while (rs.hasNext()) {
+                            targets.add(rs.next().getResource("target").getURI());
+                        }
+                    }
+                    return targets;
+                });
+    }
+
+    /**
      * The hierarchy links of a single concept: {@code rdfs:subClassOf} / {@code skos:broader} and
      * {@code skos:exactMatch}, as raw target IRIs. Deliberately narrow — {@link #fetchConceptResolutions}
      * already carries label, slug, domain and range, but not these, and fetching them was otherwise only

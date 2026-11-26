@@ -60,23 +60,22 @@ class ConceptEditorErrorHandlingTest extends ConceptEditorTestBase {
     void validGraphNameIsTheNamespaceOfGeneratedConceptIris() {
         String conceptIri = DEFAULT_NS + "pojem/třída";
         Ttl.add(model, "<" + conceptIri + "> a owl:Class ; skos:prefLabel \"Třída\"@cs .");
-        classConceptEditModel.setBroaderConcept(java.util.List.of("Rodič"));
+        classConceptEditModel.setNameModel(Texts.name("cs", "Nová třída"));
 
-        conceptEditor.editConcept(conceptIri, classConceptEditModel, model, "https://custom.cz/vocab/");
+        ConceptEditor.EditResult result =
+                conceptEditor.editConcept(conceptIri, classConceptEditModel, model, "https://custom.cz/vocab/");
 
-        assertThat(Ttl.iris(model, conceptIri, org.apache.jena.vocabulary.RDFS.subClassOf))
-                .containsExactly("https://custom.cz/vocab/pojem/rodič");
+        assertThat(result.newConceptIRI).isEqualTo("https://custom.cz/vocab/pojem/nová-třída");
     }
 
     @Test
     void invalidGraphNameFallsBackToTheDefaultNamespace() {
         String conceptIri = DEFAULT_NS + "pojem/třída";
         Ttl.add(model, "<" + conceptIri + "> a owl:Class ; skos:prefLabel \"Třída\"@cs .");
-        classConceptEditModel.setBroaderConcept(java.util.List.of("Rodič"));
+        classConceptEditModel.setNameModel(Texts.name("cs", "Nová třída"));
 
-        conceptEditor.editConcept(conceptIri, classConceptEditModel, model, "not an iri");
+        ConceptEditor.EditResult result = conceptEditor.editConcept(conceptIri, classConceptEditModel, model, "not an iri");
 
-        assertThat(Ttl.iris(model, conceptIri, org.apache.jena.vocabulary.RDFS.subClassOf))
-                .containsExactly(DEFAULT_NS + "pojem/rodič");
+        assertThat(result.newConceptIRI).isEqualTo(DEFAULT_NS + "pojem/nová-třída");
     }
 }

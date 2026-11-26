@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.outbox;
 
+import org.junit.jupiter.api.extension.ExtendWith;
+import com.dia.ismdtoolbackend.testsupport.security.SignedInAdmin;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.models.NameModel;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
@@ -40,6 +42,7 @@ import static org.assertj.core.api.Assertions.tuple;
  * after-commit nudge fires on a real commit.
  */
 @OutboxFlowIT
+@ExtendWith(SignedInAdmin.class)
 class ConceptOutboxFlowIntegrationTest extends OutboxFlowTestBase {
 
     private static final String GRAPH = "https://slovnik.gov.cz/g";

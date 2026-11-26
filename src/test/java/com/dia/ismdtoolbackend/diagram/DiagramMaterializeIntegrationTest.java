@@ -94,9 +94,8 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
 
     @BeforeEach
     void setUp() {
-        // No authenticated principal by default: the materialize tests drive the service as a non-request
-        // caller, which the ownership assertion deliberately lets through.
-        SecurityContextHolder.clearContext();
+        // Materialize runs as the requesting user; the vocabulary owner unless a test signs in someone else.
+        authenticateAs(USER, false);
         OntologyMetadataEntity ontology = data.createOntology("g-ontology", GRAPH, USER, false);
         // Staged edits hang off a diagram; this is the ontology's first one.
         diagramId = data.createDiagram(ontology, "Test diagram");
@@ -603,8 +602,8 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
         // One findByDiagramId builds and classifies the whole work-list.
         verify(pendingEditRepo, times(1)).findByDiagramId(diagramId);
         // The old shape issued ~44 of these for 10 rows just to order them; now only the applier's own
-        // per-change lookup remains (one per staged edit).
-        verify(pendingEditRepo, atMost(10)).findByDiagramIdAndConceptIri(any(), any());
+        // per-change lookups remain: one in the NKD prefetch, one in the change's transaction.
+        verify(pendingEditRepo, atMost(20)).findByDiagramIdAndConceptIri(any(), any());
     }
 
     /**
@@ -1048,6 +1047,25 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
 
         assertThat(triplesOf(victimGraph(), victimConcept.getConceptIri()))
                 .as("victim concept untouched by the refused service-layer calls").isEqualTo(before);
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void signOut() {
+        SecurityContextHolder.clearContext();
+    }
+
+    /** Without a signed-in user the service layer refuses: no system path edits or deletes concepts. */
+    @Test
+    void editAndDelete_withoutAUser_areRefused() {
+        ConceptMetadataEntity a = create(classModel("Anonymous Target"));
+        SecurityContextHolder.clearContext();
+
+        ClassConceptEditModel edit = new ClassConceptEditModel();
+        edit.setConceptType(ConceptType.TRIDA.getValue());
+        assertThatThrownBy(() -> conceptService.editConcept(a.getId(), edit))
+                .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> conceptService.deleteConcept(a.getId()))
+                .isInstanceOf(AccessDeniedException.class);
     }
 
     /** The owner is unaffected — the assertion gates non-owners, not the legitimate edit path. */

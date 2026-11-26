@@ -15,6 +15,7 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -36,109 +37,63 @@ class CorsConfigTest {
             "https://192.168.0.18",
             "http://192.168.1.20",
             "https://b2b6-89-103-185-10.ngrok-free.app",
-            "https://t1.domain.org",
             "http://ismd-validator-frontend:3000",
             "http://host.docker.internal:8080"
     };
 
+    /** Production, test and dev share one configuration: only the configured origins. */
     @Nested
-    class Production {
-
-        private final CorsFilter filter = filterFor(new MockEnvironment()
-                .withProperty("cors.allowed-origins", "https://app.example.test, https://admin.example.test"),
-                "production");
+    class Deployed {
 
         @ParameterizedTest
-        @ValueSource(strings = {"https://app.example.test", "https://admin.example.test"})
-        void configuredOriginIsAllowed(String origin) throws Exception {
-            MockHttpServletResponse response = get(filter, origin);
+        @ValueSource(strings = {"production", "test", "dev"})
+        void configuredOriginIsAllowed(String profile) throws Exception {
+            CorsFilter filter = configuredFilter(profile);
 
-            assertThat(response.getStatus()).isEqualTo(200);
-            assertThat(response.getHeader("Access-Control-Allow-Origin")).isEqualTo(origin);
-            assertThat(response.getHeader("Access-Control-Allow-Credentials")).isEqualTo("true");
+            for (String origin : List.of("https://app.example.test", "https://admin.example.test")) {
+                MockHttpServletResponse response = get(filter, origin);
+                assertThat(response.getStatus()).as(origin).isEqualTo(200);
+                assertThat(response.getHeader("Access-Control-Allow-Origin")).as(origin).isEqualTo(origin);
+                assertThat(response.getHeader("Access-Control-Allow-Credentials")).isEqualTo("true");
+            }
         }
 
         @ParameterizedTest
-        @ValueSource(strings = {
-                "https://www.twitter.com",
-                "https://www.domain.com",
-                "http://localhost:3000",
-                "https://malicious-site.com",
-                "https://192.168.1.1",
-                "https://t1.domain.org",
-                "http://app.example.test"
-        })
-        void otherOriginIsRejected(String origin) throws Exception {
-            MockHttpServletResponse response = get(filter, origin);
+        @ValueSource(strings = {"production", "test", "dev"})
+        void developmentAndOtherOriginsAreRejected(String profile) throws Exception {
+            CorsFilter filter = configuredFilter(profile);
+            List<String> rejected = new ArrayList<>(List.of(DEV_ORIGINS));
+            rejected.addAll(List.of("https://www.domain.org", "https://t1.domain.org", "https://malicious-site.com",
+                    "http://app.example.test"));
 
-            assertThat(response.getStatus()).isEqualTo(403);
-            assertThat(response.getHeader("Access-Control-Allow-Origin")).isNull();
+            for (String origin : rejected) {
+                MockHttpServletResponse response = get(filter, origin);
+                assertThat(response.getStatus()).as(origin).isEqualTo(403);
+                assertThat(response.getHeader("Access-Control-Allow-Origin")).as(origin).isNull();
+            }
         }
 
-        @Test
-        void preflightAllowsPatchWithCredentialsForTenMinutes() throws Exception {
-            MockHttpServletResponse response = preflight(filter, "https://app.example.test", "PATCH");
+        @ParameterizedTest
+        @ValueSource(strings = {"production", "test", "dev"})
+        void preflightAllowsPatchWithCredentialsForTenMinutes(String profile) throws Exception {
+            MockHttpServletResponse response = preflight(configuredFilter(profile), "https://app.example.test", "PATCH");
 
             assertPreflightAllowed(response, "https://app.example.test", "600");
         }
 
-        @Test
-        void noConfiguredOriginsAllowsNoOrigin() throws Exception {
-            CorsFilter unconfigured = filterFor(new MockEnvironment(), "production");
+        @ParameterizedTest
+        @ValueSource(strings = {"production", "test", "dev"})
+        void noConfiguredOriginsAllowsNoOrigin(String profile) throws Exception {
+            CorsFilter unconfigured = filterFor(new MockEnvironment(), profile);
 
             assertThat(get(unconfigured, "https://app.example.test").getStatus()).isEqualTo(403);
-            assertThat(new CorsConfigUtil().createProductionCorsConfiguration(List.of())
-                    .checkOrigin("https://app.example.test")).isNull();
-        }
-    }
-
-    @Nested
-    class TestEnvironment {
-
-        private final CorsFilter filter = filterFor(new MockEnvironment(), "test");
-
-        @Test
-        void frontendDomainIsAllowed() throws Exception {
-            MockHttpServletResponse response = get(filter, "https://www.domain.org");
-
-            assertThat(response.getStatus()).isEqualTo(200);
-            assertThat(response.getHeader("Access-Control-Allow-Origin")).isEqualTo("https://www.domain.org");
+            assertThat(get(unconfigured, "http://localhost:3000").getStatus()).isEqualTo(403);
         }
 
-        /** The development pattern {@code https://*.domain.org} matches it too, so only the list shows it. */
-        @Test
-        void frontendDomainIsListedExplicitly() {
-            assertThat(configurationFor(new MockEnvironment(), "test").getAllowedOrigins())
-                    .containsExactly("https://www.domain.org");
-        }
-
-        @ParameterizedTest
-        @ValueSource(strings = {
-                "http://localhost:3000",
-                "https://localhost:3000",
-                "http://192.168.0.18",
-                "https://b2b6-89-103-185-10.ngrok-free.app",
-                "https://t1.domain.org"
-        })
-        void developmentOriginIsAllowed(String origin) throws Exception {
-            assertThat(get(filter, origin).getHeader("Access-Control-Allow-Origin")).isEqualTo(origin);
-        }
-
-        @ParameterizedTest
-        @ValueSource(strings = {"https://evil.com", "http://www.domain.org", "https://domain.org.evil.com"})
-        void otherOriginIsRejected(String origin) throws Exception {
-            MockHttpServletResponse response = get(filter, origin);
-
-            assertThat(response.getStatus()).isEqualTo(403);
-            assertThat(response.getHeader("Access-Control-Allow-Origin")).isNull();
-        }
-
-        /** The one-hour max age tells the test configuration apart from the local one. */
-        @Test
-        void preflightAllowsPatchWithCredentialsForOneHour() throws Exception {
-            MockHttpServletResponse response = preflight(filter, "https://www.domain.org", "PATCH");
-
-            assertPreflightAllowed(response, "https://www.domain.org", "3600");
+        private CorsFilter configuredFilter(String profile) {
+            return filterFor(new MockEnvironment()
+                    .withProperty("cors.allowed-origins", "https://app.example.test, https://admin.example.test"),
+                    profile);
         }
     }
 
@@ -146,7 +101,7 @@ class CorsConfigTest {
     class Local {
 
         @ParameterizedTest
-        @ValueSource(strings = {"local", "dev", "junit"})
+        @ValueSource(strings = {"local", "junit"})
         void everyDevelopmentOriginIsAllowed(String profile) throws Exception {
             CorsFilter filter = filterFor(new MockEnvironment(), profile);
 
@@ -163,6 +118,7 @@ class CorsConfigTest {
                 "http://localhost.evil.com",
                 "http://10.0.0.5",
                 "https://www.domain.com",
+                "https://t1.domain.org",
                 "http://ngrok-free.app.evil.com"
         })
         void otherOriginIsRejected(String origin) throws Exception {
@@ -170,6 +126,16 @@ class CorsConfigTest {
 
             assertThat(response.getStatus()).isEqualTo(403);
             assertThat(response.getHeader("Access-Control-Allow-Origin")).isNull();
+        }
+
+        @Test
+        void configuredOriginsAreAllowedAlongsideDevelopmentOrigins() throws Exception {
+            CorsFilter filter = filterFor(new MockEnvironment()
+                    .withProperty("cors.allowed-origins", "http://localhost:3001,https://app.example.test"), "local");
+
+            for (String origin : List.of("https://app.example.test", "http://localhost:3000")) {
+                assertThat(get(filter, origin).getHeader("Access-Control-Allow-Origin")).as(origin).isEqualTo(origin);
+            }
         }
 
         @Test

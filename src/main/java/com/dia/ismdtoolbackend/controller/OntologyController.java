@@ -170,16 +170,11 @@ public class OntologyController {
             @AuthenticationPrincipal SecurityUser securityUser) {
 
 
-        log.info(
-                "Ontology create requested, namespace: {}, name: {}, description: {}, userId: {}",
-                ontologyCreateModel.getNamespace(),
-                ontologyCreateModel.getNameModel(),
-                ontologyCreateModel.getDescriptionModel(),
-                securityUser.getUserId()
-        );
+        log.info("Ontology create requested, namespace: {}, userId: {}",
+                ontologyCreateModel.getNamespace(), securityUser.getUserId());
 
         OntologySummaryDto createdOntology = ontologyService.createOntology(ontologyCreateModel, securityUser.getUserId());
-        log.info("Ontology create successful: {}", createdOntology);
+        log.info("Ontology create successful, ontologyId: {}, slug: {}", createdOntology.getId(), createdOntology.getSlug());
 
         return ResponseEntity.ok().body(ApiResponseDto.success(createdOntology, "Slovník úspěšně vytvořen: " + createdOntology.getGraphName()));
     }
@@ -218,7 +213,7 @@ public class OntologyController {
 
 
         OntologySummaryDto updatedOntology = ontologyService.editOntology(ontologyId, ontologyEditModel);
-        log.info("Ontology edit successful: {}", updatedOntology);
+        log.info("Ontology edit successful, ontologyId: {}, slug: {}", updatedOntology.getId(), updatedOntology.getSlug());
 
         return ResponseEntity.ok().body(ApiResponseDto.success(updatedOntology, "Slovník úspěšně upraven: " + updatedOntology.getGraphName()));
     }

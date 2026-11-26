@@ -183,15 +183,49 @@ class OntologySecurityServiceTest {
     }
 
     @Test
-    void authenticatedUserMayViewResources() {
+    void ownerSeesPendingEdits() {
         signIn(OWNER);
+        when(ontologies.findBySlug("muj-slovnik")).thenReturn(Optional.of(ontologyOwnedBy(OWNER)));
 
-        assertThat(service.canViewResource()).isTrue();
+        assertThat(service.canSeePendingEdits("muj-slovnik")).isTrue();
     }
 
     @Test
-    void anonymousCallerMayNotViewResources() {
-        assertThatThrownBy(service::canViewResource).isInstanceOf(IllegalStateException.class);
+    void otherUserDoesNotSeePendingEdits() {
+        signIn(OTHER);
+        when(ontologies.findBySlug("muj-slovnik")).thenReturn(Optional.of(ontologyOwnedBy(OWNER)));
+
+        assertThat(service.canSeePendingEdits("muj-slovnik")).isFalse();
+    }
+
+    @Test
+    void nobodyButAnAdminSeesPendingEditsOfAnUnownedOntology() {
+        signIn(OTHER);
+        when(ontologies.findBySlug("muj-slovnik")).thenReturn(Optional.of(ontologyOwnedBy("")));
+
+        assertThat(service.canSeePendingEdits("muj-slovnik")).isFalse();
+    }
+
+    @Test
+    void adminSeesPendingEditsWithoutLookingUpTheOntology() {
+        signIn(OTHER, "ROLE_ADMIN");
+
+        assertThat(service.canSeePendingEdits("muj-slovnik")).isTrue();
+        verifyNoInteractions(ontologies);
+    }
+
+    @Test
+    void missingOntologyHidesPendingEdits() {
+        signIn(OWNER);
+        when(ontologies.findBySlug("chybi")).thenReturn(Optional.empty());
+
+        assertThat(service.canSeePendingEdits("chybi")).isFalse();
+    }
+
+    @Test
+    void anonymousCallerHasNoPendingEditVisibility() {
+        assertThatThrownBy(() -> service.canSeePendingEdits("muj-slovnik"))
+                .isInstanceOf(IllegalStateException.class);
     }
 
     private static void signIn(String userId, String... roles) {

@@ -85,7 +85,8 @@ public class OutboxFlowTestBeans {
                                           OntologyMetadataRepository ontologyRepository,
                                           MetadataTouchService touchService, ConceptMetadataMapper mapper,
                                           InMemoryTdb2 tdb2, OutboxWriter writer,
-                                          OutboxEntryRepository outboxRepository, OutboxRelayTrigger trigger) {
+                                          OutboxEntryRepository outboxRepository, OutboxRelayTrigger trigger,
+                                          org.springframework.transaction.PlatformTransactionManager txManager) {
         // No external NKD links in this test data: the real detector finds none, so the mocked snapshot
         // service is never called.
         return new ConceptServiceFixture()
@@ -99,6 +100,7 @@ public class OutboxFlowTestBeans {
                 .outboxWriter(writer)
                 .outboxRepository(outboxRepository)
                 .outboxRelayTrigger(trigger)
+                .writeTransaction(new com.dia.ismdtoolbackend.service.impl.ConceptWriteTransaction(txManager))
                 .build();
     }
 
@@ -107,8 +109,10 @@ public class OutboxFlowTestBeans {
                                             MetadataTouchService touchService,
                                             ConceptMetadataRepository conceptRepository,
                                             InMemoryTdb2 tdb2, OutboxWriter writer,
-                                            OutboxEntryRepository outboxRepository, OutboxRelayTrigger trigger) {
+                                            OutboxEntryRepository outboxRepository, OutboxRelayTrigger trigger,
+                                            org.springframework.transaction.PlatformTransactionManager txManager) {
         return new OntologyServiceFixture()
+                .writeTransaction(new com.dia.ismdtoolbackend.service.impl.ConceptWriteTransaction(txManager))
                 .ontologyMetadataRepository(ontologyRepository)
                 .metadataTouchService(touchService)
                 .conceptMetadataRepository(conceptRepository)

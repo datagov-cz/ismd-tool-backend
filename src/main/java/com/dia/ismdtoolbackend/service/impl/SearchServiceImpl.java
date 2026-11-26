@@ -7,6 +7,7 @@ import com.dia.ismdtoolbackend.controller.dto.SourceStatusDto;
 import com.dia.ismdtoolbackend.enums.*;
 import com.dia.ismdtoolbackend.service.SearchService;
 import com.dia.ismdtoolbackend.service.search.SearchProvider;
+import com.dia.ismdtoolbackend.service.search.SearchTasks;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,7 +16,6 @@ import org.springframework.stereotype.Service;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 @Slf4j
@@ -165,10 +165,9 @@ public class SearchServiceImpl implements SearchService {
             List<RelationType> relationTypes, String userId,
             boolean isAdmin, Boolean publishedFilter) {
 
-        return CompletableFuture.supplyAsync(() ->
+        return SearchTasks.supply(searchExecutor, sourceTimeoutMs, () ->
                         provider.search(query, type, limit, offset, lang,
-                                ontologyIris, relationTypes, userId, isAdmin, publishedFilter), searchExecutor)
-                .orTimeout(sourceTimeoutMs, TimeUnit.MILLISECONDS)
+                                ontologyIris, relationTypes, userId, isAdmin, publishedFilter))
                 .handle((result, ex) -> {
                     if (ex == null) {
                         return new SourceSearchResult(

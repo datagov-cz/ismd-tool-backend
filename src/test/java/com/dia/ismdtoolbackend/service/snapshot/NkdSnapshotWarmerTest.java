@@ -45,6 +45,7 @@ class NkdSnapshotWarmerTest {
     @Mock private JenaTDB2Repository jenaTDB2Repository;
     @Mock private NkdSparqlClient nkdSparqlClient;
     @Mock private NkdSnapshotOwnerWarmer ownerWarmer;
+    @Mock private com.dia.ismdtoolbackend.service.NkdSnapshotService nkdSnapshotService;
 
     // Real detector — stateless, pure; exercises the actual external-link detection against the test graph.
     private final NkdLinkDetector linkDetector = new NkdLinkDetector();
@@ -70,7 +71,7 @@ class NkdSnapshotWarmerTest {
         // Real config: the per-graph scan throttle reads its TTL from here, and a fresh warmer per
         // test means the first warmGraph call always claims the slot.
         warmer = new NkdSnapshotWarmer(conceptMetadataRepository, jenaTDB2Repository,
-                nkdSparqlClient, ownerWarmer, linkDetector, new NkdConfig());
+                nkdSparqlClient, ownerWarmer, linkDetector, new NkdConfig(), nkdSnapshotService);
     }
 
     /** Build a graph model with each owner subClassOf its target. */
@@ -101,18 +102,55 @@ class NkdSnapshotWarmerTest {
                 argThat(l -> l != null && Set.copyOf(l).equals(Set.of(NKD_A, NKD_B, NKD_UNPUBLISHED)))))
                 .thenReturn(List.of(NKD_A, NKD_B));
         // Owner A's isolated unit throws (simulating its REQUIRES_NEW tx rolling back); B must still run.
-        when(ownerWarmer.warmOwner(eq(GRAPH), eq(a), anyList())).thenThrow(new RuntimeException("boom"));
-        when(ownerWarmer.warmOwner(eq(GRAPH), eq(b), anyList())).thenReturn(true);
+        when(ownerWarmer.warmOwner(eq(GRAPH), eq(a), anyList(), any())).thenThrow(new RuntimeException("boom"));
+        when(ownerWarmer.warmOwner(eq(GRAPH), eq(b), anyList(), any())).thenReturn(true);
 
         warmer.warmGraph(GRAPH);
 
         // Both owners attempted with only their published targets; A's failure did not abort the batch.
         ArgumentCaptor<List<Target>> aTargets = ArgumentCaptor.captor();
         ArgumentCaptor<List<Target>> bTargets = ArgumentCaptor.captor();
-        verify(ownerWarmer).warmOwner(eq(GRAPH), eq(a), aTargets.capture());
-        verify(ownerWarmer).warmOwner(eq(GRAPH), eq(b), bTargets.capture());
+        verify(ownerWarmer).warmOwner(eq(GRAPH), eq(a), aTargets.capture(), any());
+        verify(ownerWarmer).warmOwner(eq(GRAPH), eq(b), bTargets.capture(), any());
         assertThat(aTargets.getValue()).containsExactly(new Target(NKD_A, subClassOf));
         assertThat(bTargets.getValue()).containsExactly(new Target(NKD_B, subClassOf));
+    }
+
+    /**
+     * NKD's copies are fetched before any owner transaction, and passed in; raw triples only for a link
+     * without a copy yet (an existing copy is only re-evaluated).
+     */
+    @Test
+    void warmGraph_fetchesCopiesFirst_rawOnlyWhereNoCopyExists() {
+        ConceptMetadataEntity a = owner(1L, "x", NKD_A);
+        ConceptMetadataEntity b = owner(2L, "y", NKD_B);
+        List<ConceptMetadataEntity> owners = List.of(a, b);
+        when(conceptMetadataRepository.findByGraphName(GRAPH)).thenReturn(owners);
+        when(jenaTDB2Repository.graphHasData(GRAPH)).thenReturn(true);
+        when(jenaTDB2Repository.fetchGraph(GRAPH)).thenReturn(graphWith(owners));
+        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(List.of(NKD_A, NKD_B));
+        com.dia.ismdtoolbackend.entity.NkdConceptSnapshotEntity aCopy =
+                new com.dia.ismdtoolbackend.entity.NkdConceptSnapshotEntity();
+        aCopy.setOwningConcept(a);
+        aCopy.setNkdIri(NKD_A);
+        when(nkdSnapshotService.findForGraph(GRAPH)).thenReturn(List.of(aCopy));
+        com.dia.ismdtoolbackend.models.OntologyDetailModel.ConceptDetailModel detail =
+                com.dia.ismdtoolbackend.models.OntologyDetailModel.ConceptDetailModel.builder().build();
+        when(nkdSparqlClient.fetchPublishedConceptWithScheme(any()))
+                .thenReturn(java.util.Optional.of(new NkdSparqlClient.PublishedConcept(detail, "s")));
+        ArgumentCaptor<NkdLookup> lookups = ArgumentCaptor.captor();
+        when(ownerWarmer.warmOwner(eq(GRAPH), any(), anyList(), lookups.capture())).thenAnswer(inv -> {
+            org.mockito.Mockito.verify(nkdSparqlClient).fetchPublishedConceptWithScheme(NKD_A);
+            org.mockito.Mockito.verify(nkdSparqlClient).fetchPublishedConceptWithScheme(NKD_B);
+            return false;
+        });
+
+        warmer.warmGraph(GRAPH);
+
+        verify(nkdSparqlClient, never()).fetchPublishedConceptRaw(NKD_A);
+        verify(nkdSparqlClient).fetchPublishedConceptRaw(NKD_B);
+        assertThat(lookups.getAllValues()).hasSize(2);
+        assertThat(lookups.getAllValues().get(0).concept(NKD_A)).isPresent();
     }
 
     @Test
@@ -127,7 +165,7 @@ class NkdSnapshotWarmerTest {
 
         warmer.warmGraph(GRAPH);
 
-        verify(ownerWarmer, never()).warmOwner(any(), any(), anyList());
+        verify(ownerWarmer, never()).warmOwner(any(), any(), anyList(), any());
     }
 
     @Test
@@ -194,7 +232,7 @@ class NkdSnapshotWarmerTest {
         warmer.warmGraph(GRAPH);
 
         verify(nkdSparqlClient, never()).getPublishedResourcesList(anyList());
-        verify(ownerWarmer, never()).warmOwner(any(), any(), anyList());
+        verify(ownerWarmer, never()).warmOwner(any(), any(), anyList(), any());
     }
 
     @Test
@@ -218,7 +256,7 @@ class NkdSnapshotWarmerTest {
 
         // a's only target is the working copy → no candidates at all → NKD never asked, nothing warmed.
         verify(nkdSparqlClient, never()).getPublishedResourcesList(anyList());
-        verify(ownerWarmer, never()).warmOwner(any(), any(), anyList());
+        verify(ownerWarmer, never()).warmOwner(any(), any(), anyList(), any());
     }
 
     @Test
@@ -234,6 +272,6 @@ class NkdSnapshotWarmerTest {
         warmer.warmGraph(GRAPH);
 
         verify(nkdSparqlClient, never()).getPublishedResourcesList(anyList());
-        verify(ownerWarmer, never()).warmOwner(any(), any(), anyList());
+        verify(ownerWarmer, never()).warmOwner(any(), any(), anyList(), any());
     }
 }

@@ -15,9 +15,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Ontology rows of an ISMD search: the PG slug search, the Fuseki label search, counts and PG backfill. */
@@ -36,7 +34,7 @@ class IsmdOntologySearch {
                        ConceptMetadataRepository conceptMetadataRepository,
                        IsmdFusekiSearch fusekiSearch,
                        VisibleGraphResolver visibleGraphs,
-                       @Qualifier("searchExecutor") Executor searchExecutor,
+                       @Qualifier("searchQueryExecutor") Executor searchExecutor,
                        @Value("${search.fuseki-timeout-ms:10000}") long fusekiTimeoutMs) {
         this.ontologyMetadataRepository = ontologyMetadataRepository;
         this.conceptMetadataRepository = conceptMetadataRepository;
@@ -96,9 +94,8 @@ class IsmdOntologySearch {
         GraphFilter filter = visibleGraphs.graphFilterFor(ontologyIris, userId, isAdmin, publishedFilter);
 
         try {
-            return CompletableFuture.supplyAsync(
-                            () -> fusekiSearch.searchFuseki(query, filter.searchGraphs(), limit, null), searchExecutor)
-                    .orTimeout(fusekiTimeoutMs, TimeUnit.MILLISECONDS)
+            return SearchTasks.supply(searchExecutor, fusekiTimeoutMs,
+                            () -> fusekiSearch.searchFuseki(query, filter.searchGraphs(), limit, null))
                     .join();
         } catch (Exception e) {
             log.warn("Fuseki ontology label search failed: {}", e.getMessage());

@@ -204,7 +204,7 @@ class OntologyUploadServiceImplTest {
         String ontologyIRI = "http://example.org/test-ontology";
         byte[] fileContent = String.format("@prefix owl: <http://www.w3.org/2002/07/owl#> . <%s> a owl:Ontology, <http://www.w3.org/2004/02/skos/core#ConceptScheme>, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> .", ontologyIRI).getBytes();
 
-        when(multipartFile.getBytes()).thenReturn(fileContent);
+        when(multipartFile.getInputStream()).thenAnswer(inv -> new java.io.ByteArrayInputStream(fileContent));
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
 
@@ -230,11 +230,106 @@ class OntologyUploadServiceImplTest {
         verify(jenaTDB2Repository).putOntologyModel(eq(ontologyIRI), any(OntModel.class));
     }
 
+    private static final String GUARDED_ONTOLOGY = "http://example.org/guarded";
+
+    /** A minimal vocabulary upload of {@link #GUARDED_ONTOLOGY} whose metadata save succeeds. */
+    private void givenUploadableVocabulary(boolean metadataSaves) throws IOException {
+        byte[] content = String.format("@prefix owl: <http://www.w3.org/2002/07/owl#> . <%s> a owl:Ontology, "
+                + "<http://www.w3.org/2004/02/skos/core#ConceptScheme>, "
+                + "<https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> .", GUARDED_ONTOLOGY)
+                .getBytes();
+        when(multipartFile.getInputStream()).thenAnswer(inv -> new java.io.ByteArrayInputStream(content));
+        when(multipartFile.getOriginalFilename()).thenReturn("guarded.ttl");
+        when(multipartFile.isEmpty()).thenReturn(false);
+        when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
+        if (metadataSaves) {
+            OntologyMetadataEntity saved = new OntologyMetadataEntity();
+            saved.setGraphName(GUARDED_ONTOLOGY);
+            saved.setUserId("user123");
+            saved.setId(1L);
+            when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(saved);
+            when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.of(saved));
+        }
+    }
+
+    private static List<ch.qos.logback.classic.spi.ILoggingEvent> warningsOf(Class<?> source, Runnable action) {
+        ch.qos.logback.classic.Logger logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(source);
+        ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> logs =
+                new ch.qos.logback.core.read.ListAppender<>();
+        logs.start();
+        logger.addAppender(logs);
+        try {
+            action.run();
+        } finally {
+            logger.detachAppender(logs);
+        }
+        return logs.list.stream().filter(e -> e.getLevel() == ch.qos.logback.classic.Level.WARN).toList();
+    }
+
+    /** A queued delete of an earlier vocabulary with this IRI would later remove the uploaded graph. */
+    @Test
+    void upload_whileAnOutboxRowForTheGraphIsUnapplied_isRejectedAndWritesNothing() throws Exception {
+        givenUploadableVocabulary(false);
+        when(fixture.outboxRepository().existsEarlierUnappliedForGraph(GUARDED_ONTOLOGY, Long.MAX_VALUE))
+                .thenReturn(true);
+
+        assertThatThrownBy(() -> ontologyUploadService.uploadFromFile(
+                multipartFile, "user123", NormalizeMode.NORMALIZE_ALL, null))
+                .isInstanceOf(com.dia.ismdtoolbackend.exception.OntologyCreationConflictException.class)
+                .hasMessageContaining(GUARDED_ONTOLOGY);
+        verify(jenaTDB2Repository, never()).putOntologyModel(anyString(), any(OntModel.class));
+        verify(ontologyMetadataRepository, never()).save(any());
+    }
+
+    /** A graph left by a failed earlier upload or delete is replaced, and the replacement is logged. */
+    @Test
+    void upload_overAGraphWithoutAVocabularyRow_replacesItAndWarns() throws Exception {
+        givenUploadableVocabulary(true);
+        when(jenaTDB2Repository.graphHasData(GUARDED_ONTOLOGY)).thenReturn(true);
+
+        List<ch.qos.logback.classic.spi.ILoggingEvent> warnings = warningsOf(
+                uploadGraphGuardClass(), () -> {
+                    try {
+                        ontologyUploadService.uploadFromFile(multipartFile, "user123", NormalizeMode.NORMALIZE_ALL, null);
+                    } catch (IOException e) {
+                        throw new java.io.UncheckedIOException(e);
+                    }
+                });
+
+        verify(jenaTDB2Repository).putOntologyModel(eq(GUARDED_ONTOLOGY), any(OntModel.class));
+        assertThat(warnings).singleElement().satisfies(e -> assertThat(e.getFormattedMessage())
+                .contains(GUARDED_ONTOLOGY).contains("no vocabulary row"));
+    }
+
+    @Test
+    void upload_ofANewGraph_logsNoReplacement() throws Exception {
+        givenUploadableVocabulary(true);
+
+        List<ch.qos.logback.classic.spi.ILoggingEvent> warnings = warningsOf(uploadGraphGuardClass(), () -> {
+            try {
+                ontologyUploadService.uploadFromFile(multipartFile, "user123", NormalizeMode.NORMALIZE_ALL, null);
+            } catch (IOException e) {
+                throw new java.io.UncheckedIOException(e);
+            }
+        });
+
+        verify(jenaTDB2Repository).graphHasData(GUARDED_ONTOLOGY);
+        assertThat(warnings).isEmpty();
+    }
+
+    private static Class<?> uploadGraphGuardClass() {
+        try {
+            return Class.forName("com.dia.ismdtoolbackend.service.impl.UploadGraphGuard");
+        } catch (ClassNotFoundException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     @Test
     void upload_runsValidationOnTheInjectedExecutor_notTheCommonPool() throws Exception {
         String ontologyIRI = "http://example.org/test-ontology";
-        when(multipartFile.getBytes()).thenReturn(String.format(
-                "@prefix owl: <http://www.w3.org/2002/07/owl#> . <%s> a owl:Ontology, <http://www.w3.org/2004/02/skos/core#ConceptScheme>, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> .", ontologyIRI).getBytes());
+        when(multipartFile.getInputStream()).thenAnswer(inv -> new java.io.ByteArrayInputStream(String.format(
+                "@prefix owl: <http://www.w3.org/2002/07/owl#> . <%s> a owl:Ontology, <http://www.w3.org/2004/02/skos/core#ConceptScheme>, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> .", ontologyIRI).getBytes()));
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
 
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
@@ -267,7 +362,7 @@ class OntologyUploadServiceImplTest {
         String userId = "user123";
         byte[] fileContent = "@prefix owl: <http://www.w3.org/2002/07/owl#> .".getBytes();
 
-        when(multipartFile.getBytes()).thenReturn(fileContent);
+        when(multipartFile.getInputStream()).thenAnswer(inv -> new java.io.ByteArrayInputStream(fileContent));
         when(multipartFile.getOriginalFilename()).thenReturn("test-ontology.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
 
@@ -290,7 +385,7 @@ class OntologyUploadServiceImplTest {
         String userId = "user123";
         byte[] fileContent = "@prefix owl: <http://www.w3.org/2002/07/owl#> .".getBytes();
 
-        when(multipartFile.getBytes()).thenReturn(fileContent);
+        when(multipartFile.getInputStream()).thenAnswer(inv -> new java.io.ByteArrayInputStream(fileContent));
         when(multipartFile.getOriginalFilename()).thenReturn(null);
         when(multipartFile.isEmpty()).thenReturn(false);
         when(multipartFile.getContentType()).thenReturn("text/turtle");
@@ -325,7 +420,7 @@ class OntologyUploadServiceImplTest {
                         + " <%s> a <%s>, <http://www.w3.org/2004/02/skos/core#Concept>, owl:Class .",
                 ontologyIRI, ownedConcept, pojem, alienConcept, pojem);
 
-        when(multipartFile.getBytes()).thenReturn(ttl.getBytes());
+        when(multipartFile.getInputStream()).thenAnswer(inv -> new java.io.ByteArrayInputStream(ttl.getBytes()));
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
 
@@ -405,7 +500,7 @@ class OntologyUploadServiceImplTest {
     @Test
     void testUploadFromFile_missingInScheme_noDecision_throwsWithList() throws Exception {
         String userId = "user123";
-        when(multipartFile.getBytes()).thenReturn(twoMissingInSchemeTtl());
+        when(multipartFile.getInputStream()).thenAnswer(inv -> new java.io.ByteArrayInputStream(twoMissingInSchemeTtl()));
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
@@ -435,7 +530,7 @@ class OntologyUploadServiceImplTest {
     @Test
     void testUploadFromFile_excludeAll_noOwnershipRows() throws Exception {
         String userId = "user123";
-        when(multipartFile.getBytes()).thenReturn(twoMissingInSchemeTtl());
+        when(multipartFile.getInputStream()).thenAnswer(inv -> new java.io.ByteArrayInputStream(twoMissingInSchemeTtl()));
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
         stubPersistenceForDecisionFlow(userId, false);
@@ -451,7 +546,7 @@ class OntologyUploadServiceImplTest {
     @Test
     void testUploadFromFile_perConcept_onlyChosenOwned() throws Exception {
         String userId = "user123";
-        when(multipartFile.getBytes()).thenReturn(twoMissingInSchemeTtl());
+        when(multipartFile.getInputStream()).thenAnswer(inv -> new java.io.ByteArrayInputStream(twoMissingInSchemeTtl()));
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
         stubPersistenceForDecisionFlow(userId, true);
@@ -467,7 +562,7 @@ class OntologyUploadServiceImplTest {
     @Test
     void testUploadFromFile_normalizeAll_bothOwned() throws Exception {
         String userId = "user123";
-        when(multipartFile.getBytes()).thenReturn(twoMissingInSchemeTtl());
+        when(multipartFile.getInputStream()).thenAnswer(inv -> new java.io.ByteArrayInputStream(twoMissingInSchemeTtl()));
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
         stubPersistenceForDecisionFlow(userId, true);
@@ -496,7 +591,7 @@ class OntologyUploadServiceImplTest {
                 DECISION_ONTOLOGY, DECISION_C1, DECISION_POJEM, DECISION_C2, DECISION_C2, DECISION_POJEM
         ).getBytes();
 
-        when(multipartFile.getBytes()).thenReturn(ttl);
+        when(multipartFile.getInputStream()).thenAnswer(inv -> new java.io.ByteArrayInputStream(ttl));
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
         stubPersistenceForDecisionFlow(userId, false);
@@ -560,8 +655,8 @@ class OntologyUploadServiceImplTest {
     @ValueSource(strings = {"vztah", "vlastnost", "třída"})
     void testUploadFromFile_roleMarkerInsteadOfOwlKind_isRejected(String marker) throws Exception {
         String userId = "user123";
-        when(multipartFile.getBytes()).thenReturn(
-                ofnRoleTaggedTtl("https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/" + marker));
+        when(multipartFile.getInputStream()).thenAnswer(inv -> new java.io.ByteArrayInputStream(
+                ofnRoleTaggedTtl("https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/" + marker)));
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
         stubPersistenceForDecisionFlow(userId, false);
@@ -580,13 +675,13 @@ class OntologyUploadServiceImplTest {
     void testUploadFromFile_roleMarkerNextToItsOwlKind_isRejectedAsNonOfn(String marker, String owlKind)
             throws Exception {
         String userId = "user123";
-        when(multipartFile.getBytes()).thenReturn(String.format(
+        when(multipartFile.getInputStream()).thenAnswer(inv -> new java.io.ByteArrayInputStream(String.format(
                 "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
                         + " @prefix skos: <http://www.w3.org/2004/02/skos/core#> ."
                         + " <%1$s> a owl:Ontology, skos:ConceptScheme, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> ."
                         + " <%2$s> a <%3$s>, skos:Concept, %4$s, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/%5$s> ;"
                         + " skos:prefLabel \"C1\"@cs ; skos:inScheme <%1$s> .",
-                DECISION_ONTOLOGY, DECISION_C1, DECISION_POJEM, owlKind, marker).getBytes());
+                DECISION_ONTOLOGY, DECISION_C1, DECISION_POJEM, owlKind, marker).getBytes()));
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
         stubPersistenceForDecisionFlow(userId, false);
@@ -607,13 +702,13 @@ class OntologyUploadServiceImplTest {
     @Test
     void testUploadFromFile_owlKindWithoutConceptTypeOrScheme_isRejectedAndPruned() throws Exception {
         String userId = "user123";
-        when(multipartFile.getBytes()).thenReturn(String.format(
+        when(multipartFile.getInputStream()).thenAnswer(inv -> new java.io.ByteArrayInputStream(String.format(
                 "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
                         + " @prefix skos: <http://www.w3.org/2004/02/skos/core#> ."
                         + " @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> ."
                         + " <%1$s> a owl:Ontology, skos:ConceptScheme, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> ."
                         + " <%2$s> a owl:DatatypeProperty ; rdfs:label \"Jméno\"@cs .",
-                DECISION_ONTOLOGY, DECISION_C1).getBytes());
+                DECISION_ONTOLOGY, DECISION_C1).getBytes()));
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
         stubPersistenceForDecisionFlow(userId, false);
@@ -650,7 +745,7 @@ class OntologyUploadServiceImplTest {
                 DECISION_ONTOLOGY,
                 DECISION_C1, DECISION_POJEM, DECISION_ONTOLOGY,
                 DECISION_C2, DECISION_POJEM, DECISION_ONTOLOGY);
-        when(multipartFile.getBytes()).thenReturn(ttl.getBytes());
+        when(multipartFile.getInputStream()).thenAnswer(inv -> new java.io.ByteArrayInputStream(ttl.getBytes()));
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
 
@@ -697,7 +792,7 @@ class OntologyUploadServiceImplTest {
                 DECISION_ONTOLOGY,
                 DECISION_C1, DECISION_POJEM, DECISION_ONTOLOGY,
                 DECISION_C2, DECISION_POJEM, DECISION_ONTOLOGY);
-        when(multipartFile.getBytes()).thenReturn(ttl.getBytes());
+        when(multipartFile.getInputStream()).thenAnswer(inv -> new java.io.ByteArrayInputStream(ttl.getBytes()));
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
         stubPersistenceForDecisionFlow(userId, true);
@@ -772,12 +867,12 @@ class OntologyUploadServiceImplTest {
 
         when(multipartFile.isEmpty()).thenReturn(false);
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
-        when(multipartFile.getBytes()).thenThrow(new RuntimeException("File read error"));
+        when(multipartFile.getInputStream()).thenThrow(new java.io.IOException("File read error"));
 
-        // The implementation catches IOException and wraps it, but RuntimeException propagates directly
+        // A file that cannot be read is a parse failure of the upload.
         assertThatThrownBy(() ->
             ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null))
-                .isInstanceOf(RuntimeException.class);
+                .isInstanceOf(com.dia.ismdtoolbackend.exception.OntologyUploadParseException.class);
 
         verify(ontologyMetadataRepository, never()).save(any());
     }
@@ -815,14 +910,14 @@ class OntologyUploadServiceImplTest {
         String graphName = "http://example.org/test-ontology";
         String published = graphName + "/pojem/published";
         String draft = graphName + "/pojem/draft";
-        when(multipartFile.getBytes()).thenReturn(("""
+        when(multipartFile.getInputStream()).thenAnswer(inv -> new java.io.ByteArrayInputStream(("""
                 @prefix owl: <http://www.w3.org/2002/07/owl#> .
                 @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
                 @prefix ofn: <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/> .
                 <%1$s> a owl:Ontology, skos:ConceptScheme, ofn:slovník .
                 <%2$s> a ofn:pojem, skos:Concept, owl:Class ; skos:inScheme <%1$s> .
                 <%3$s> a ofn:pojem, skos:Concept, owl:Class ; skos:inScheme <%1$s> .
-                """.formatted(graphName, published, draft)).getBytes());
+                """.formatted(graphName, published, draft)).getBytes()));
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(publishedResourceUtil.checkPublishedResourcesInNKD(any(), any())).thenReturn(List.of(published));
 
@@ -847,13 +942,13 @@ class OntologyUploadServiceImplTest {
     @Test
     void upload_vocabularyPublishedInNkd_reportsAWorkingCopy() throws IOException {
         String graphName = "http://example.org/test-ontology";
-        when(multipartFile.getBytes()).thenReturn(("""
+        when(multipartFile.getInputStream()).thenAnswer(inv -> new java.io.ByteArrayInputStream(("""
                 @prefix owl: <http://www.w3.org/2002/07/owl#> .
                 @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
                 @prefix ofn: <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/> .
                 <%1$s> a owl:Ontology, skos:ConceptScheme, ofn:slovník .
                 <%1$s/pojem/a> a ofn:pojem, skos:Concept, owl:Class ; skos:prefLabel "A"@cs ; skos:inScheme <%1$s> .
-                """.formatted(graphName)).getBytes());
+                """.formatted(graphName)).getBytes()));
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(publishedResourceUtil.checkPublishedResourcesInNKD(any(), any())).thenReturn(List.of(graphName));
 
@@ -887,7 +982,7 @@ class OntologyUploadServiceImplTest {
         String userId = "user123";
         byte[] fileContent = String.format("@prefix owl: <http://www.w3.org/2002/07/owl#> . <%s> a owl:Ontology, <http://www.w3.org/2004/02/skos/core#ConceptScheme>, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> .", ontologyIRI).getBytes();
 
-        when(multipartFile.getBytes()).thenReturn(fileContent);
+        when(multipartFile.getInputStream()).thenAnswer(inv -> new java.io.ByteArrayInputStream(fileContent));
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
 
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
@@ -914,7 +1009,7 @@ class OntologyUploadServiceImplTest {
         String userId = "user123";
         byte[] fileContent = String.format("@prefix owl: <http://www.w3.org/2002/07/owl#> . <%s> a owl:Ontology, <http://www.w3.org/2004/02/skos/core#ConceptScheme>, <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> .", ontologyIRI).getBytes();
 
-        when(multipartFile.getBytes()).thenReturn(fileContent);
+        when(multipartFile.getInputStream()).thenAnswer(inv -> new java.io.ByteArrayInputStream(fileContent));
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
 
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();

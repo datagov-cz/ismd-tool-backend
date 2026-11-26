@@ -1,12 +1,12 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
+import com.dia.ismdtoolbackend.exception.OntologyExceptions;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.models.concept.*;
 import com.dia.ismdtoolbackend.utility.validation.ConceptInputValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.*;
 import org.apache.jena.vocabulary.SKOS;
 import org.springframework.stereotype.Component;
@@ -104,6 +104,7 @@ public class ConceptEditor {
                         "Unsupported concept type: " + editModel.getConceptTypeEnum());
             }
             typeEditor.edit(editModel, context, model, statementsToRemove, statementsToAdd);
+            dropUnchanged(statementsToRemove, statementsToAdd);
             BlankChildRestaging.apply(context.oldConcept, context.newConcept, statementsToRemove, statementsToAdd);
 
             model.remove(statementsToRemove.toArray(new Statement[0]));
@@ -120,9 +121,7 @@ public class ConceptEditor {
 
         } catch (Exception e) {
             log.error("Failed to edit concept: {}", conceptIri, e);
-            OntologyException ex = new OntologyException("Failed to edit concept: " + conceptIri + " - " + e.getMessage());
-            ex.initCause(e);
-            throw ex;
+            throw OntologyExceptions.withCause("Failed to edit concept: " + conceptIri, e);
         } finally {
             if (supportsTransactions && !committed) {
                 try {
@@ -202,6 +201,23 @@ public class ConceptEditor {
             this.oldConcept = model.getResource(oldIRI);
             this.newConcept = model.getResource(newIRI);
         }
+    }
+
+    /**
+     * Every field replaces its predicate's values, so a value sent unchanged is staged as removed and added
+     * again. Such a triple is no change: it leaves both sets, and an edit that changes nothing stages
+     * nothing (and does not touch {@code updatedAt}). Triples with a blank node stay: a blank node has no
+     * identity across edits, and {@link BlankChildRestaging} decides about those.
+     */
+    static void dropUnchanged(Set<Statement> toRemove, Set<Statement> toAdd) {
+        Set<Statement> unchanged = new HashSet<>();
+        for (Statement s : toRemove) {
+            if (!s.getSubject().isAnon() && !s.getObject().isAnon() && toAdd.contains(s)) {
+                unchanged.add(s);
+            }
+        }
+        toRemove.removeAll(unchanged);
+        toAdd.removeAll(unchanged);
     }
 
     public static class EditResult {

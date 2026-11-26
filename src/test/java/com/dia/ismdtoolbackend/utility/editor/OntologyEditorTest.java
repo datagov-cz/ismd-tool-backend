@@ -308,8 +308,9 @@ class OntologyEditorTest {
 
             assertThatThrownBy(() -> ontologyEditor.editOntology(failing, txnModel, OLD_NS, OLD_IRI))
                     .isExactlyInstanceOf(OntologyException.class)
-                    .hasMessage("Failed to edit ontology: " + OLD_IRI + " - boom")
-                    .hasRootCauseInstanceOf(IllegalStateException.class);
+                    .hasMessage("Failed to edit ontology: " + OLD_IRI)
+                    .hasRootCauseInstanceOf(IllegalStateException.class)
+                    .hasRootCauseMessage("boom");
             assertThat(dataset.isInTransaction()).isFalse();
             assertThat(dataset.calculateRead(() -> txnModel.isIsomorphicWith(before))).isTrue();
         }

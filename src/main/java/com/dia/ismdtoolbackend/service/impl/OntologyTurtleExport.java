@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.exception.OntologyExceptions;
 import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -47,7 +48,7 @@ class OntologyTurtleExport {
             throw e;
         } catch (Exception e) {
             log.error("Error retrieving TTL content from ontology: {}", e.getMessage(), e);
-            throw new OntologyException("Failed to retrieve TTL content: " + e.getMessage());
+            throw OntologyExceptions.withCause("Failed to retrieve TTL content.", e);
         }
     }
 }

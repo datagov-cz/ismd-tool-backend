@@ -3,6 +3,8 @@ package com.dia.ismdtoolbackend.repository;
 import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.QueryHints;
+import jakarta.persistence.QueryHint;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
@@ -152,6 +154,7 @@ public interface DiagramRepository extends JpaRepository<DiagramEntity, Long> {
      * <p>{@code ORDER BY} is total ({@code d.id} is unique), which is what makes LIMIT/OFFSET stable —
      * an unordered paginated search silently hides rows (see {@code search_unordered_pagination_hid_drafts}).
      */
+    @QueryHints(@QueryHint(name = SearchQueries.TIMEOUT_HINT, value = SearchQueries.TIMEOUT_MS))
     @Query(value = """
             SELECT d.id AS diagramId, d.name AS name, o.slug AS slug, o.graph_name AS graphName,
                    o.is_published AS isPublished, d.updated_at AS updatedAt
@@ -169,6 +172,7 @@ public interface DiagramRepository extends JpaRepository<DiagramEntity, Long> {
                                                 @Param("offset") int offset);
 
     /** Total matches for {@link #searchByOntologyText}, for the paging header. */
+    @QueryHints(@QueryHint(name = SearchQueries.TIMEOUT_HINT, value = SearchQueries.TIMEOUT_MS))
     @Query(value = """
             SELECT COUNT(*) FROM ismd_schema.diagrams d
             JOIN ismd_schema.ontologies o ON o.id = d.ontology_metadata_id

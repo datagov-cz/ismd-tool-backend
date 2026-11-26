@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.exception.OntologyExceptions;
 import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
@@ -107,7 +108,7 @@ class OntologyEditOperation {
             log.info("Successfully saved ontology to new graph: {}", newOntologyIRI);
         } catch (Exception e) {
             log.error("Failed to save new graph to Fuseki: {}", e.getMessage());
-            throw new OntologyException("Nepodařilo se uložit nový graf do Fuseki: " + e.getMessage());
+            throw OntologyExceptions.withCause("Nepodařilo se uložit nový graf do Fuseki.", e);
         }
 
         try {
@@ -139,7 +140,7 @@ class OntologyEditOperation {
                         newOntologyIRI, cleanupException.getMessage());
             }
 
-            throw new OntologyException("Nepodařilo se aktualizovat databázi: " + e.getMessage());
+            throw OntologyExceptions.withCause("Nepodařilo se aktualizovat databázi.", e);
         }
     }
 
@@ -188,7 +189,7 @@ class OntologyEditOperation {
             log.info("Saved/updated ontology model for graph: {}", ontologyIRI);
         } catch (Exception e) {
             log.error("Failed to save ontology model: {}", e.getMessage());
-            throw new OntologyException("Nepodařilo se uložit změny slovníku: " + e.getMessage());
+            throw OntologyExceptions.withCause("Nepodařilo se uložit změny slovníku.", e);
         }
     }
 

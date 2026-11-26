@@ -2,7 +2,6 @@ package com.dia.ismdtoolbackend.utility.creator;
 
 import com.dia.ismdtoolbackend.enums.PropertyDataType;
 import com.dia.ismdtoolbackend.models.concept.*;
-import com.dia.ismdtoolbackend.utility.URIGenerator;
 import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntModel;
@@ -17,11 +16,9 @@ import java.util.List;
 final class ConceptRelationWriter {
 
     private final OntModel ontModel;
-    private final URIGenerator uriGenerator;
 
     ConceptRelationWriter(ConceptBuildContext context) {
         this.ontModel = context.ontModel();
-        this.uriGenerator = context.uriGenerator();
     }
 
     void addInScheme(Resource resource, ConceptCreateModel model) {
@@ -68,24 +65,12 @@ final class ConceptRelationWriter {
     void addBroaderConcept(Resource resource, String broaderConcept) {
         String trimmedConcept = broaderConcept.trim();
         if (!trimmedConcept.isEmpty()) {
-            String broaderURI;
-            if (UtilityMethods.isValidIRI(trimmedConcept)) {
-                broaderURI = trimmedConcept;
-            } else {
-                broaderURI = uriGenerator.generateConceptURI(trimmedConcept, null);
-            }
-            resource.addProperty(RDFS.subClassOf, ontModel.createResource(broaderURI));
+            resource.addProperty(RDFS.subClassOf, ontModel.createResource(trimmedConcept));
         }
     }
 
     void addSuperProperty(Resource resource, String superProperty) {
-        String superURI;
-        if (UtilityMethods.isValidIRI(superProperty)) {
-            superURI = superProperty;
-        } else {
-            superURI = uriGenerator.generateConceptURI(superProperty, null);
-        }
-        resource.addProperty(RDFS.subPropertyOf, ontModel.createResource(superURI));
+        resource.addProperty(RDFS.subPropertyOf, ontModel.createResource(superProperty.trim()));
     }
 
     void addDomain(Resource relationshipResource, RelationshipConceptModel relModel) {
@@ -110,13 +95,9 @@ final class ConceptRelationWriter {
         }
     }
 
-    void addResourceReference(Resource subject, Property property, String referenceName) {
-        if (UtilityMethods.isValidIRI(referenceName)) {
-            subject.addProperty(property, ontModel.createResource(referenceName));
-        } else {
-            String conceptUri = uriGenerator.generateConceptURI(referenceName, null);
-            subject.addProperty(property, ontModel.createResource(conceptUri));
-        }
+    /** {@code ConceptInputValidator} has rejected any reference that is not a safe IRI. */
+    void addResourceReference(Resource subject, Property property, String referenceIri) {
+        subject.addProperty(property, ontModel.createResource(referenceIri.trim()));
     }
 
     /** Writes the Vlastnost's datatype range; see {@link PropertyDataType#rangeIri}. */

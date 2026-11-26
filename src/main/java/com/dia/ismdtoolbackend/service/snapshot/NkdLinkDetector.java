@@ -7,8 +7,10 @@ import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.StmtIterator;
+import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
 import org.apache.jena.vocabulary.SKOS;
+import org.apache.jena.vocabulary.XSD;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -69,6 +71,9 @@ public class NkdLinkDetector {
      * VZTAH: a VLASTNOST's range is an XSD datatype, while a VZTAH's is a class and is snapshotted as
      * {@link SnapshotLinkType#RANGE_TARGET} by {@link #allowedTargets} instead of rejected here.
      *
+     * <p>A datatype ({@code xsd:}, {@code rdf:}, {@code rdfs:} vocabulary, e.g. a VLASTNOST's {@code xsd:string}
+     * range) is never an NKD concept, so it is not a candidate.
+     *
      * @param conceptType the subject's type; null is treated conservatively (range still collected).
      */
     public List<String> forbiddenDomainRangeTargets(String conceptIri, ConceptType conceptType,
@@ -79,7 +84,12 @@ public class NkdLinkDetector {
         if (conceptType != ConceptType.VZTAH) {
             collectExternalObjectIris(concept, RDFS.range, graphScheme, out);
         }
+        out.removeIf(NkdLinkDetector::isW3cVocabulary);
         return out;
+    }
+
+    private static boolean isW3cVocabulary(String iri) {
+        return iri.startsWith(XSD.getURI()) || iri.startsWith(RDF.getURI()) || iri.startsWith(RDFS.getURI());
     }
 
     private void collectExternalObjects(Resource concept, Property predicate, String graphScheme,

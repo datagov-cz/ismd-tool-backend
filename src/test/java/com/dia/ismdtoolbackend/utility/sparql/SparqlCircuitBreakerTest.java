@@ -135,6 +135,37 @@ class SparqlCircuitBreakerTest {
         assertThat(breaker.call(() -> "ok")).as("the call at the cooldown boundary is the trial").isEqualTo("ok");
     }
 
+    /** A call arriving while the trial runs fails fast instead of piling onto a recovering endpoint. */
+    @Test
+    void halfOpenLetsOnlyOneTrialThrough() {
+        tripBreaker();
+        clock.advanceMillis(COOLDOWN_MS);
+        AtomicInteger waiterCalls = new AtomicInteger();
+
+        String out = breaker.call(() -> {
+            assertThatExceptionOfType(SparqlEndpointUnavailableException.class)
+                    .isThrownBy(() -> breaker.call(waiterCalls::incrementAndGet))
+                    .withMessageContaining("trial call in progress");
+            return "ok";
+        });
+
+        assertThat(out).isEqualTo("ok");
+        assertThat(waiterCalls.get()).as("the waiter never reached the endpoint").isZero();
+        assertThat(breaker.call(() -> "next")).as("closed again after the trial").isEqualTo("next");
+    }
+
+    @Test
+    void trialEndingInAnotherExceptionAllowsTheNextTrial() {
+        tripBreaker();
+        clock.advanceMillis(COOLDOWN_MS);
+
+        assertThatThrownBy(() -> breaker.call(() -> { throw new IllegalArgumentException("user input"); }))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        assertThat(breaker.call(() -> "ok")).as("the trial slot was released").isEqualTo("ok");
+        assertThat(breaker.isOpen()).isFalse();
+    }
+
     @Test
     void publicConstructorUsesTheSystemClock() {
         SparqlCircuitBreaker systemClocked = new SparqlCircuitBreaker("test", 1, COOLDOWN_MS);

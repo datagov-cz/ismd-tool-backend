@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service;
 
+import com.dia.ismdtoolbackend.testsupport.security.SignedInAdmin;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.models.NameModel;
@@ -45,6 +46,7 @@ import static org.mockito.Mockito.*;
  * actually producing the enqueued change set, and an invalid edit producing a 400 with no write.
  */
 @ExtendWith(MockitoExtension.class)
+@ExtendWith(SignedInAdmin.class)
 class ConceptEditFlowIntegrationTest {
 
     private ConceptMetadataRepository conceptMetadataRepository;

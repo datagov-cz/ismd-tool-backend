@@ -1,4 +1,5 @@
-FROM eclipse-temurin:21-jre-alpine
+# Digest-pinned so builds are reproducible; Dependabot raises a PR when the tag moves.
+FROM eclipse-temurin:21-jre-alpine@sha256:5d7689f47d670aca766b9503a70bccc2d73b4eb9221ae8f714ae958313c4ce70
 
 ARG JENA_VERSION=5.4.0
 ARG FUSEKI_HOME=/opt/fuseki

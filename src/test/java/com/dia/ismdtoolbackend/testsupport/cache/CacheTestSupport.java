@@ -4,6 +4,7 @@ import com.github.benmanes.caffeine.cache.Policy;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.caffeine.CaffeineCache;
+import org.springframework.cache.transaction.TransactionAwareCacheDecorator;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -34,6 +35,8 @@ public final class CacheTestSupport {
     public static void assertBoundedWithTtl(CacheManager cacheManager, String... names) {
         for (String name : names) {
             Cache cache = cacheManager.getCache(name);
+            assertThat(cache).as("%s is transaction-aware", name).isInstanceOf(TransactionAwareCacheDecorator.class);
+            cache = ((TransactionAwareCacheDecorator) cache).getTargetCache();
             assertThat(cache).as(name).isInstanceOf(CaffeineCache.class);
             Policy<Object, Object> policy = ((CaffeineCache) cache).getNativeCache().policy();
             assertThat(policy.expireAfterWrite()).as("%s expireAfterWrite", name).isPresent();

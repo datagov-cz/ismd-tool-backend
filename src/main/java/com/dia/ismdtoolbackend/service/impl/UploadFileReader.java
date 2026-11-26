@@ -12,18 +12,24 @@ import org.apache.jena.ontology.OntModel;
 import org.apache.jena.ontology.OntModelSpec;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.riot.Lang;
-import org.apache.jena.riot.RDFDataMgr;
+import org.apache.jena.graph.Triple;
+import org.apache.jena.riot.RDFParser;
+import org.apache.jena.riot.system.StreamRDF;
+import org.apache.jena.riot.system.StreamRDFLib;
+import org.apache.jena.riot.system.StreamRDFWrapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.unit.DataSize;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.ByteArrayInputStream;
+import java.io.FilterInputStream;
+import java.io.InputStream;
 import java.io.IOException;
 import java.io.StringWriter;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -35,6 +41,14 @@ class UploadFileReader {
 
     private final String maxFileSizeConfig;
     private final int rdfParsingTimeoutSeconds;
+
+    /** Bounded: a full pool rejects the upload (503) instead of starting more parsers. */
+    private final ExecutorService parseExecutor = new ThreadPoolExecutor(2, 2, 0, TimeUnit.MILLISECONDS,
+            new ArrayBlockingQueue<>(8), runnable -> {
+                Thread t = new Thread(runnable, "upload-parse");
+                t.setDaemon(true);
+                return t;
+            });
 
     UploadFileReader(@Value("${spring.servlet.multipart.max-file-size:10MB}") String maxFileSizeConfig,
                      @Value("${rdf.parsing.timeout:60}") int rdfParsingTimeoutSeconds) {
@@ -89,31 +103,94 @@ class UploadFileReader {
         return getOntologyModel(file, rdfLang);
     }
 
+    /**
+     * Parses on a worker from a small shared pool, streaming the file. The request answers when the
+     * deadline passes, and the parse stops then too: the input stream and the triple sink both throw past
+     * the deadline, so no parser keeps running, and its half-built model is dropped.
+     */
     private OntModel getOntologyModel(MultipartFile file, Lang rdfLang) throws IOException {
-        OntModel uploadedModel = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM);
-
-        byte[] fileBytes = file.getBytes();
-        ExecutorService executor = Executors.newSingleThreadExecutor();
+        long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(rdfParsingTimeoutSeconds);
+        Future<OntModel> future = parseExecutor.submit(() -> parse(file, rdfLang, deadlineNanos));
         try {
-            Future<?> future = executor.submit(() -> {
-                try (ByteArrayInputStream inputStream = new ByteArrayInputStream(fileBytes)) {
-                    RDFDataMgr.read(uploadedModel, inputStream, rdfLang);
-                    return null;
-                }
-            });
-            future.get(rdfParsingTimeoutSeconds, TimeUnit.SECONDS);
-            return uploadedModel;
+            return future.get(rdfParsingTimeoutSeconds, TimeUnit.SECONDS);
         } catch (TimeoutException e) {
-            log.error("RDF parsing timed out after {} seconds", rdfParsingTimeoutSeconds);
-            throw new OntologyUploadParseTimeoutException("Zpracování RDF souboru překročilo časový limit (" + rdfParsingTimeoutSeconds + " s).");
+            future.cancel(true);
+            throw parseTimeout();
         } catch (ExecutionException e) {
             Throwable cause = e.getCause();
+            if (ParseDeadline.isCause(cause)) {
+                throw parseTimeout();
+            }
             throw new OntologyUploadParseException("Chyba při zpracování RDF souboru: " + cause.getMessage(), cause);
         } catch (InterruptedException e) {
+            future.cancel(true);
             Thread.currentThread().interrupt();
             throw new OntologyUploadException("Zpracování RDF souboru bylo přerušeno.");
-        } finally {
-            executor.shutdownNow();
+        }
+    }
+
+    private static OntModel parse(MultipartFile file, Lang rdfLang, long deadlineNanos) throws IOException {
+        OntModel model = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM);
+        StreamRDF sink = new StreamRDFWrapper(StreamRDFLib.graph(model.getGraph())) {
+            @Override
+            public void triple(Triple triple) {
+                ParseDeadline.check(deadlineNanos);
+                super.triple(triple);
+            }
+        };
+        try (InputStream in = new ParseDeadline.Stream(file.getInputStream(), deadlineNanos)) {
+            RDFParser.source(in).lang(rdfLang).parse(sink);
+        }
+        return model;
+    }
+
+    private OntologyUploadParseTimeoutException parseTimeout() {
+        log.error("RDF parsing timed out after {} seconds", rdfParsingTimeoutSeconds);
+        return new OntologyUploadParseTimeoutException(
+                "Zpracování RDF souboru překročilo časový limit (" + rdfParsingTimeoutSeconds + " s).");
+    }
+
+    /** The parse deadline, enforced on the bytes read and on the triples emitted. */
+    static final class ParseDeadline extends RuntimeException {
+
+        private ParseDeadline() {
+            super("RDF parse deadline passed", null, false, false);
+        }
+
+        static void check(long deadlineNanos) {
+            if (System.nanoTime() - deadlineNanos > 0 || Thread.currentThread().isInterrupted()) {
+                throw new ParseDeadline();
+            }
+        }
+
+        static boolean isCause(Throwable t) {
+            for (Throwable c = t; c != null; c = c.getCause()) {
+                if (c instanceof ParseDeadline) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        static final class Stream extends FilterInputStream {
+            private final long deadlineNanos;
+
+            Stream(InputStream in, long deadlineNanos) {
+                super(in);
+                this.deadlineNanos = deadlineNanos;
+            }
+
+            @Override
+            public int read() throws IOException {
+                check(deadlineNanos);
+                return super.read();
+            }
+
+            @Override
+            public int read(byte[] b, int off, int len) throws IOException {
+                check(deadlineNanos);
+                return super.read(b, off, len);
+            }
         }
     }
 

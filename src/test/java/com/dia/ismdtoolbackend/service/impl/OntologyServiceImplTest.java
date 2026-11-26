@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.service.search.OntologyGraphNames;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsRequestDto;
@@ -36,6 +37,7 @@ import static com.dia.ismdtoolbackend.service.impl.OntologyTestData.createModel;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
 
 /**
  * The orchestrator: each call reaches its delegate unchanged, writes evict the concept caches inside a
@@ -56,7 +58,8 @@ class OntologyServiceImplTest {
     @BeforeEach
     void setUp() {
         service = new OntologyServiceImpl(createOperation, editOperation, deleteOperation, detailReader,
-                metadataReader, turtleExport);
+                metadataReader, turtleExport,
+                new ConceptWriteTransaction(org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class)));
     }
 
     @Nested
@@ -71,7 +74,10 @@ class OntologyServiceImplTest {
                     new OntologyCreateWithConceptsRequestDto(create, List.of(), List.of(), List.of());
             OntologyCreateWithConceptsResponseDto createdWithConcepts =
                     new OntologyCreateWithConceptsResponseDto(created, Map.of());
-            when(createOperation.createWithConcepts(withConcepts, USER_ID)).thenReturn(createdWithConcepts);
+            com.dia.ismdtoolbackend.service.snapshot.NkdLookup nkd =
+                    org.mockito.Mockito.mock(com.dia.ismdtoolbackend.service.snapshot.NkdLookup.class);
+            when(createOperation.prefetchNkd(withConcepts)).thenReturn(nkd);
+            when(createOperation.createWithConcepts(withConcepts, USER_ID, nkd)).thenReturn(createdWithConcepts);
             OntologyEditModel edit = new OntologyEditModel();
             OntologySummaryDto edited = new OntologySummaryDto();
             when(editOperation.editOntology(ONTOLOGY_ID, edit)).thenReturn(edited);
@@ -132,7 +138,7 @@ class OntologyServiceImplTest {
     class Boundaries {
 
         @ParameterizedTest
-        @ValueSource(strings = {"createOntology", "createWithConcepts", "editOntology", "deleteOntology"})
+        @ValueSource(strings = {"createOntology", "editOntology", "deleteOntology"})
         void writesRunInATransaction_andEvictTheConceptCaches(String name) {
             Method method = method(name);
 
@@ -143,7 +149,37 @@ class OntologyServiceImplTest {
             assertThat(evict).isNotNull();
             assertThat(evict.allEntries()).isTrue();
             assertThat(evict.cacheNames()).containsExactlyInAnyOrder(ReferencedConceptResolutionEngine.CACHE_NAME,
-                    WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE);
+                    WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, OntologyGraphNames.CACHE_NAME);
+        }
+
+        /** NKD is asked outside any transaction, so the create opens its own bounded one after it. */
+        @Test
+        void createWithConceptsAsksNkdFirst_thenRunsInTheWriteTransaction() {
+            Method method = method("createWithConcepts");
+            assertThat(method.getAnnotation(Transactional.class)).isNull();
+            CacheEvict evict = method.getAnnotation(CacheEvict.class);
+            assertThat(evict).isNotNull();
+            assertThat(evict.allEntries()).isTrue();
+            assertThat(evict.cacheNames()).containsExactlyInAnyOrder(ReferencedConceptResolutionEngine.CACHE_NAME,
+                    WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, OntologyGraphNames.CACHE_NAME);
+
+            org.springframework.transaction.PlatformTransactionManager txManager =
+                    org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class);
+            OntologyServiceImpl transactional = new OntologyServiceImpl(createOperation, editOperation,
+                    deleteOperation, detailReader, metadataReader, turtleExport, new ConceptWriteTransaction(txManager));
+            OntologyCreateWithConceptsRequestDto request =
+                    new OntologyCreateWithConceptsRequestDto(createModel(), List.of(), List.of(), List.of());
+            com.dia.ismdtoolbackend.service.snapshot.NkdLookup nkd =
+                    org.mockito.Mockito.mock(com.dia.ismdtoolbackend.service.snapshot.NkdLookup.class);
+            when(createOperation.prefetchNkd(request)).thenAnswer(inv -> {
+                org.mockito.Mockito.verifyNoInteractions(txManager);
+                return nkd;
+            });
+
+            transactional.createWithConcepts(request, USER_ID);
+
+            verify(txManager).getTransaction(any());
+            verify(createOperation).createWithConcepts(request, USER_ID, nkd);
         }
 
         @ParameterizedTest

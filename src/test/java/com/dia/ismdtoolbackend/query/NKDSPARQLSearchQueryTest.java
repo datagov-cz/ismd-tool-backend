@@ -210,19 +210,31 @@ class NKDSPARQLSearchQueryTest {
     }
 
     @Test
-    void sanitizeSearchTerm_removesQuotes() {
-        assertThat(NKDSPARQLSearchQuery.sanitizeSearchTerm("te\"st")).isEqualTo("test");
-        assertThat(NKDSPARQLSearchQuery.sanitizeSearchTerm("te'st")).isEqualTo("test");
+    void sanitizeSearchTerm_replacesLiteralBreakingCharactersWithSpace() {
+        assertThat(NKDSPARQLSearchQuery.sanitizeSearchTerm("te\"st")).isEqualTo("te st");
+        assertThat(NKDSPARQLSearchQuery.sanitizeSearchTerm("te'st")).isEqualTo("te st");
+        assertThat(NKDSPARQLSearchQuery.sanitizeSearchTerm("te\\st")).isEqualTo("te st");
+        assertThat(NKDSPARQLSearchQuery.sanitizeSearchTerm("te<s>t")).isEqualTo("te s t");
+    }
+
+    /** Virtuoso free-text operators inside the phrase make NKD reject the whole query. */
+    @Test
+    void sanitizeSearchTerm_stripsFreeTextOperators() {
+        assertThat(NKDSPARQLSearchQuery.sanitizeSearchTerm("budova* AND (stavba | pozemek) ~ x, y & z"))
+                .isEqualTo("budova AND stavba pozemek x y z");
+        assertThat(NKDSPARQLSearchQuery.sanitizeSearchTerm("e-Sbírka")).isEqualTo("e Sbírka");
+        assertThat(NKDSPARQLSearchQuery.sanitizeSearchTerm("  *  ")).isEmpty();
     }
 
     @Test
-    void sanitizeSearchTerm_removesAngleBrackets() {
-        assertThat(NKDSPARQLSearchQuery.sanitizeSearchTerm("te<s>t")).isEqualTo("test");
+    void sanitizeSearchTerm_collapsesWhitespace() {
+        assertThat(NKDSPARQLSearchQuery.sanitizeSearchTerm(" stavba \t\n pozemek ")).isEqualTo("stavba pozemek");
     }
 
     @Test
-    void sanitizeSearchTerm_removesBackslashes() {
-        assertThat(NKDSPARQLSearchQuery.sanitizeSearchTerm("te\\st")).isEqualTo("test");
+    void sanitizeSearchTerm_keepsDigitsAndDecomposedDiacritics() {
+        assertThat(NKDSPARQLSearchQuery.sanitizeSearchTerm("zákon 111/2009")).isEqualTo("zákon 111 2009");
+        assertThat(NKDSPARQLSearchQuery.sanitizeSearchTerm("c\u030Cesky")).isEqualTo("c\u030Cesky");
     }
 
     @Test

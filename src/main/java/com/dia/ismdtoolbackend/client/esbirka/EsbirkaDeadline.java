@@ -30,6 +30,12 @@ final class EsbirkaDeadline {
         return remainingNanos() <= 0;
     }
 
+    /** This deadline or {@code limit} from now, whichever comes first. */
+    EsbirkaDeadline atMost(Duration limit) {
+        long cap = System.nanoTime() + limit.toNanos();
+        return cap - expiresAtNanos < 0 ? new EsbirkaDeadline(cap) : this;
+    }
+
     /** Whether {@code nanoTime} lies past the deadline. */
     boolean isAfter(long nanoTime) {
         return nanoTime - expiresAtNanos > 0;
