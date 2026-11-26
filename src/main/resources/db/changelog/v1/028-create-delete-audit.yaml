@@ -2,7 +2,7 @@ databaseChangeLog:
   # Append-only record of user deletes, written by DeleteAuditWriter in each delete's transaction.
   # No foreign keys: the rows outlive what they describe.
   - changeSet:
-      id: 025-create-delete-audit
+      id: 028-create-delete-audit
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
