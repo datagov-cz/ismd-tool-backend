@@ -393,7 +393,7 @@ public class GlobalExceptionHandler {
     /** The service has already logged the cause. */
     @ExceptionHandler(PublicationFailedException.class)
     public ResponseEntity<ApiResponseDto<Void>> handlePublicationFailed(PublicationFailedException e) {
-        return error(ErrorCode.PUBLICATION_FAILED, e.getMessage());
+        return craftedError(ErrorCode.PUBLICATION_FAILED, ownMessage(e));
     }
 
     @ExceptionHandler(OntologyUploadInProgressException.class)
