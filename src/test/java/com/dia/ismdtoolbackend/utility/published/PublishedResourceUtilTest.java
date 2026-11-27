@@ -216,7 +216,7 @@ class PublishedResourceUtilTest {
             model.createResource().addProperty(RDF.type, model.createResource(POJEM));
             when(nkd.findPublishedAmong(anyList())).thenReturn(java.util.Optional.of(java.util.Set.of(CONCEPT_A)));
 
-            List<String> published = util.checkPublishedResourcesInNKD(model, List.of(CONCEPT_A, OTHER_GRAPH));
+            List<String> published = util.checkPublishedResourcesInNKD(model, List.of(CONCEPT_A, OTHER_GRAPH), List.of());
 
             assertThat(published).containsExactly(CONCEPT_A);
             ArgumentCaptor<List<String>> asked = ArgumentCaptor.captor();
@@ -237,7 +237,7 @@ class PublishedResourceUtilTest {
             logs.start();
             logger.addAppender(logs);
             try {
-                assertThat(util.checkPublishedResourcesInNKD(model, List.of(CONCEPT_A))).isEmpty();
+                assertThat(util.checkPublishedResourcesInNKD(model, List.of(CONCEPT_A), List.of())).isEmpty();
             } finally {
                 logger.detachAppender(logs);
             }
@@ -245,6 +245,26 @@ class PublishedResourceUtilTest {
                     .filteredOn(e -> e.getLevel() == ch.qos.logback.classic.Level.WARN)
                     .singleElement()
                     .satisfies(e -> assertThat(e.getFormattedMessage()).contains("checks skipped").contains(GRAPH));
+        }
+
+        @org.junit.jupiter.params.ParameterizedTest
+        @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
+        void reportsTheRelyingConceptsOnlyWhenNkdDidNotAnswer(boolean nkdAnswers) {
+            OntModel model = ModelFactory.createOntologyModel();
+            model.createResource(GRAPH).addProperty(RDF.type, OWL2.Ontology);
+            when(nkd.findPublishedAmong(anyList())).thenReturn(nkdAnswers
+                    ? java.util.Optional.of(java.util.Set.of()) : java.util.Optional.empty());
+            org.springframework.web.context.request.RequestContextHolder.setRequestAttributes(
+                    new org.springframework.web.context.request.ServletRequestAttributes(
+                            new org.springframework.mock.web.MockHttpServletRequest()));
+            try {
+                util.checkPublishedResourcesInNKD(model, List.of(OTHER_GRAPH), List.of(CONCEPT_A));
+
+                assertThat(com.dia.ismdtoolbackend.service.snapshot.SkippedNkdChecks.current())
+                        .isEqualTo(nkdAnswers ? List.of() : List.of(CONCEPT_A));
+            } finally {
+                org.springframework.web.context.request.RequestContextHolder.resetRequestAttributes();
+            }
         }
 
         @Test
@@ -259,7 +279,7 @@ class PublishedResourceUtilTest {
             model.createResource().addProperty(RDF.type, OWL2.Ontology);
             when(nkd.findPublishedAmong(List.of(OTHER_GRAPH))).thenReturn(java.util.Optional.of(java.util.Set.of()));
 
-            assertThat(util.checkPublishedResourcesInNKD(model, List.of(OTHER_GRAPH))).isEmpty();
+            assertThat(util.checkPublishedResourcesInNKD(model, List.of(OTHER_GRAPH), List.of())).isEmpty();
         }
     }
 

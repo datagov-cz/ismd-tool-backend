@@ -1,12 +1,10 @@
 package com.dia.ismdtoolbackend.service;
 
-import com.dia.ismdtoolbackend.controller.dto.ConceptSummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.service.snapshot.NkdLookup;
-import org.apache.jena.ontology.OntologyException;
 
 import java.util.List;
 
@@ -38,6 +36,5 @@ public interface ConceptService {
      *         so the post-sync detail is read by the caller via {@link #getConceptDetail}
      */
     String syncWorkingCopy(Long conceptId, List<String> fieldsToAccept);
-    List<ConceptSummaryDto> getAll(String userId, Boolean isPublished);
-    GetConceptDto getConceptDetail(String conceptSlug) throws OntologyException;
+    GetConceptDto getConceptDetail(String conceptSlug);
 }

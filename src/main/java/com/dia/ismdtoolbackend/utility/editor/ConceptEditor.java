@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
-import com.dia.ismdtoolbackend.exception.OntologyExceptions;
+import com.dia.ismdtoolbackend.exception.OntologyInputException;
+import com.dia.ismdtoolbackend.exception.OntologyProcessingException;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.models.concept.*;
@@ -119,9 +120,11 @@ public class ConceptEditor {
 
             return new EditResult(newConceptIRI, nameChanged, statementsToRemove, statementsToAdd);
 
+        } catch (OntologyInputException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Failed to edit concept: {}", conceptIri, e);
-            throw OntologyExceptions.withCause("Failed to edit concept: " + conceptIri, e);
+            throw new OntologyProcessingException("Failed to edit concept: " + conceptIri, e);
         } finally {
             if (supportsTransactions && !committed) {
                 try {

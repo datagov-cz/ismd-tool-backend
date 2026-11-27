@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.utility.paging.PageParams;
+import org.springframework.data.domain.Page;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import lombok.RequiredArgsConstructor;
@@ -15,11 +17,11 @@ class DiagramListReader {
     private final DiagramRepository diagramRepository;
     private final DiagramScopeReader scopeReader;
 
-    List<DiagramRepository.DiagramSummaryRow> listAll(String userId) {
+    Page<DiagramRepository.DiagramSummaryRow> listAll(String userId, PageParams page) {
         // Blank is treated as absent: an omitted query param and `?userId=` should both mean
         // "no filter" rather than "match the empty user", which would return nothing.
         String filter = userId == null || userId.isBlank() ? null : userId.trim();
-        return diagramRepository.findSummaries(null, filter);
+        return diagramRepository.findSummaryPage(filter, page.pageable());
     }
 
     List<DiagramRepository.DiagramSummaryRow> listForOntology(String ontologySlug) {

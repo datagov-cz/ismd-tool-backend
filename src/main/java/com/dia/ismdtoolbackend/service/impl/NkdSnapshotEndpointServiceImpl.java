@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.audit.DeleteAuditWriter;
 import com.dia.ismdtoolbackend.controller.dto.LinkSnapshotDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.NkdConceptSnapshotEntity;
@@ -50,6 +51,7 @@ public class NkdSnapshotEndpointServiceImpl implements NkdSnapshotEndpointServic
     private final NkdSparqlClient nkdSparqlClient;
     private final DeviationResolutionEnricher deviationEnricher;
     private final ConceptWriteTransaction writeTransaction;
+    private final DeleteAuditWriter deleteAuditWriter;
 
     /**
      * NKD first, outside any transaction (the copy and its triples), then the refresh in a bounded one; the
@@ -105,6 +107,7 @@ public class NkdSnapshotEndpointServiceImpl implements NkdSnapshotEndpointServic
         Set<Statement> ownerOutgoing = ownerOutgoingStatements(graphName, owner.getConceptIri());
         nkdSnapshotService.removeSnapshotAndLink(snapshot, ownerOutgoing, cs);
         flush(graphName, owner, cs);
+        deleteAuditWriter.localCopy(snapshotId, snapshot.getNkdIri(), graphName, owner.getConceptIri());
         log.info("REMOVE on snapshot {} (owner {}, nkd {}) done", snapshotId, owner.getConceptIri(),
                 snapshot.getNkdIri());
     }

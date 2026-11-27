@@ -1,11 +1,11 @@
 package com.dia.ismdtoolbackend.enums;
 
+import com.dia.ismdtoolbackend.exception.OntologyInputException;
 import com.dia.ismdtoolbackend.constants.VocabularyConstants;
 import com.dia.ismdtoolbackend.exception.ConflictingConceptTypeException;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 import io.swagger.v3.oas.annotations.media.Schema;
-import org.apache.jena.ontology.OntologyException;
 
 import java.util.EnumSet;
 import java.util.List;
@@ -36,7 +36,7 @@ public enum ConceptType {
     @JsonCreator
     public static ConceptType fromString(String value) {
         if (value == null || value.trim().isEmpty()) {
-            throw new OntologyException("Typ pojmu nesmí být prázdný");
+            throw new OntologyInputException("Typ pojmu nesmí být prázdný");
         }
 
         for (ConceptType type : ConceptType.values()) {
@@ -45,7 +45,7 @@ public enum ConceptType {
             }
         }
 
-        throw new OntologyException(
+        throw new OntologyInputException(
                 "Neznámý typ pojmu: " + value + ". Platné hodnoty: TRIDA, VLASTNOST, VZTAH, KONCEPT"
         );
     }

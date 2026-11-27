@@ -124,7 +124,6 @@ class SecurityFilterChainIntegrationTest {
             "/api/ontology/concepts/resolve",
             "/api/ontology/list",
             // Concept read endpoints
-            "/api/concept/list",
             "/api/concept/test-slug/detail",
             // NKD read endpoints
             "/api/nkd/ontology/list",
@@ -259,7 +258,8 @@ class SecurityFilterChainIntegrationTest {
                 new Route(HttpMethod.POST, "/api/admin/outbox/retry/1", "retry"),
                 new Route(HttpMethod.POST, "/api/admin/publikace/run", "run"),
                 new Route(HttpMethod.GET, "/api/admin/publikace/1/slovniky.jsonld", "file"),
-                new Route(HttpMethod.GET, "/api/admin/publikace/history", "history")
+                new Route(HttpMethod.GET, "/api/admin/publikace/history", "history"),
+                new Route(HttpMethod.GET, "/api/admin/audit/deletes", "deletes")
         );
     }
 

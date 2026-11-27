@@ -4,9 +4,11 @@ import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.rdf.model.Model;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -24,8 +26,18 @@ import java.util.function.Predicate;
  */
 public interface NkdLookup {
 
-    /** The IRIs among {@code iris} NKD publishes, or empty when NKD did not answer. */
+    /** Most IRIs in one batched NKD query. */
+    int BATCH_SIZE = 200;
+
+    /** The IRIs among {@code iris} NKD publishes, or empty when NKD did not answer for all of them. */
     Optional<Set<String>> publishedAmong(Collection<String> iris);
+
+    /** What NKD said about each of {@code iris}, for callers that can act on a partial answer. */
+    PublishedCheck check(Collection<String> iris);
+
+    /** {@code unanswered}: the IRIs NKD gave no answer about. */
+    record PublishedCheck(Set<String> published, Set<String> unanswered) {
+    }
 
     /** NKD's copy of one concept, or empty when it could not be fetched. */
     Optional<Fetched> concept(String iri);
@@ -49,9 +61,43 @@ public interface NkdLookup {
         return new Prefetched(Set.copyOf(iris), published, concepts);
     }
 
-    /** Asks NKD only which of {@code iris} are published; concept fetches have no answer. */
+    /**
+     * Asks NKD which of {@code iris} are published and fetches those, both in batches. A failed batch leaves
+     * only its own IRIs unanswered.
+     */
     static NkdLookup prefetchPublished(NkdSparqlClient client, Collection<String> iris) {
-        return new Prefetched(Set.copyOf(iris), new Live(client).publishedAmong(iris), Map.of());
+        Live live = new Live(client);
+        Set<String> asked = new HashSet<>();
+        Set<String> published = new HashSet<>();
+        for (List<String> batch : batches(List.copyOf(new LinkedHashSet<>(iris)))) {
+            live.publishedAmong(batch).ifPresent(found -> {
+                asked.addAll(batch);
+                published.addAll(found);
+            });
+        }
+        Map<String, Fetched> concepts = new HashMap<>();
+        for (List<String> batch : batches(iris.stream().distinct().filter(published::contains).toList())) {
+            try {
+                client.fetchPublishedConceptsWithRaw(batch).forEach((iri, concept) -> concepts.put(iri, new Fetched(
+                        concept.map(NkdSparqlClient.PublishedConceptWithRaw::concept),
+                        concept.map(NkdSparqlClient.PublishedConceptWithRaw::raw))));
+            } catch (RuntimeException e) {
+                log().warn("NKD unavailable fetching {} concept(s): {}", batch.size(), e.getMessage());
+            }
+        }
+        return new Prefetched(Set.copyOf(asked), Optional.of(Set.copyOf(published)), concepts);
+    }
+
+    private static List<List<String>> batches(List<String> iris) {
+        List<List<String>> batches = new ArrayList<>();
+        for (int from = 0; from < iris.size(); from += BATCH_SIZE) {
+            batches.add(iris.subList(from, Math.min(from + BATCH_SIZE, iris.size())));
+        }
+        return batches;
+    }
+
+    private static org.slf4j.Logger log() {
+        return org.slf4j.LoggerFactory.getLogger(NkdLookup.class);
     }
 
     /** Knows nothing: every question answers as NKD not answering. */
@@ -94,6 +140,13 @@ public interface NkdLookup {
         }
 
         @Override
+        public PublishedCheck check(Collection<String> iris) {
+            return publishedAmong(iris)
+                    .map(found -> new PublishedCheck(found, Set.<String>of()))
+                    .orElseGet(() -> new PublishedCheck(Set.of(), Set.copyOf(iris)));
+        }
+
+        @Override
         public Optional<Fetched> concept(String iri) {
             return concept(iri, true);
         }
@@ -132,6 +185,19 @@ public interface NkdLookup {
                 out.retainAll(answer);
                 return out;
             });
+        }
+
+        @Override
+        public PublishedCheck check(Collection<String> iris) {
+            if (published.isEmpty()) {
+                return new PublishedCheck(Set.of(), Set.copyOf(iris));
+            }
+            Set<String> found = new HashSet<>(iris);
+            found.retainAll(published.get());
+            found.retainAll(asked);
+            Set<String> unanswered = new HashSet<>(iris);
+            unanswered.removeAll(asked);
+            return new PublishedCheck(found, unanswered);
         }
 
         @Override

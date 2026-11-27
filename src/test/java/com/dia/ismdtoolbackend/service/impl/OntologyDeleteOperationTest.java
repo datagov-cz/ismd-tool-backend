@@ -1,5 +1,9 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.repository.CommentRepository;
+import com.dia.ismdtoolbackend.repository.DiagramRepository;
+import com.dia.ismdtoolbackend.audit.DeleteAuditWriter;
+import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
 import com.dia.ismdtoolbackend.exception.OntologyCreationConflictException;
@@ -10,7 +14,6 @@ import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.NkdSnapshotService;
-import org.apache.jena.ontology.OntologyException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -42,6 +45,9 @@ class OntologyDeleteOperationTest {
     private OutboxWriter outboxWriter;
     private OutboxRelayTrigger outboxRelayTrigger;
     private OutboxEntryRepository outboxRepository;
+    private DiagramRepository diagramRepository;
+    private CommentRepository commentRepository;
+    private DeleteAuditWriter deleteAuditWriter;
 
     private OntologyDeleteOperation operation;
 
@@ -55,6 +61,9 @@ class OntologyDeleteOperationTest {
         outboxWriter = fixture.outboxWriter();
         outboxRelayTrigger = fixture.outboxRelayTrigger();
         outboxRepository = fixture.outboxRepository();
+        diagramRepository = fixture.diagramRepository();
+        commentRepository = fixture.commentRepository();
+        deleteAuditWriter = fixture.deleteAuditWriter();
         operation = fixture.deleteOperation();
     }
 
@@ -66,8 +75,12 @@ class OntologyDeleteOperationTest {
         when(ontologyMetadataRepository.findById(ONTOLOGY_ID)).thenReturn(Optional.of(ontologyEntity()));
         when(validationReportRepository.findByOntologyMetadataId(ONTOLOGY_ID)).thenReturn(Optional.of(report));
         when(conceptMetadataRepository.findByGraphName(GRAPH)).thenReturn(List.of(owned));
+        when(diagramRepository.countByOntologyMetadataId(ONTOLOGY_ID)).thenReturn(2L);
+        when(commentRepository.countByOntologyMetadataId(ONTOLOGY_ID)).thenReturn(5L);
 
         operation.deleteOntology(ONTOLOGY_ID);
+
+        verify(deleteAuditWriter).ontology(ONTOLOGY_ID, ontologyEntity().getSlug(), GRAPH, 1, 2, 5);
 
         var order = inOrder(validationReportRepository, nkdSnapshotService, outboxWriter,
                 ontologyMetadataRepository, outboxRelayTrigger);
@@ -96,10 +109,10 @@ class OntologyDeleteOperationTest {
         when(ontologyMetadataRepository.findById(ONTOLOGY_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> operation.deleteOntology(ONTOLOGY_ID))
-                .isInstanceOf(OntologyException.class)
-                .hasMessageContaining("nebyl nalezen");
+                .isInstanceOf(OntologyNotFoundException.class)
+                .hasMessage("Slovník s id " + ONTOLOGY_ID + " nebyl nalezen.");
         verify(ontologyMetadataRepository, never()).deleteById(any());
-        verifyNoInteractions(outboxWriter, nkdSnapshotService);
+        verifyNoInteractions(outboxWriter, nkdSnapshotService, deleteAuditWriter);
     }
 
     @Test

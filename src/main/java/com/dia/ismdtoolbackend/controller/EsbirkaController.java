@@ -49,7 +49,8 @@ public class EsbirkaController {
         MDC.put(LOG_REQUEST_ID, requestId);
         try {
             int resolved = resolveLimit(limit);
-            log.info("e-Sbírka grouped law search, q: {}, limit: {}", q, resolved);
+            log.info("e-Sbírka grouped law search, qLength: {}, limit: {}", q == null ? 0 : q.length(), resolved);
+            log.debug("e-Sbírka grouped law search q='{}'", q);
             LawSearchResultDto result = esbirkaService.searchLawsGrouped(q, resolved);
             return ResponseEntity.ok(ApiResponseDto.success(result,
                     "Vyhledávání právních aktů úspěšně provedeno."));

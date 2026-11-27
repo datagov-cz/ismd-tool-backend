@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service;
 
+import com.dia.ismdtoolbackend.audit.DeleteAuditWriter;
 import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
@@ -40,6 +41,9 @@ class CommentServiceImplTest {
     @Mock
     private ConceptMetadataRepository conceptMetadataRepository;
 
+    @Mock
+    private DeleteAuditWriter deleteAuditWriter;
+
     private CommentServiceImpl commentService;
 
     private CommentEntity testCommentEntity;
@@ -57,7 +61,7 @@ class CommentServiceImplTest {
     void setUp() {
         // The real mapper: the response is what the generated mapping produces from the saved row.
         commentService = new CommentServiceImpl(new CommentMapperImpl(), commentRepository,
-                ontologyMetadataRepository, conceptMetadataRepository);
+                ontologyMetadataRepository, conceptMetadataRepository, deleteAuditWriter);
 
         testCommentEntity = new CommentEntity();
         testCommentEntity.setId(TEST_COMMENT_ID);
@@ -273,6 +277,7 @@ class CommentServiceImplTest {
 
     @Test
     void deleteComment_Success() {
+        testCommentEntity.setOntologyMetadata(testOntologyMetadata);
         when(commentRepository.findById(TEST_COMMENT_ID)).thenReturn(Optional.of(testCommentEntity));
         doNothing().when(commentRepository).deleteById(TEST_COMMENT_ID);
 
@@ -280,11 +285,13 @@ class CommentServiceImplTest {
 
         verify(commentRepository).findById(TEST_COMMENT_ID);
         verify(commentRepository).deleteById(TEST_COMMENT_ID);
+        verify(deleteAuditWriter).comment(TEST_COMMENT_ID, TEST_ONTOLOGY_IRI, null);
     }
 
     @Test
     void deleteComment_ConceptComment_Success() {
         testCommentEntity.setConceptMetadata(testConceptMetadata);
+        testConceptMetadata.setGraphName(TEST_ONTOLOGY_IRI);
 
         when(commentRepository.findById(TEST_COMMENT_ID)).thenReturn(Optional.of(testCommentEntity));
         doNothing().when(commentRepository).deleteById(TEST_COMMENT_ID);
@@ -293,6 +300,7 @@ class CommentServiceImplTest {
 
         verify(commentRepository).findById(TEST_COMMENT_ID);
         verify(commentRepository).deleteById(TEST_COMMENT_ID);
+        verify(deleteAuditWriter).comment(TEST_COMMENT_ID, TEST_ONTOLOGY_IRI, TEST_CONCEPT_IRI);
     }
 
     @Test
@@ -305,6 +313,7 @@ class CommentServiceImplTest {
 
         assertThat(exception).hasMessageContaining("nebyl nalezen");
         verify(commentRepository, never()).deleteById(any());
+        verify(deleteAuditWriter, never()).comment(any(), any(), any());
     }
 
 }

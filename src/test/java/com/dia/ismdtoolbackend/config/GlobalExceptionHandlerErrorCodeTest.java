@@ -1,7 +1,10 @@
 package com.dia.ismdtoolbackend.config;
 
+import org.apache.jena.ontology.OntologyException;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.enums.ErrorCode;
+import com.dia.ismdtoolbackend.exception.OntologyInputException;
+import com.dia.ismdtoolbackend.exception.OntologyProcessingException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -16,6 +19,7 @@ import org.springframework.web.client.RestClientResponseException;
 import java.lang.reflect.Array;
 import java.lang.reflect.Method;
 import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
 import java.util.stream.Stream;
 
@@ -30,7 +34,10 @@ import static org.mockito.Mockito.mock;
  */
 class GlobalExceptionHandlerErrorCodeTest {
 
+    /** The advices whose handlers build their response through {@link ErrorResponses}. */
     private final GlobalExceptionHandler handler = new GlobalExceptionHandler();
+
+    private static final List<Object> ADVICES = List.of(new GlobalExceptionHandler(), new DiagramExceptionHandler());
 
     /** Deep stubs for the handlers that read a payload, but no cause chain for the logger to walk. */
     private static final Answer<Object> MESSAGELESS = invocation -> {
@@ -48,8 +55,13 @@ class GlobalExceptionHandlerErrorCodeTest {
     };
 
     static Stream<Method> handlers() {
-        return Arrays.stream(GlobalExceptionHandler.class.getDeclaredMethods())
+        return ADVICES.stream()
+                .flatMap(advice -> Arrays.stream(advice.getClass().getDeclaredMethods()))
                 .filter(m -> m.isAnnotationPresent(ExceptionHandler.class));
+    }
+
+    private static Object adviceDeclaring(Method method) {
+        return ADVICES.stream().filter(a -> a.getClass() == method.getDeclaringClass()).findFirst().orElseThrow();
     }
 
     @ParameterizedTest(name = "{0}")
@@ -58,7 +70,7 @@ class GlobalExceptionHandlerErrorCodeTest {
         Class<?> exceptionType = method.getParameterTypes()[0];
         Object exception = mock(exceptionType, MESSAGELESS);
 
-        ResponseEntity<?> response = (ResponseEntity<?>) method.invoke(handler, exception);
+        ResponseEntity<?> response = (ResponseEntity<?>) method.invoke(adviceDeclaring(method), exception);
         ApiResponseDto<?> body = (ApiResponseDto<?>) response.getBody();
 
         assertThat(body).isNotNull();
@@ -88,7 +100,7 @@ class GlobalExceptionHandlerErrorCodeTest {
     void noServerErrorRelaysTheExceptionMessage(Method method) throws Exception {
         Object exception = mock(method.getParameterTypes()[0], LEAKY);
 
-        ResponseEntity<?> response = (ResponseEntity<?>) method.invoke(handler, exception);
+        ResponseEntity<?> response = (ResponseEntity<?>) method.invoke(adviceDeclaring(method), exception);
         ApiResponseDto<?> body = (ApiResponseDto<?>) response.getBody();
 
         if (response.getStatusCode().is5xxServerError()) {
@@ -117,6 +129,38 @@ class GlobalExceptionHandlerErrorCodeTest {
         traceless.setStackTrace(new StackTraceElement[0]);
 
         assertThat(ErrorResponses.ownMessage(traceless)).isNull();
+    }
+
+    @Test
+    void jenaOntologyException_answers500WithTheDefaultMessageOnly() {
+        ResponseEntity<ApiResponseDto<Void>> response =
+                handler.handleOntologyException(new OntologyException(INTERNAL_DETAIL));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(response.getBody().getErrorCode()).isEqualTo(ErrorCode.ONTOLOGY_PROCESSING_FAILED);
+        assertThat(response.getBody().getMessage())
+                .isEqualTo(ErrorCode.ONTOLOGY_PROCESSING_FAILED.getDefaultMessage());
+    }
+
+    @Test
+    void ontologyInput_answers400WithItsMessage() {
+        ResponseEntity<ApiResponseDto<Void>> response =
+                handler.handleOntologyInput(new OntologyInputException("IRI slovníku není platné."));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody().getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT);
+        assertThat(response.getBody().getMessage()).isEqualTo("IRI slovníku není platné.");
+    }
+
+    @Test
+    void ontologyProcessing_answers500WithTheDefaultMessageOnly() {
+        ResponseEntity<ApiResponseDto<Void>> response = handler.handleOntologyProcessing(
+                new OntologyProcessingException(INTERNAL_DETAIL, new IllegalStateException(INTERNAL_DETAIL)));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(response.getBody().getErrorCode()).isEqualTo(ErrorCode.ONTOLOGY_PROCESSING_FAILED);
+        assertThat(response.getBody().getMessage())
+                .isEqualTo(ErrorCode.ONTOLOGY_PROCESSING_FAILED.getDefaultMessage());
     }
 
     @ParameterizedTest

@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.audit.DeleteAuditWriter;
+import com.dia.ismdtoolbackend.exception.ConceptNotFoundException;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
@@ -9,13 +11,12 @@ import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.ontology.OntologyException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Component;
 
-/** Deletes a concept together with the properties and relationships that point at it. */
+/** Deletes a concept together with the properties and relationships that point at it, and records the delete. */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -29,6 +30,7 @@ class ConceptDeleteOperation {
     private final OutboxRelayTrigger outboxRelayTrigger;
     private final ConceptAccessGuard accessGuard;
     private final InitialGraphGuard initialGraphGuard;
+    private final DeleteAuditWriter deleteAuditWriter;
 
     void deleteConcept(Long conceptId) {
         accessGuard.assertCanModify(conceptId);
@@ -37,7 +39,7 @@ class ConceptDeleteOperation {
         Optional<ConceptMetadataEntity> conceptMetadataOpt = conceptMetadataRepository.findWithLockById(conceptId);
         if (conceptMetadataOpt.isEmpty()) {
             log.error("conceptId {} not found", conceptId);
-            throw new OntologyException("Metadata pojmu s id " + conceptId + "nebyla nalezena.");
+            throw new ConceptNotFoundException("Metadata pojmu s id " + conceptId + " nebyla nalezena.");
         }
 
         String graphName = conceptMetadataOpt.get().getGraphName();
@@ -60,7 +62,13 @@ class ConceptDeleteOperation {
         // Enqueue the TDB2 deletion (keyed on the concept being deleted), committed atomically with
         // the PG metadata delete below.
         outboxWriter.enqueueDeleteConcepts(graphName, conceptUri, relatedConceptUris);
-        OntologyMetadataEntity parent = conceptMetadataOpt.get().getOntologyMetadata();
+        ConceptMetadataEntity concept = conceptMetadataOpt.get();
+        deleteAuditWriter.concept(conceptId, conceptUri, concept.getSlug(), concept.getConceptName(), graphName,
+                relatedConceptEntities.stream()
+                        .map(ConceptMetadataEntity::getConceptIri)
+                        .filter(iri -> !iri.equals(conceptUri))
+                        .toList());
+        OntologyMetadataEntity parent = concept.getOntologyMetadata();
         conceptMetadataRepository.deleteAll(relatedConceptEntities);
         metadataTouchService.touchOntology(parent);
         outboxRelayTrigger.nudgeAfterCommit();

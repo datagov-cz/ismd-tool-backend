@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.exception.OntologyExceptions;
+import com.dia.ismdtoolbackend.exception.OntologyInputException;
+import com.dia.ismdtoolbackend.exception.OntologyProcessingException;
 import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsResponseDto;
@@ -39,7 +40,6 @@ import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import com.dia.ismdtoolbackend.utility.creator.OntologyModelFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.vocabulary.DCTerms;
@@ -73,7 +73,7 @@ class OntologyCreateOperation {
 
         if (!UtilityMethods.isValidIRI(ontologyIRI)) {
             log.error("ontologyIRI {} not valid", ontologyCreateModel.getNameModel().getName());
-            throw new OntologyException("IRI slovníku " + ontologyIRI + " není platné.");
+            throw new OntologyInputException("IRI slovníku " + ontologyIRI + " není platné.");
         }
 
         Optional<OntologyMetadataEntity> ontologyMetadataOpt = findLocalCollision(ontologyIRI);
@@ -108,7 +108,7 @@ class OntologyCreateOperation {
                 metadataEntity = createOntologyMetadata(ontologyIRI, userId);
                 ontologyMetadataRepository.flush();
             } catch (Exception e) {
-                throw OntologyExceptions.withCause("Nepodařilo se uložit metadata slovníku.", e);
+                throw new OntologyProcessingException("Nepodařilo se uložit metadata slovníku.", e);
             }
             outboxWriter.enqueueCreateGraph(ontologyIRI, graphModel);
             outboxRelayTrigger.nudgeAfterCommit();
@@ -126,15 +126,28 @@ class OntologyCreateOperation {
     }
 
     /**
-     * Which external domain targets of the request NKD publishes, asked now, before the create's transaction.
-     * Only attributes and relationship sources carry one; a relationship target is a range, never rejected.
+     * What NKD holds about the request's external link targets, asked now, before the create's transaction:
+     * parents, domains, relationship targets and attribute datatypes (a Vlastnost's range).
      */
     NkdLookup prefetchNkd(OntologyCreateWithConceptsRequestDto request) {
-        List<String> domains = new ArrayList<>();
-        request.attributes().forEach(a -> addExternal(domains, a.associatedClass()));
-        request.relationships().forEach(r -> addExternal(domains, r.sourceClass()));
+        List<String> targets = new ArrayList<>();
+        request.classes().forEach(c -> {
+            if (c.specializes() != null) {
+                c.specializes().forEach(parent -> addExternal(targets, parent));
+            }
+        });
+        request.attributes().forEach(a -> {
+            addExternal(targets, a.associatedClass());
+            if (a.dataType() != null) {
+                targets.add(ConceptIriNormalizer.iri(a.dataType()));
+            }
+        });
+        request.relationships().forEach(r -> {
+            addExternal(targets, r.sourceClass());
+            addExternal(targets, r.targetClass());
+        });
         // A new vocabulary holds no working copies, so no graph narrows the exemption.
-        return nkdLinkReconciler.prefetchPublished(null, domains);
+        return nkdLinkReconciler.prefetchPublished(null, targets);
     }
 
     private static void addExternal(List<String> iris, AiConceptReferenceDto reference) {
@@ -178,8 +191,9 @@ class OntologyCreateOperation {
             try {
                 ontology = createOntologyMetadata(graph, userId);
                 ontologyMetadataRepository.flush();
-                saveDraftConceptMetadata(prepared.concepts(), ontology, userId);
+                List<ConceptMetadataEntity> saved = saveDraftConceptMetadata(prepared.concepts(), ontology, userId);
                 conceptMetadataRepository.flush();
+                saved.forEach(concept -> nkdLinkReconciler.takeNkdCopies(concept, graphModel, nkd));
             } catch (DataIntegrityViolationException e) {
                 throw new OntologyCreationConflictException("IRI nebo identifikátor slovníku či pojmu již existuje.");
             }
@@ -198,7 +212,8 @@ class OntologyCreateOperation {
         }
     }
 
-    void saveDraftConceptMetadata(List<ConceptCreateModel> concepts, OntologyMetadataEntity ontology, String userId) {
+    List<ConceptMetadataEntity> saveDraftConceptMetadata(List<ConceptCreateModel> concepts,
+                                                         OntologyMetadataEntity ontology, String userId) {
         Set<String> slugs = new HashSet<>();
         List<ConceptMetadataEntity> entities = new ArrayList<>();
         for (ConceptCreateModel concept : concepts) {
@@ -207,6 +222,7 @@ class OntologyCreateOperation {
             entities.add(entity);
         }
         conceptMetadataRepository.saveAll(entities);
+        return entities;
     }
 
     Optional<OntologyMetadataEntity> findLocalCollision(String graph) {
@@ -238,7 +254,7 @@ class OntologyCreateOperation {
 
     void validateOntologyCreateModel(OntologyCreateModel model) {
         if (model == null) {
-            throw new OntologyException("Data pro vytvoření slovníku jsou prázdná");
+            throw new OntologyInputException("Data pro vytvoření slovníku jsou prázdná");
         }
 
         validateOntologyName(model.getNameModel());

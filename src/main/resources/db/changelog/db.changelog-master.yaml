@@ -76,3 +76,5 @@ databaseChangeLog:
       file: db/changelog/v1/026-publication-status.yaml
   - include:
       file: db/changelog/v1/027-diagram-iri-id.yaml
+  - include:
+      file: db/changelog/v1/028-create-delete-audit.yaml

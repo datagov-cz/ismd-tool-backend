@@ -1,8 +1,9 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.exception.OntologyProcessingException;
+import com.dia.ismdtoolbackend.exception.RdfDataMissingException;
 import com.dia.ismdtoolbackend.models.OntologyRef;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
-import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.riot.Lang;
@@ -55,27 +56,27 @@ class OntologyTurtleExportTest {
     @NullAndEmptySource
     void missingGraphNameIsRejectedWithoutReading(String graphName) {
         assertThatThrownBy(() -> export.getTtlContentFromOntology(metadata(graphName)))
-                .isInstanceOf(OntologyException.class)
+                .isInstanceOf(OntologyProcessingException.class)
                 .hasMessage("Graph name is missing for the ontology");
         verifyNoInteractions(tdb2);
     }
 
     @Test
-    void emptyGraphIsNotFound() {
+    void emptyGraphIsMissingRdfData() {
         when(tdb2.fetchGraph(GRAPH)).thenReturn(ModelFactory.createDefaultModel());
 
         assertThatThrownBy(() -> export.getTtlContentFromOntology(metadata(GRAPH)))
-                .isInstanceOf(OntologyException.class)
-                .hasMessage("Ontology model not found or is empty");
+                .isInstanceOf(RdfDataMissingException.class)
+                .hasMessage("Slovník " + GRAPH + " je evidován, ale jeho data v úložišti RDF chybí.");
     }
 
     @Test
-    void absentGraphIsNotFound() {
+    void absentGraphIsMissingRdfData() {
         when(tdb2.fetchGraph(GRAPH)).thenReturn(null);
 
         assertThatThrownBy(() -> export.getTtlContentFromOntology(metadata(GRAPH)))
-                .isInstanceOf(OntologyException.class)
-                .hasMessage("Ontology model not found or is empty");
+                .isInstanceOf(RdfDataMissingException.class)
+                .hasMessage("Slovník " + GRAPH + " je evidován, ale jeho data v úložišti RDF chybí.");
     }
 
     @Test
@@ -83,7 +84,7 @@ class OntologyTurtleExportTest {
         when(tdb2.fetchGraph(GRAPH)).thenThrow(new IllegalStateException("TDB2 locked"));
 
         assertThatThrownBy(() -> export.getTtlContentFromOntology(metadata(GRAPH)))
-                .isInstanceOf(OntologyException.class)
+                .isInstanceOf(OntologyProcessingException.class)
                 .hasMessage("Failed to retrieve TTL content.")
                 .hasRootCauseMessage("TDB2 locked");
     }

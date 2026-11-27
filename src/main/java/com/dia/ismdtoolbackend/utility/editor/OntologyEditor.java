@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
-import com.dia.ismdtoolbackend.exception.OntologyExceptions;
+import com.dia.ismdtoolbackend.exception.OntologyProcessingException;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.DescriptionModel;
 import com.dia.ismdtoolbackend.models.NameModel;
@@ -102,7 +102,7 @@ public class OntologyEditor {
 
         } catch (Exception e) {
             log.error("Failed to edit ontology: {}", iri, e);
-            throw OntologyExceptions.withCause("Failed to edit ontology: " + iri, e);
+            throw new OntologyProcessingException("Failed to edit ontology: " + iri, e);
         } finally {
             if (supportsTransactions && !committed) {
                 try {

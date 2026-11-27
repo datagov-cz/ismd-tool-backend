@@ -428,6 +428,44 @@ class NkdSparqlClientTest {
     }
 
     @Test
+    void withRaw_returnsDetailAndOwnTriples_absentAsEmpty_inOneCall() {
+        OntologyDetailExtractor extractor = mock(OntologyDetailExtractor.class);
+        when(extractor.applyOFNTransformationsForNkd(ArgumentMatchers.any()))
+                .thenAnswer(inv -> inv.getArgument(0));
+        OntologyDetailModel.ConceptDetailModel detail = mock(OntologyDetailModel.ConceptDetailModel.class);
+        when(extractor.extractConceptDetail(ArgumentMatchers.any(), ArgumentMatchers.eq(CONCEPT_IRI),
+                ArgumentMatchers.any())).thenReturn(detail);
+        stubTurtle("<" + CONCEPT_IRI + "> <" + IN_SCHEME + "> <" + ONTOLOGY_IRI + "> .");
+
+        var out = newClient(extractor).fetchPublishedConceptsWithRaw(List.of(CONCEPT_IRI, CONCEPT_IRI_2));
+
+        var found = out.get(CONCEPT_IRI).orElseThrow();
+        assertThat(found.concept().detail()).isEqualTo(detail);
+        assertThat(found.raw().size()).isEqualTo(1);
+        assertThat(out.get(CONCEPT_IRI_2)).isEmpty();
+        WM.verify(1, anyRequestedFor(anyUrl()));
+    }
+
+    @Test
+    void withRaw_aConceptThatCannotBeProcessedHasNoEntry_othersStay() {
+        OntologyDetailExtractor extractor = mock(OntologyDetailExtractor.class);
+        when(extractor.applyOFNTransformationsForNkd(ArgumentMatchers.any()))
+                .thenAnswer(inv -> inv.getArgument(0));
+        OntologyDetailModel.ConceptDetailModel detail = mock(OntologyDetailModel.ConceptDetailModel.class);
+        when(extractor.extractConceptDetail(ArgumentMatchers.any(), ArgumentMatchers.eq(CONCEPT_IRI),
+                ArgumentMatchers.any())).thenThrow(new IllegalStateException("bad data"));
+        when(extractor.extractConceptDetail(ArgumentMatchers.any(), ArgumentMatchers.eq(CONCEPT_IRI_2),
+                ArgumentMatchers.any())).thenReturn(detail);
+        stubTurtle("<" + CONCEPT_IRI + "> <" + IN_SCHEME + "> <" + ONTOLOGY_IRI + "> .\n"
+                 + "<" + CONCEPT_IRI_2 + "> <" + IN_SCHEME + "> <" + ONTOLOGY_IRI + "> .");
+
+        var out = newClient(extractor).fetchPublishedConceptsWithRaw(List.of(CONCEPT_IRI, CONCEPT_IRI_2));
+
+        assertThat(out).doesNotContainKey(CONCEPT_IRI);
+        assertThat(out.get(CONCEPT_IRI_2)).isPresent();
+    }
+
+    @Test
     void batched_sliceCarriesOnlyItsOwnSubject_notNeighbours() {
         // Slicing must reproduce the single-IRI query's output. Pulling a neighbour's triples in
         // would make a batched deviation disagree with a per-IRI one.

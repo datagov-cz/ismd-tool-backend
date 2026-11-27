@@ -1,6 +1,10 @@
 package com.dia.ismdtoolbackend.testsupport.pg;
 
+import com.dia.ismdtoolbackend.audit.DeleteAuditEntry;
+import com.dia.ismdtoolbackend.audit.DeleteAuditRepository;
+import com.dia.ismdtoolbackend.audit.DeleteAuditWriter;
 import com.dia.ismdtoolbackend.config.JpaAuditingConfig;
+import com.dia.ismdtoolbackend.config.ServicesConfig;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.mapper.CommentMapperImpl;
 import com.dia.ismdtoolbackend.outbox.OutboxEntry;
@@ -47,9 +51,11 @@ import java.lang.annotation.Target;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @ActiveProfiles("junit")
 @Import({JpaAuditingConfig.class, TransactionTemplateConfig.class, PgTestData.class, DiagramSearchLookup.class,
-        CommentServiceImpl.class, CommentMapperImpl.class, PublicationSnapshotReader.class})
-@EntityScan(basePackageClasses = {OutboxEntry.class, ConceptMetadataEntity.class})
-@EnableJpaRepositories(basePackageClasses = {OutboxEntryRepository.class, ConceptMetadataRepository.class})
+        CommentServiceImpl.class, CommentMapperImpl.class, PublicationSnapshotReader.class,
+        DeleteAuditWriter.class, ServicesConfig.class})
+@EntityScan(basePackageClasses = {OutboxEntry.class, ConceptMetadataEntity.class, DeleteAuditEntry.class})
+@EnableJpaRepositories(basePackageClasses = {OutboxEntryRepository.class, ConceptMetadataRepository.class,
+        DeleteAuditRepository.class})
 @MockitoSpyBean(types = {ConceptMetadataRepository.class, DiagramPendingEditRepository.class, DiagramRepository.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 public @interface PlainJpaIT {

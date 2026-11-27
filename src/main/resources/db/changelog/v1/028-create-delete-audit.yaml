@@ -1,0 +1,92 @@
+databaseChangeLog:
+  # Append-only record of user deletes, written by DeleteAuditWriter in each delete's transaction.
+  # No foreign keys: the rows outlive what they describe.
+  - changeSet:
+      id: 028-create-delete-audit
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: delete_audit
+                schemaName: ismd_schema
+      changes:
+        - createTable:
+            schemaName: ismd_schema
+            tableName: delete_audit
+            remarks: One row per user delete of an ontology, concept, local copy, comment or diagram.
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: deleted_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: actor_id
+                  type: VARCHAR(255)
+                  remarks: Keycloak sub of the user who deleted.
+                  constraints:
+                    nullable: false
+              - column:
+                  name: actor_admin
+                  type: BOOLEAN
+                  constraints:
+                    nullable: false
+              - column:
+                  name: entity_type
+                  type: VARCHAR(32)
+                  remarks: ONTOLOGY, CONCEPT, LOCAL_COPY, COMMENT or DIAGRAM.
+                  constraints:
+                    nullable: false
+              - column:
+                  name: entity_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: entity_iri
+                  type: VARCHAR(1024)
+                  remarks: Ontology graph, concept IRI or NKD IRI of a local copy; null for comments and diagrams.
+              - column:
+                  name: entity_slug
+                  type: VARCHAR(255)
+              - column:
+                  name: entity_name
+                  type: VARCHAR(1024)
+              - column:
+                  name: graph_name
+                  type: VARCHAR(1024)
+                  remarks: Ontology graph the deleted entity belonged to.
+              - column:
+                  name: parent_iri
+                  type: VARCHAR(1024)
+                  remarks: Concept owning a local copy, or concept a comment was on.
+              - column:
+                  name: details
+                  type: VARCHAR
+                  remarks: JSON of what went with the delete (cascaded concepts, child counts).
+        - createIndex:
+            schemaName: ismd_schema
+            tableName: delete_audit
+            indexName: idx_delete_audit_deleted_at
+            columns:
+              - column:
+                  name: deleted_at
+        - createIndex:
+            schemaName: ismd_schema
+            tableName: delete_audit
+            indexName: idx_delete_audit_actor
+            columns:
+              - column:
+                  name: actor_id
+      rollback:
+        - dropTable:
+            schemaName: ismd_schema
+            tableName: delete_audit

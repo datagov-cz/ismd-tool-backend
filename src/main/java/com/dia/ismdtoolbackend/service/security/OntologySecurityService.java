@@ -1,5 +1,8 @@
 package com.dia.ismdtoolbackend.service.security;
 
+import com.dia.ismdtoolbackend.exception.CommentNotFoundException;
+import com.dia.ismdtoolbackend.exception.ConceptNotFoundException;
+import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.config.security.SecurityUser;
 import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
@@ -8,7 +11,6 @@ import com.dia.ismdtoolbackend.repository.CommentRepository;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.utility.security.SecurityUtils;
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -22,7 +24,7 @@ import java.util.function.Supplier;
  * <p>
  * An admin may modify anything. Anyone else may modify a resource only when they own it. A
  * resource with no owner belongs to nobody, so only an admin may modify it. A missing resource
- * throws {@link EntityNotFoundException}; admins are allowed before the lookup.
+ * throws its not-found exception (404); admins are allowed before the lookup.
  */
 @Slf4j
 @Service("ontologySecurityService")
@@ -36,31 +38,31 @@ public class OntologySecurityService {
     public boolean canModify(Long ontologyId) {
         return isAdminOrOwner("ontology", ontologyId,
                 () -> ownerOf(ontologyMetadataRepository.findById(ontologyId), OntologyMetadataEntity::getUserId,
-                        "Slovník s id " + ontologyId + " nebyl nalezen."));
+                        "Slovník s id " + ontologyId + " nebyl nalezen.", OntologyNotFoundException::new));
     }
 
     public boolean canModify(String ontologyIri) {
         return isAdminOrOwner("ontology", ontologyIri,
                 () -> ownerOf(ontologyMetadataRepository.findByGraphName(ontologyIri), OntologyMetadataEntity::getUserId,
-                        "Slovník s IRI " + ontologyIri + " nebyl nalezen."));
+                        "Slovník s IRI " + ontologyIri + " nebyl nalezen.", OntologyNotFoundException::new));
     }
 
     public boolean canModifyConcept(Long conceptId) {
         return isAdminOrOwner("concept", conceptId,
                 () -> ownerOf(conceptMetadataRepository.findById(conceptId), ConceptMetadataEntity::getUserId,
-                        "Pojem s id " + conceptId + " nebyl nalezen."));
+                        "Pojem s id " + conceptId + " nebyl nalezen.", ConceptNotFoundException::new));
     }
 
     public boolean canModifyComment(Long commentId) {
         return isAdminOrOwner("comment", commentId,
                 () -> ownerOf(commentRepository.findById(commentId), CommentEntity::getUserId,
-                        "Komentář s id " + commentId + " nebyl nalezen."));
+                        "Komentář s id " + commentId + " nebyl nalezen.", CommentNotFoundException::new));
     }
 
     public boolean belongsToUserBySlug(String slug) {
         return isAdminOrOwner("ontology", slug,
                 () -> ownerOf(ontologyMetadataRepository.findBySlug(slug), OntologyMetadataEntity::getUserId,
-                        "Slovník se slugem " + slug + " nebyl nalezen."));
+                        "Slovník se slugem " + slug + " nebyl nalezen.", OntologyNotFoundException::new));
     }
 
     /**
@@ -96,10 +98,11 @@ public class OntologySecurityService {
         return isOwner;
     }
 
-    private static <T> String ownerOf(Optional<T> entity, Function<T, String> owner, String notFoundMessage) {
+    private static <T> String ownerOf(Optional<T> entity, Function<T, String> owner, String notFoundMessage,
+                                      Function<String, RuntimeException> notFound) {
         T found = entity.orElseThrow(() -> {
             log.error(notFoundMessage);
-            return new EntityNotFoundException(notFoundMessage);
+            return notFound.apply(notFoundMessage);
         });
         return owner.apply(found);
     }

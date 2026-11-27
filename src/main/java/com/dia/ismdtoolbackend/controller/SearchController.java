@@ -68,9 +68,10 @@ public class SearchController {
 
         validateSearchParams(q, limit, offset);
 
-        log.info("Search request: q='{}', type={}, source={}, limit={}, offset={}, lang={}, user={}",
-                q.trim(), type, source, limit, offset, lang,
+        log.info("Search request: qLength={}, type={}, source={}, limit={}, offset={}, lang={}, user={}",
+                q.trim().length(), type, source, limit, offset, lang,
                 securityUser != null ? securityUser.getUserId() : "anonymous");
+        log.debug("Search request q='{}'", q.trim());
 
         SearchResponseDto response = searchService.search(
                 q.trim(), type, source, limit, offset, lang,

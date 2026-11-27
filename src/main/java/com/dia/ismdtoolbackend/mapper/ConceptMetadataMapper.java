@@ -1,6 +1,5 @@
 package com.dia.ismdtoolbackend.mapper;
 
-import com.dia.ismdtoolbackend.controller.dto.ConceptSummaryDto;
 import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptSourceTag;
@@ -23,13 +22,8 @@ public interface ConceptMetadataMapper {
     @Mapping(target = "sourceTag", ignore = true)
     ConceptMetadataModel toDto(ConceptMetadataEntity entity);
 
-    @Mapping(target = "ontologySlug", source = "ontologyMetadata.slug")
-    @Mapping(target = "sourceTag", ignore = true)
-    ConceptSummaryDto toSummary(ConceptMetadataEntity entity);
-
     /**
-     * Derives {@code sourceTag} from {@code isPublished} on every {@code toDto}, so both {@code getAll} and
-     * {@code getConceptDetail} carry it. A null flag stays null rather than defaulting to DRAFT — "not
+     * Derives {@code sourceTag} from {@code isPublished} on every {@code toDto}. A null flag stays null rather than defaulting to DRAFT — "not
      * recorded" and "confirmed local" are different claims.
      */
     @AfterMapping
@@ -38,17 +32,6 @@ public interface ConceptMetadataMapper {
             return;
         }
         model.setSourceTag(Boolean.TRUE.equals(entity.getIsPublished())
-                ? ConceptSourceTag.WORKING_COPY
-                : ConceptSourceTag.DRAFT);
-    }
-
-    /** The same derivation for the list summary. */
-    @AfterMapping
-    default void deriveSourceTag(ConceptMetadataEntity entity, @MappingTarget ConceptSummaryDto summary) {
-        if (entity.getIsPublished() == null) {
-            return;
-        }
-        summary.setSourceTag(Boolean.TRUE.equals(entity.getIsPublished())
                 ? ConceptSourceTag.WORKING_COPY
                 : ConceptSourceTag.DRAFT);
     }

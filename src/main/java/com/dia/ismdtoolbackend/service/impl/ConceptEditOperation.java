@@ -1,8 +1,10 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.exception.OntologyInputException;
+import com.dia.ismdtoolbackend.exception.OntologyProcessingException;
 import com.dia.ismdtoolbackend.utility.validation.ConceptInputView;
 import com.dia.ismdtoolbackend.service.snapshot.NkdLookup;
-import com.dia.ismdtoolbackend.exception.OntologyExceptions;
+import com.dia.ismdtoolbackend.exception.RdfDataMissingException;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
@@ -20,7 +22,6 @@ import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
 import com.dia.ismdtoolbackend.utility.validation.ConceptNamespaceRule;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.ModelFactory;
@@ -78,6 +79,9 @@ class ConceptEditOperation {
             if (view.exactMatch() != null) {
                 referenced.addAll(view.exactMatch());
             }
+        }
+        if (conceptEditModel instanceof com.dia.ismdtoolbackend.models.concept.PropertyConceptEditModel property) {
+            referenced.add(property.getDataType());
         }
         return nkdLinkReconciler.prefetch(metadata.get().getGraphName(), referenced);
     }
@@ -176,7 +180,8 @@ class ConceptEditOperation {
         Model model = jenaTDB2Repository.fetchGraph(graphName);
         if (model.isEmpty()) {
             log.error("Graph {} is empty or not found", graphName);
-            throw new OntologyException("Slovník " + graphName + " je prázdný nebo nebyl nalezen.");
+            throw new RdfDataMissingException("Slovník " + graphName
+                    + " je evidován, ale jeho data v úložišti RDF chybí.");
         }
         return model;
     }
@@ -185,7 +190,8 @@ class ConceptEditOperation {
         Resource conceptResource = model.getResource(conceptIRI);
         if (conceptResource == null || !model.containsResource(conceptResource)) {
             log.error("Concept {} not found in graph {}", conceptIRI, graphName);
-            throw new OntologyException("Pojem s IRI " + conceptIRI + " nebyl nalezen ve slovníku.");
+            throw new RdfDataMissingException("Pojem " + conceptIRI
+                    + " je evidován, ale ve slovníku " + graphName + " chybí.");
         }
     }
 
@@ -197,15 +203,13 @@ class ConceptEditOperation {
             log.info("Edit completed: {} changes, IRI changed: {}, new IRI: {}",
                     editResult.changesCount, editResult.iriChanged, editResult.newConceptIRI);
             return editResult;
-        } catch (ConceptValidationException e) {
-            // Invalid user input → propagate unwrapped so it surfaces as HTTP 400
-            // (GlobalExceptionHandler maps ConceptValidationException to BAD_REQUEST).
-            // Wrapping in OntologyException here would turn it into a 500.
+        } catch (ConceptValidationException | OntologyInputException e) {
+            // Invalid user input stays unwrapped, so it answers 400.
             log.warn("Concept edit rejected — invalid input: {}", e.getMessage());
             throw e;
         } catch (Exception e) {
             log.error("Failed to edit concept", e);
-            throw OntologyExceptions.withCause("Nepodařilo se upravit pojem.", e);
+            throw new OntologyProcessingException("Nepodařilo se upravit pojem.", e);
         }
     }
 
@@ -252,7 +256,7 @@ class ConceptEditOperation {
             return conceptMetadataMapper.toDto(savedMetadata);
         } catch (Exception e) {
             log.error("Failed to update concept metadata", e);
-            throw OntologyExceptions.withCause("Nepodařilo se aktualizovat metadata pojmu.", e);
+            throw new OntologyProcessingException("Nepodařilo se aktualizovat metadata pojmu.", e);
         }
     }
 

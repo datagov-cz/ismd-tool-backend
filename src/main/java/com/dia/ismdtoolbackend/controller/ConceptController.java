@@ -1,6 +1,5 @@
 package com.dia.ismdtoolbackend.controller;
 
-import com.dia.ismdtoolbackend.controller.dto.ConceptSummaryDto;
 import com.dia.ismdtoolbackend.config.security.SecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
@@ -112,21 +111,6 @@ public class ConceptController {
         log.info("Concept edit successful, conceptId: {}, slug: {}", editedConceptModel.getId(), editedConceptModel.getSlug());
 
         return ResponseEntity.ok().body(ApiResponseDto.success(editedConceptModel, "Pojem úspěšně upraven: "));
-    }
-
-    @Operation(
-            summary = "Seznam pojmů",
-            description = "Vrací seznam pojmů s možností filtrování podle uživatele nebo stavu publikace. Veřejný endpoint."
-    )
-    @GetMapping("/list")
-    public ResponseEntity<ApiResponseDto<List<ConceptSummaryDto>>> getConceptList(
-            @RequestParam(required = false) String userId,
-            @RequestParam(required = false) Boolean isPublished
-    ) {
-        log.info("Concept list requested, userId: {}, isPublished: {}", userId, isPublished);
-
-        List<ConceptSummaryDto> concepts = conceptService.getAll(userId, isPublished);
-        return ResponseEntity.ok().body(ApiResponseDto.success(concepts, "Žádost o seznam pojmů proběhla úspěšně."));
     }
 
     @Operation(

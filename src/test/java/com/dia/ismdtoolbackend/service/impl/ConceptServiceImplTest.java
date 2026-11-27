@@ -1,6 +1,5 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.controller.dto.ConceptSummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptModel;
@@ -68,21 +67,19 @@ class ConceptServiceImplTest {
         ClassConceptModel second = ConceptModels.trida("Druhý");
         ConceptMetadataModel firstCreated = metadata("a");
         ConceptMetadataModel secondCreated = metadata("b");
-        var firstNkd = org.mockito.Mockito.mock(com.dia.ismdtoolbackend.service.snapshot.NkdLookup.class);
-        var secondNkd = org.mockito.Mockito.mock(com.dia.ismdtoolbackend.service.snapshot.NkdLookup.class);
-        when(createOperation.prefetchNkd(first)).thenReturn(firstNkd);
-        when(createOperation.prefetchNkd(second)).thenReturn(secondNkd);
-        when(createOperation.createConcept(first, USER_ID, firstNkd)).thenReturn(firstCreated);
-        when(createOperation.createConcept(second, USER_ID, secondNkd)).thenReturn(secondCreated);
+        List<ClassConceptModel> models = List.of(first, second);
+        var nkd = org.mockito.Mockito.mock(com.dia.ismdtoolbackend.service.snapshot.NkdLookup.class);
+        when(createOperation.prefetchNkd(models)).thenReturn(nkd);
+        when(createOperation.createConcept(first, USER_ID, nkd)).thenReturn(firstCreated);
+        when(createOperation.createConcept(second, USER_ID, nkd)).thenReturn(secondCreated);
 
-        List<ConceptMetadataModel> result = service.createConcepts(List.of(first, second), USER_ID);
+        List<ConceptMetadataModel> result = service.createConcepts(models, USER_ID);
 
         assertThat(result).containsExactly(firstCreated, secondCreated);
         InOrder order = inOrder(createOperation);
-        order.verify(createOperation).prefetchNkd(first);
-        order.verify(createOperation).prefetchNkd(second);
-        order.verify(createOperation).createConcept(first, USER_ID, firstNkd);
-        order.verify(createOperation).createConcept(second, USER_ID, secondNkd);
+        order.verify(createOperation).prefetchNkd(models);
+        order.verify(createOperation).createConcept(first, USER_ID, nkd);
+        order.verify(createOperation).createConcept(second, USER_ID, nkd);
     }
 
     /** NKD is asked first, then the edit runs with what was fetched. */
@@ -126,14 +123,6 @@ class ConceptServiceImplTest {
         order.verify(syncOperation).planSync(CONCEPT_ID, fields);
         order.verify(txManager).getTransaction(org.mockito.ArgumentMatchers.any());
         order.verify(syncOperation).applySync(CONCEPT_ID, plan);
-    }
-
-    @Test
-    void getAllDelegates() {
-        List<ConceptSummaryDto> all = List.of(new ConceptSummaryDto());
-        when(detailReader.getAll(USER_ID, true)).thenReturn(all);
-
-        assertThat(service.getAll(USER_ID, true)).isSameAs(all);
     }
 
     @Test

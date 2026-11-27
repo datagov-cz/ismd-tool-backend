@@ -1,5 +1,8 @@
 package com.dia.ismdtoolbackend.service;
 
+import com.dia.ismdtoolbackend.utility.paging.PageParams;
+import com.dia.ismdtoolbackend.models.OntologyListQuery;
+import com.dia.ismdtoolbackend.controller.dto.PageDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsResponseDto;
@@ -24,8 +27,7 @@ public interface OntologyService {
     OntologyDetailModel getOntologyDetail(String ontologySlug);
     List<MinimalConceptDto> getConceptsByIri(String ontologyIri, SearchSource source);
     OntologySummaryDto editOntology(Long id, OntologyEditModel ontologyEditModel);
-    List<OntologySummaryDto> getAll(String userId, Boolean isPublished);
-    List<OntologySummaryDto> getBySlugs(List<String> slugs);
+    PageDto<OntologySummaryDto> list(OntologyListQuery query, PageParams page);
     String getTtlContentFromOntology(OntologyRef ontology);
     OntologyRef getOntologyMetadata(Long ontologyId);
     OntologyRef getOntologyMetadataBySlug(String ontologySlug);

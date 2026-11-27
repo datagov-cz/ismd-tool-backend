@@ -1,6 +1,9 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.exception.OntologyExceptions;
+import com.dia.ismdtoolbackend.exception.OntologyInputException;
+import com.dia.ismdtoolbackend.exception.OntologyProcessingException;
+import com.dia.ismdtoolbackend.exception.RdfDataMissingException;
+import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.controller.dto.OntologySummaryDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
@@ -13,7 +16,6 @@ import com.dia.ismdtoolbackend.utility.URIGenerator;
 import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.vocabulary.RDF;
 import java.util.List;
@@ -38,7 +40,7 @@ class OntologyEditOperation {
 
     OntologySummaryDto editOntology(Long id, OntologyEditModel ontologyEditModel) {
         if (ontologyEditModel == null) {
-            throw new OntologyException("Data pro úpravu slovníku jsou prázdná");
+            throw new OntologyInputException("Data pro úpravu slovníku jsou prázdná");
         }
         OntologyMetadataEntity metadataEntity = fetchOntologyMetadata(id);
         String oldOntologyIRI = metadataEntity.getGraphName();
@@ -72,25 +74,19 @@ class OntologyEditOperation {
         Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findById(id);
         if (ontologyMetadataOpt.isEmpty()) {
             log.error("Ontology with ID {} not found", id);
-            throw new OntologyException("Slovník s ID " + id + " nebyl nalezen.");
+            throw new OntologyNotFoundException("Slovník s ID " + id + " nebyl nalezen.");
         }
         return ontologyMetadataOpt.get();
     }
 
-    Model fetchOntologyModel(String ontologyIRI) throws OntologyException {
-        try {
-            Model model = jenaTDB2Repository.fetchGraph(ontologyIRI);
-            if (model.isEmpty()) {
-                log.error("Ontology model is empty for IRI: {}", ontologyIRI);
-                throw new OntologyException("Model slovníku je prázdný nebo nebyl nalezen.");
-            }
-            return model;
-        } catch (Exception e) {
-            log.error("Failed to fetch ontology model for IRI: {}. Error: {}", ontologyIRI, e.getMessage());
-            throw new OntologyException("Slovník s IRI " + ontologyIRI + " nebyl nalezen v úložišti. " +
-                    "Je možné, že došlo k nesrovnalosti mezi databází a RDF úložištěm. " +
-                    "Zkontrolujte, zda slovník existuje v Fuseki.");
+    Model fetchOntologyModel(String ontologyIRI) {
+        Model model = jenaTDB2Repository.fetchGraph(ontologyIRI);
+        if (model.isEmpty()) {
+            log.error("Ontology model is empty for IRI: {}", ontologyIRI);
+            throw new RdfDataMissingException("Slovník " + ontologyIRI
+                    + " je evidován, ale jeho data v úložišti RDF chybí.");
         }
+        return model;
     }
 
     OntologyEditor.EditResult performOntologyEdit(OntologyEditModel editModel, Model model, String oldNamespace, String iri) {
@@ -98,8 +94,7 @@ class OntologyEditOperation {
     }
 
     OntologyMetadataEntity handleOntologyIRIChange(String oldOntologyIRI, String newOntologyIRI,
-                                                           Model model, OntologyMetadataEntity metadataEntity)
-            throws OntologyException {
+                                                           Model model, OntologyMetadataEntity metadataEntity) {
         initialGraphGuard.requireInitialGraphApplied(newOntologyIRI);
         log.info("Starting ontology IRI change: {} -> {}", oldOntologyIRI, newOntologyIRI);
 
@@ -108,7 +103,7 @@ class OntologyEditOperation {
             log.info("Successfully saved ontology to new graph: {}", newOntologyIRI);
         } catch (Exception e) {
             log.error("Failed to save new graph to Fuseki: {}", e.getMessage());
-            throw OntologyExceptions.withCause("Nepodařilo se uložit nový graf do Fuseki.", e);
+            throw new OntologyProcessingException("Nepodařilo se uložit nový graf do Fuseki.", e);
         }
 
         try {
@@ -140,7 +135,7 @@ class OntologyEditOperation {
                         newOntologyIRI, cleanupException.getMessage());
             }
 
-            throw OntologyExceptions.withCause("Nepodařilo se aktualizovat databázi.", e);
+            throw new OntologyProcessingException("Nepodařilo se aktualizovat databázi.", e);
         }
     }
 
@@ -189,7 +184,7 @@ class OntologyEditOperation {
             log.info("Saved/updated ontology model for graph: {}", ontologyIRI);
         } catch (Exception e) {
             log.error("Failed to save ontology model: {}", e.getMessage());
-            throw OntologyExceptions.withCause("Nepodařilo se uložit změny slovníku.", e);
+            throw new OntologyProcessingException("Nepodařilo se uložit změny slovníku.", e);
         }
     }
 

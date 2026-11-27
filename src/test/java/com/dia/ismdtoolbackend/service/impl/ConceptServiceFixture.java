@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.audit.DeleteAuditWriter;
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.config.NkdConfig;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
@@ -57,6 +58,7 @@ public final class ConceptServiceFixture {
     private OutboxWriter outboxWriter = mock(OutboxWriter.class);
     private OutboxEntryRepository outboxRepository = mock(OutboxEntryRepository.class);
     private OutboxRelayTrigger outboxRelayTrigger = mock(OutboxRelayTrigger.class);
+    DeleteAuditWriter deleteAuditWriter = mock(DeleteAuditWriter.class);
     private NkdSnapshotService nkdSnapshotService = mock(NkdSnapshotService.class);
     private NkdSnapshotWarmer nkdSnapshotWarmer = mock(NkdSnapshotWarmer.class);
     private WorkingCopyDeviationServiceImpl workingCopyDeviationService = mock(WorkingCopyDeviationServiceImpl.class);
@@ -77,10 +79,14 @@ public final class ConceptServiceFixture {
                 buildCreateOperation(),
                 editOperation,
                 buildDeleteOperation(),
-                new WorkingCopySyncOperation(conceptMetadataRepository, jenaTDB2Repository, nkdSparqlClient,
-                        deviationComparator, syncFields, accessGuard(), editOperation, detailReader),
+                buildSyncOperation(editOperation, detailReader),
                 detailReader,
                 writeTransaction);
+    }
+
+    WorkingCopySyncOperation buildSyncOperation(ConceptEditOperation editOperation, ConceptDetailReader detailReader) {
+        return new WorkingCopySyncOperation(conceptMetadataRepository, jenaTDB2Repository, nkdSparqlClient,
+                deviationComparator, syncFields, accessGuard(), editOperation, detailReader);
     }
 
     ConceptCreateOperation buildCreateOperation() {
@@ -97,7 +103,8 @@ public final class ConceptServiceFixture {
 
     ConceptDeleteOperation buildDeleteOperation() {
         return new ConceptDeleteOperation(conceptMetadataRepository, jenaTDB2Repository, metadataTouchService,
-                nkdSnapshotService, outboxWriter, outboxRelayTrigger, accessGuard(), initialGraphGuard());
+                nkdSnapshotService, outboxWriter, outboxRelayTrigger, accessGuard(), initialGraphGuard(),
+                deleteAuditWriter);
     }
 
     ConceptDetailReader buildDetailReader() {

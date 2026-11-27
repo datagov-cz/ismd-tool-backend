@@ -1,9 +1,12 @@
 package com.dia.ismdtoolbackend.controller.dto;
 
 import com.dia.ismdtoolbackend.enums.ErrorCode;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
+import java.util.List;
 
 @AllArgsConstructor
 @NoArgsConstructor
@@ -14,6 +17,9 @@ public class ApiResponseDto<T> {
     private boolean success;
     /** Set on every error response, null on success. */
     private ErrorCode errorCode;
+    /** What the user should know about a successful write; absent when there is nothing. */
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    private List<ApiWarningDto> warnings;
 
     public ApiResponseDto(T data, String message, boolean success) {
         this.data = data;
@@ -49,6 +55,6 @@ public class ApiResponseDto<T> {
     /** A blank message falls back to the code's own, so an error always carries both. */
     public static <T> ApiResponseDto<T> error(ErrorCode errorCode, String message, T data) {
         String text = message == null || message.isBlank() ? errorCode.getDefaultMessage() : message;
-        return new ApiResponseDto<>(data, text, false, errorCode);
+        return new ApiResponseDto<>(data, text, false, errorCode, null);
     }
 }

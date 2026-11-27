@@ -105,7 +105,8 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             Map<String, List<String>> domainRangeTargets =
                     uploadConceptGate.foreignDomainRangeTargets(finalModel, graphName, ownedConcepts);
             List<String> publishedConceptIris = deviationChecker.checkPublishedResourcesInNKD(finalModel,
-                    domainRangeTargets.values().stream().flatMap(List::stream).collect(Collectors.toSet()));
+                    domainRangeTargets.values().stream().flatMap(List::stream).collect(Collectors.toSet()),
+                    domainRangeTargets.keySet());
             if (!publishedConceptIris.isEmpty()) {
                 log.info("Model contains published resources: {}", publishedConceptIris.size());
             }

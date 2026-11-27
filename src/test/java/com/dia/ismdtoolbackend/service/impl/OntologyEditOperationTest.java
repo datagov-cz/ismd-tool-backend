@@ -1,5 +1,9 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.exception.OntologyInputException;
+import com.dia.ismdtoolbackend.exception.OntologyProcessingException;
+import com.dia.ismdtoolbackend.exception.RdfDataMissingException;
+import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.exception.OfnConformanceException;
@@ -12,7 +16,6 @@ import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.utility.editor.OntologyEditor;
-import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Resource;
@@ -149,7 +152,7 @@ class OntologyEditOperationTest {
                     .when(jenaTDB2Repository).saveOntologyModel(eq(NEW_GRAPH), any(Model.class));
 
             assertThatThrownBy(() -> operation.editOntology(ONTOLOGY_ID, editModel))
-                    .isInstanceOf(OntologyException.class)
+                    .isInstanceOf(OntologyProcessingException.class)
                     .hasMessage("Nepodařilo se uložit nový graf do Fuseki.")
                     .hasRootCauseMessage("Save error");
             verify(ontologyMetadataRepository, never()).save(any());
@@ -246,7 +249,7 @@ class OntologyEditOperationTest {
         @Test
         void nullRequest() {
             assertThatThrownBy(() -> operation.editOntology(ONTOLOGY_ID, null))
-                    .isInstanceOf(OntologyException.class)
+                    .isInstanceOf(OntologyInputException.class)
                     .hasMessageContaining("prázdná");
         }
 
@@ -255,8 +258,8 @@ class OntologyEditOperationTest {
             when(ontologyMetadataRepository.findById(ONTOLOGY_ID)).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> operation.editOntology(ONTOLOGY_ID, editModel))
-                    .isInstanceOf(OntologyException.class)
-                    .hasMessageContaining("nebyl nalezen");
+                    .isInstanceOf(OntologyNotFoundException.class)
+                    .hasMessage("Slovník s ID " + ONTOLOGY_ID + " nebyl nalezen.");
         }
 
         @Test
@@ -265,7 +268,8 @@ class OntologyEditOperationTest {
             when(jenaTDB2Repository.fetchGraph(GRAPH)).thenReturn(ModelFactory.createDefaultModel());
 
             assertThatThrownBy(() -> operation.editOntology(ONTOLOGY_ID, editModel))
-                    .isInstanceOf(OntologyException.class);
+                    .isInstanceOf(RdfDataMissingException.class)
+                    .hasMessageContaining(GRAPH);
             verify(jenaTDB2Repository, never()).saveOntologyModel(anyString(), any(Model.class));
         }
     }

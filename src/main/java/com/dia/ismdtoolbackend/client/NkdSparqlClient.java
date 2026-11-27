@@ -101,14 +101,49 @@ public class NkdSparqlClient {
                 log.debug("No data found for concept in NKD: {}", conceptIri);
                 continue;
             }
-            String inSchemeIri = extractInSchemeIri(slice, conceptIri);
-            Model processedModel = detailExtractor.applyOFNTransformationsForNkd(slice);
-            OntologyDetailModel.ConceptDetailModel conceptDetail =
-                    detailExtractor.extractConceptDetail(processedModel, conceptIri,
-                            OntologyDetailExtractor.iriResolver());
-            out.put(conceptIri, Optional.of(new PublishedConcept(conceptDetail, inSchemeIri)));
+            out.put(conceptIri, Optional.of(toPublishedConcept(slice, conceptIri)));
         }
         return out;
+    }
+
+    /**
+     * One CONSTRUCT for {@code conceptIris}, each concept with its detail and raw triples. Empty value: NKD has
+     * no such concept. A concept whose triples could not be processed has no entry.
+     */
+    public Map<String, Optional<PublishedConceptWithRaw>> fetchPublishedConceptsWithRaw(List<String> conceptIris) {
+        List<String> safeIris = conceptIris.stream()
+                .filter(SparqlIriValidator::isSafeHttpIri)
+                .distinct()
+                .toList();
+        Map<String, Optional<PublishedConceptWithRaw>> out = new LinkedHashMap<>();
+        if (safeIris.isEmpty()) {
+            return out;
+        }
+        Model batched = executor.construct("NKD batched concept fetch (" + safeIris.size() + " IRIs)",
+                        NKDSPARQLConstructQuery.buildBatchedConstructQuery(safeIris))
+                .orElseGet(ModelFactory::createDefaultModel);
+        for (String conceptIri : safeIris) {
+            Model raw = sliceForSubject(batched, conceptIri);
+            if (raw.isEmpty()) {
+                out.put(conceptIri, Optional.empty());
+                continue;
+            }
+            try {
+                PublishedConcept concept = toPublishedConcept(sliceForSubject(batched, conceptIri), conceptIri);
+                out.put(conceptIri, Optional.of(new PublishedConceptWithRaw(concept, raw)));
+            } catch (RuntimeException e) {
+                log.warn("NKD concept {} could not be processed: {}", conceptIri, e.getMessage());
+            }
+        }
+        return out;
+    }
+
+    private PublishedConcept toPublishedConcept(Model slice, String conceptIri) {
+        String inSchemeIri = extractInSchemeIri(slice, conceptIri);
+        Model processedModel = detailExtractor.applyOFNTransformationsForNkd(slice);
+        OntologyDetailModel.ConceptDetailModel conceptDetail = detailExtractor.extractConceptDetail(
+                processedModel, conceptIri, OntologyDetailExtractor.iriResolver());
+        return new PublishedConcept(conceptDetail, inSchemeIri);
     }
 
     /**
@@ -137,12 +172,7 @@ public class NkdSparqlClient {
                 log.debug("Concept not present in NKD ontology model: {}", conceptIri);
                 continue;
             }
-            String inSchemeIri = extractInSchemeIri(slice, conceptIri);
-            Model processedModel = detailExtractor.applyOFNTransformationsForNkd(slice);
-            OntologyDetailModel.ConceptDetailModel conceptDetail =
-                    detailExtractor.extractConceptDetail(processedModel, conceptIri,
-                            OntologyDetailExtractor.iriResolver());
-            out.put(conceptIri, Optional.of(new PublishedConcept(conceptDetail, inSchemeIri)));
+            out.put(conceptIri, Optional.of(toPublishedConcept(slice, conceptIri)));
         }
         return out;
     }
@@ -204,6 +234,9 @@ public class NkdSparqlClient {
      * level so the service layer doesn't need to re-parse the raw NKD model.
      */
     public record PublishedConcept(OntologyDetailModel.ConceptDetailModel detail, String ontologyIri) {}
+
+    /** A published concept with the raw triples a local copy is materialized from. */
+    public record PublishedConceptWithRaw(PublishedConcept concept, Model raw) {}
 
     /**
      * Raw NKD concept model — the same single-concept CONSTRUCT as

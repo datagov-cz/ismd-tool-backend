@@ -87,7 +87,7 @@ class OntologyUploadTransactionalTest {
         MultipartFile file = createTurtleFile(ttl);
 
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
-        when(deviationChecker.checkPublishedResourcesInNKD(any(), any())).thenReturn(Collections.emptyList());
+        when(deviationChecker.checkPublishedResourcesInNKD(any(), any(), any())).thenReturn(Collections.emptyList());
         doThrow(new RuntimeException("TDB2 connection failed"))
                 .when(jenaTDB2Repository).putOntologyModel(anyString(), any());
 
@@ -106,7 +106,7 @@ class OntologyUploadTransactionalTest {
         MultipartFile file = createTurtleFile(ttl);
 
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
-        when(deviationChecker.checkPublishedResourcesInNKD(any(), any())).thenReturn(Collections.emptyList());
+        when(deviationChecker.checkPublishedResourcesInNKD(any(), any(), any())).thenReturn(Collections.emptyList());
         // TDB2 save succeeds
         doNothing().when(jenaTDB2Repository).putOntologyModel(anyString(), any());
         // Metadata save fails
@@ -127,7 +127,7 @@ class OntologyUploadTransactionalTest {
         MultipartFile file = createTurtleFile(ttl);
 
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
-        when(deviationChecker.checkPublishedResourcesInNKD(any(), any())).thenReturn(Collections.emptyList());
+        when(deviationChecker.checkPublishedResourcesInNKD(any(), any(), any())).thenReturn(Collections.emptyList());
         doNothing().when(jenaTDB2Repository).putOntologyModel(anyString(), any());
         when(ontologyMetadataRepository.save(any())).thenThrow(new RuntimeException("DB failure"));
         // TDB2 cleanup also fails
@@ -162,7 +162,7 @@ class OntologyUploadTransactionalTest {
         savedEntity.setGraphName("https://example.com/ontology");
 
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
-        when(deviationChecker.checkPublishedResourcesInNKD(any(), any())).thenReturn(Collections.emptyList());
+        when(deviationChecker.checkPublishedResourcesInNKD(any(), any(), any())).thenReturn(Collections.emptyList());
         doNothing().when(jenaTDB2Repository).putOntologyModel(anyString(), any());
         when(ontologyMetadataRepository.save(any())).thenReturn(savedEntity);
         when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.of(savedEntity));

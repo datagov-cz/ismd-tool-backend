@@ -1,6 +1,5 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.controller.dto.ConceptSummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
@@ -37,13 +36,13 @@ public class ConceptServiceImpl implements ConceptService {
         return writeTransaction.run(() -> createOperation.createConcept(createModel, userId, nkd));
     }
 
-    /** All or nothing: one transaction for the batch, NKD asked for each concept before it. */
+    /** All or nothing: one transaction for the batch, NKD asked once for the whole batch before it. */
     @Override
     @CacheEvict(cacheNames = WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, allEntries = true)
     public List<ConceptMetadataModel> createConcepts(List<? extends ConceptCreateModel> createModels, String userId) {
-        List<NkdLookup> lookups = createModels.stream().map(createOperation::prefetchNkd).toList();
-        return writeTransaction.run(() -> java.util.stream.IntStream.range(0, createModels.size())
-                .mapToObj(i -> createOperation.createConcept(createModels.get(i), userId, lookups.get(i)))
+        NkdLookup nkd = createOperation.prefetchNkd(createModels);
+        return writeTransaction.run(() -> createModels.stream()
+                .map(createModel -> createOperation.createConcept(createModel, userId, nkd))
                 .toList());
     }
 
@@ -82,12 +81,6 @@ public class ConceptServiceImpl implements ConceptService {
     public String syncWorkingCopy(Long conceptId, List<String> fieldsToAccept) {
         WorkingCopySyncOperation.SyncPlan plan = syncOperation.planSync(conceptId, fieldsToAccept);
         return writeTransaction.run(() -> syncOperation.applySync(conceptId, plan));
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public List<ConceptSummaryDto> getAll(String userId, Boolean isPublished) {
-        return detailReader.getAll(userId, isPublished);
     }
 
     @Override

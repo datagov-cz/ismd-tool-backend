@@ -1,5 +1,8 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.exception.OntologyInputException;
+import com.dia.ismdtoolbackend.exception.OntologyProcessingException;
+import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptSourceTag;
 import com.dia.ismdtoolbackend.enums.ConceptType;
@@ -17,7 +20,6 @@ import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.testsupport.fixtures.Texts;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
-import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Resource;
@@ -192,7 +194,7 @@ class ConceptCreateOperationTest {
         @ValueSource(strings = "  ")
         void rejectsAMissingUserId(String userId) {
             assertThatThrownBy(() -> operation.createConcept(createModel, userId))
-                    .isInstanceOf(OntologyException.class)
+                    .isInstanceOf(OntologyInputException.class)
                     .hasMessageContaining("povinné");
             verify(conceptCreator, never()).createSingleConcept(any());
         }
@@ -330,11 +332,31 @@ class ConceptCreateOperationTest {
     class Failures {
 
         @Test
+        void rejectsAnUnknownVocabularyAsNotFound() {
+            givenCreatableConcept();
+            when(ontologyMetadataRepository.findByGraphName(GRAPH_NAME)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> operation.createConcept(createModel, USER_ID))
+                    .isExactlyInstanceOf(OntologyNotFoundException.class)
+                    .hasMessage("Slovník s názvem " + GRAPH_NAME + " nebyl nalezen.");
+            verify(conceptMetadataRepository, never()).save(any(ConceptMetadataEntity.class));
+        }
+
+        @Test
+        void keepsAnInputErrorFromTheCreatorUnwrapped() {
+            OntologyInputException invalid = new OntologyInputException("Neplatné IRI číselníku: x");
+            when(conceptCreator.createSingleConcept(createModel)).thenThrow(invalid);
+
+            assertThatThrownBy(() -> operation.createConcept(createModel, USER_ID)).isSameAs(invalid);
+            verifyNoInteractions(outboxWriter);
+        }
+
+        @Test
         void wrapsACreatorFailure() {
             when(conceptCreator.createSingleConcept(createModel)).thenThrow(new RuntimeException("Creator error"));
 
             assertThatThrownBy(() -> operation.createConcept(createModel, USER_ID))
-                    .isInstanceOf(OntologyException.class)
+                    .isInstanceOf(OntologyProcessingException.class)
                     .hasMessageContaining("Nepodařilo se transformovat pojem");
             verifyNoInteractions(outboxWriter);
         }
@@ -346,7 +368,7 @@ class ConceptCreateOperationTest {
                     .thenThrow(new RuntimeException("DB error"));
 
             assertThatThrownBy(() -> operation.createConcept(createModel, USER_ID))
-                    .isInstanceOf(OntologyException.class)
+                    .isInstanceOf(OntologyProcessingException.class)
                     .hasMessage("Nepodařilo se uložit metadata pojmu.");
             // The outbox row rolls back with the transaction.
             verify(outboxRelayTrigger, never()).nudgeAfterCommit();
@@ -466,17 +488,21 @@ class ConceptCreateOperationTest {
 
         /** Before the transaction: one publication check over domain and range only, no concept fetches. */
         @Test
-        void prefetchAsksOnlyWhetherTheDomainIsPublished() {
+        void prefetchAsksAboutEveryLinkTarget_andFetchesOnlyPublishedOnes() {
             var model = com.dia.ismdtoolbackend.testsupport.fixtures.ConceptModels.vlastnost(CONCEPT_NAME, m -> {
                 m.setOntologyGraphName(GRAPH_NAME);
                 m.setDomain(NKD_CLASS);
                 m.setSuperProperty(List.of(NKD_PROPERTY));
             });
-            when(nkdSparqlClient.findPublishedAmong(List.of(NKD_CLASS))).thenReturn(Optional.of(Set.of(NKD_CLASS)));
+            when(nkdSparqlClient.findPublishedAmong(org.mockito.ArgumentMatchers.anyList()))
+                    .thenReturn(Optional.of(Set.of(NKD_PROPERTY)));
+            when(nkdSparqlClient.fetchPublishedConceptsWithRaw(List.of(NKD_PROPERTY))).thenReturn(java.util.Map.of());
 
             operation.prefetchNkd(model);
 
-            verify(nkdSparqlClient).findPublishedAmong(List.of(NKD_CLASS));
+            verify(nkdSparqlClient).findPublishedAmong(org.mockito.ArgumentMatchers.argThat(asked ->
+                    asked.size() == 2 && asked.containsAll(List.of(NKD_CLASS, NKD_PROPERTY))));
+            verify(nkdSparqlClient).fetchPublishedConceptsWithRaw(List.of(NKD_PROPERTY));
             verifyNoMoreInteractions(nkdSparqlClient);
         }
 

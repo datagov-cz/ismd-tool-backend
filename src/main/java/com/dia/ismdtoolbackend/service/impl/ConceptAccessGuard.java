@@ -1,12 +1,12 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.exception.ConceptNotFoundException;
 import com.dia.ismdtoolbackend.config.security.SecurityUser;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.utility.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.ontology.OntologyException;
 import org.springframework.security.access.AccessDeniedException;
 import java.util.Objects;
 import java.util.Optional;
@@ -58,7 +58,7 @@ class ConceptAccessGuard {
                 : conceptMetadataRepository.findById(conceptId);
         if (metadataOpt.isEmpty()) {
             log.error("Concept metadata not found for ID: {}", conceptId);
-            throw new OntologyException("Metadata pojmu s ID " + conceptId + " nebyla nalezena.");
+            throw new ConceptNotFoundException("Metadata pojmu s ID " + conceptId + " nebyla nalezena.");
         }
         return metadataOpt.get();
     }
