@@ -1,0 +1,31 @@
+databaseChangeLog:
+  # Stable identifier for a diagram's published IRI. The ontology IRI and the diagram name both change on
+  # rename, so neither can identify a diagram outside ISMD. See .planning publication design.
+  # The volatile default gives each existing row its own value when the column is added, and gives rows
+  # inserted by the previous app version (which does not know the column) a unique value too.
+  # Rollback is Liquibase's automatic inverse of addColumn (drops the column and its constraint).
+
+  - changeSet:
+      id: 027-diagrams-iri-id
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                schemaName: ismd_schema
+                tableName: diagrams
+                columnName: iri_id
+      changes:
+        - addColumn:
+            schemaName: ismd_schema
+            tableName: diagrams
+            columns:
+              - column:
+                  name: iri_id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  remarks: Stable id for the diagram's published IRI; survives diagram and ontology renames.
+                  constraints:
+                    nullable: false
+                    unique: true
+                    uniqueConstraintName: uq_diagrams_iri_id

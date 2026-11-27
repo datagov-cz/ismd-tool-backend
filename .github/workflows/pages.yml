@@ -1,0 +1,46 @@
+name: Publish JSON-LD contexts to GitHub Pages
+
+# Serves pages/ at https://datagov-cz.github.io/ismd-tool-backend/ — the ISMD OD context the open-data
+# files reference. Dated folders are immutable once published; only draft/ may change.
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - 'pages/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Check every context is valid JSON
+        run: find pages -name '*.jsonld' -print0 | xargs -0 -n1 jq empty
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload pages/
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: pages
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -379,6 +379,23 @@ public class GlobalExceptionHandler {
         return error(ErrorCode.UPLOAD_CONCEPT_TYPE_CONFLICT, e.getMessage(), e.getConceptIris());
     }
 
+    @ExceptionHandler(PublicationInProgressException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handlePublicationInProgress(PublicationInProgressException e) {
+        log.warn("Publication rejected: {}", e.getMessage());
+        return error(ErrorCode.PUBLICATION_IN_PROGRESS, e.getMessage());
+    }
+
+    @ExceptionHandler(PublicationFilePrunedException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handlePublicationFilePruned(PublicationFilePrunedException e) {
+        return error(ErrorCode.PUBLICATION_FILE_PRUNED, e.getMessage());
+    }
+
+    /** The service has already logged the cause. */
+    @ExceptionHandler(PublicationFailedException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handlePublicationFailed(PublicationFailedException e) {
+        return craftedError(ErrorCode.PUBLICATION_FAILED, ownMessage(e));
+    }
+
     @ExceptionHandler(OntologyUploadInProgressException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleOntologyUploadInProgress(OntologyUploadInProgressException e) {
         log.warn("Ontology upload rejected, the vocabulary is already being uploaded: {}", e.getMessage());
